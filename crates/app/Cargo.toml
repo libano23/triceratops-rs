@@ -1,0 +1,34 @@
+[package]
+name = "triceratops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "triceratops"
+path = "src/main.rs"
+
+[dependencies]
+tri-geom = { path = "../geom" }
+tri-doc = { path = "../doc" }
+glam.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+winit = "0.30"
+wgpu = "25"
+egui = "0.32"
+egui-wgpu = { version = "0.32", features = ["winit"] }
+egui-winit = "0.32"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+rfd = "0.15"
+cadcraft-fonts = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-fonts" }
+cadcraft-geom = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-geom" }
+serde = { workspace = true, features = ["derive"] }
+dirs = "6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }

@@ -1,0 +1,22 @@
+[package]
+name = "tri-doc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flate2 = "1"
+roxmltree = "0.21"
+crc32fast = "1"
+tri-geom = { path = "../geom" }
+on3dm = { path = "../on3dm" }
+glam.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+cadcraft-io = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-io" }
+cadcraft-doc = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-doc" }
+cadcraft-geom = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-geom" }
+cadcraft-color = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-color" }
+cadcraft-constraints = { git = "https://github.com/storytold/cadcraft", package = "cadcraft-constraints" }

@@ -1,0 +1,4278 @@
+{
+ "3DFace": {
+  "desc": "Creates mesh or SubD faces that can be standalone or added to an existing mesh or SubD.",
+  "where": "Mesh Creation STL Tools SubD Tools SubD Sidebar Mesh Tools Mesh Append Face Polygon Mesh Primitives > 3‑D Face SubD Append Face Primitives > 3‑D Face"
+ },
+ "3View": {
+  "desc": "Set up a three-viewport workspace.",
+  "where": "Viewport Layout View / Viewport title Viewport Layout > 3 Viewports"
+ },
+ "4View": {
+  "desc": "Set up a four-viewport workspace.",
+  "where": "Standard Viewport Layout View / Viewport title Viewport Layout > 4 Viewports"
+ },
+ "About": {
+  "desc": "Displays Triceratops version and license information.",
+  "where": "Not on toolbars. Help About Triceratopsceros"
+ },
+ "AcadSchemes": {
+  "desc": "Edit AutoCAD export schemes.",
+  "where": ""
+ },
+ "AddGuide": {
+  "desc": "Adds infinite construction guides.",
+  "where": "Curve Tools Tools"
+ },
+ "AddMissingBlockAttributeKeys": {
+  "desc": "Restores the Attribute User Text that has been deleted from the properties of a block instance.",
+  "where": "Block Edit Blocks > Add Missing Block Attribute Keys"
+ },
+ "AddNextU": {
+  "desc": "Add the next control point in the u direction to the selection.",
+  "where": "Select Points Edit Control Points > Select Control Points > Add Next U"
+ },
+ "AddNextV": {
+  "desc": "Add the next control point in the v direction to the selection.",
+  "where": "Select Points Edit Control Points > Select Control Points > Add Next V"
+ },
+ "AddNgonsToMesh": {
+  "desc": "Converts regions of connected coplanar welded faces into n-gons .",
+  "where": "Mesh Tools"
+ },
+ "AddObjectsToBlock": {
+  "desc": "Adds objects to an existing embedded block definition.",
+  "where": "New Block Edit Blocks > Add Objects to Block"
+ },
+ "AddPrevU": {
+  "desc": "Add the previous control point in the u direction to the selection.",
+  "where": "Select Points Edit Control Points > Select Control Points > Add Previous U"
+ },
+ "AddPrevV": {
+  "desc": "Add the previous control point in the v direction to the selection.",
+  "where": "Select Points Edit Control Points > Select Control Points > Add Previous V"
+ },
+ "AddToGroup": {
+  "desc": "Add an object to a selected group.",
+  "where": "Grouping Edit Groups > Add To Group"
+ },
+ "Alerter": {
+  "desc": "Open the Alerter options page.",
+  "where": "Tools Tools Options > Alerter"
+ },
+ "Align": {
+  "desc": "Aligns objects by their bounding boxes, or aligns object grips such as control points, edit points, and vertices.",
+  "where": "Align and Distribute Main Main2 Transform SubD Sidebar Transform Align"
+ },
+ "AlignProfiles": {
+  "desc": "Line up one curve to another.",
+  "where": ""
+ },
+ "AlignVertices": {
+  "desc": "Forces mesh or SubD vertices to the same location.",
+  "where": "Mesh Tools SubD Sidebar Mesh / SubD Repair Tools > Align Vertices"
+ },
+ "Angle": {
+  "desc": "Report the angle between two picked or defined lines.",
+  "where": "Analyze Analyze Angle"
+ },
+ "ApplyBoxMapping": {
+  "desc": "Add a box texture mapping channel to an object.",
+  "where": "Texture mapping"
+ },
+ "ApplyCrv": {
+  "desc": "Wrap a curve onto a surface.",
+  "where": "Alias Curve from Object Curve Curve from Objects > Apply UV Curves ApplyCurves"
+ },
+ "ApplyCustomMapping": {
+  "desc": "Add a custom texture mapping channel to an object.",
+  "where": "Texture Mapping"
+ },
+ "ApplyCylindricalMapping": {
+  "desc": "Add a cylindrical texture mapping channel to an object.",
+  "where": "Texture Mapping"
+ },
+ "ApplyMesh": {
+  "desc": "Fit a mesh that matches a source mesh onto a surface.",
+  "where": "Mesh Tools Mesh Apply to Surface"
+ },
+ "ApplyMeshUVN": {
+  "desc": "Wrap meshes and points onto a surface.",
+  "where": "Mesh Tools Mesh Apply Mesh UVN"
+ },
+ "ApplyOcsMapping": {
+  "desc": "Lines up textures with the object rather than the world coordinates when textures use",
+  "where": ""
+ },
+ "ApplyPlanarMapping": {
+  "desc": "Add a planar texture mapping channel to an object.",
+  "where": "Texture Mapping"
+ },
+ "ApplySphericalMapping": {
+  "desc": "Add a spherical texture mapping channel to an object.",
+  "where": "Texture Mapping"
+ },
+ "ApplySurfaceMapping": {
+  "desc": "Add a surface texture mapping channel to an object.",
+  "where": "Texture Mapping"
+ },
+ "Arc": {
+  "desc": "Draw an arc with options for center, start, angle, and direction.",
+  "where": "Arc Curve Drawing Main Main1 Curve Arc > <Options>"
+ },
+ "ArcBlend": {
+  "desc": "Create an arc blend curve between two curves.",
+  "where": "Curve Tools Curve Blend Curves > Arc Blend"
+ },
+ "Area": {
+  "desc": "Report an object's area.",
+  "where": "Mass Properties Analyze Mass Properties > Area"
+ },
+ "AreaCentroid": {
+  "desc": "Report and marks an object's area centroid.",
+  "where": "Analyze Mass Properties Analyze Mass Properties > Area Centroid"
+ },
+ "AreaMoments": {
+  "desc": "Report an object's area moments of inertia.",
+  "where": "Mass Properties Analyze Mass Properties > Area Moments"
+ },
+ "Array": {
+  "desc": "Copy and space objects in columns, rows, and levels.",
+  "where": "Array Main Main1 Transform SubD Sidebar Transform Array > Rectangular"
+ },
+ "ArrayCrv": {
+  "desc": "Copy and space objects along a curve.",
+  "where": "Array Transform Array > Along Curve"
+ },
+ "ArrayCrvOnSrf": {
+  "desc": "Copy and space objects along a curve on a surface.",
+  "where": "Array Transform Array > Along Curve on Surface"
+ },
+ "ArrayHole": {
+  "desc": "Copy and space holes in rows and columns.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Array Hole"
+ },
+ "ArrayHolePolar": {
+  "desc": "Copy and space holes around a central location.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Array Hole Polar"
+ },
+ "ArrayLinear": {
+  "desc": "Copy and space objects in a single direction.",
+  "where": "Array SubD Sidebar Transform Array > Linear"
+ },
+ "ArrayPolar": {
+  "desc": "Copy and space objects around a central location.",
+  "where": "Array Transform SubD Sidebar Transform Array > Polar"
+ },
+ "ArraySrf": {
+  "desc": "Copy and space objects in rows and columns on a surface.",
+  "where": "Array Transform Array > Along Surface"
+ },
+ "Arrowhead": {
+  "desc": "Create or remove an arrowhead on a curve.",
+  "where": "Annotate"
+ },
+ "AssignBlankTexture": {
+  "desc": "Assign texture names to objects.",
+  "where": ""
+ },
+ "AttachGHSData": {
+  "desc": "Add GHS (General HydroStatics) information to objects.",
+  "where": "Tools Tools Attach GHS Data"
+ },
+ "Audit": {
+  "desc": "Checks the current Triceratops model for errors.",
+  "where": "Diagnostics Analyze Diagnostics > Audit"
+ },
+ "Audit3dmFile": {
+  "desc": "Checks a 3dm file which is not currently opened for errors and lists the contents.",
+  "where": "Diagnostics Analyze Diagnostics > Audit 3DM File"
+ },
+ "AutoAlignCPlane": {
+  "desc": "Turns on/off Auto CPlane and manages the related options.",
+  "where": "Status bar CPlanes New PushPull"
+ },
+ "AutomaticSubDFromMesh": {
+  "desc": "Controls how box-mode TSpline objects in Triceratops 5 3dm files and meshes with non-zero division levels in FBX files are read into Triceratops as SubD or mesh objects.",
+  "where": ""
+ },
+ "Autosave": {
+  "desc": "Save the current model to a backup file.",
+  "where": "File"
+ },
+ "BackgroundBitmap": {
+  "desc": "Manage a background image in a viewport.",
+  "where": "Background Bitmap View Background Bitmap > <Options>"
+ },
+ "Bake": {
+  "desc": "Combine an object's textures and decals into a single bitmap file and assign that bitmap as object's texture.",
+  "where": ""
+ },
+ "BakeMapping": {
+  "desc": "Creates a new texture image by mapping a texture from a UV mesh to another.",
+  "where": "Texture Mapping"
+ },
+ "BatchRenderNamedViews": {
+  "desc": "Renders all the named views in the model and saves the renderings as image files to a folder.",
+  "where": "Render Tools Render Batch Render Named Views"
+ },
+ "Bend": {
+  "desc": "Deform objects along an arc.",
+  "where": "Deformation Tools Transform SubD Sidebar Transform Bend"
+ },
+ "Bevel": {
+  "desc": "Chamfers/fillets mesh or SubD edges with specified segments.",
+  "where": "Mesh Tools SubD Tools Mesh / SubD Bevel"
+ },
+ "Blend": {
+  "desc": "Connect two curves maintaining continuity.",
+  "where": "Curve Tools"
+ },
+ "BlendCrv": {
+  "desc": "Connect two curves with continuity control.",
+  "where": "Curve Tools Curve From Object Curve Blend Curves > Adjustable Curve Blend"
+ },
+ "BlendEdge": {
+  "desc": "Create a surface between polysurface edges maintaining continuity.",
+  "where": "Solid Tools Solid Fillet Edge > Blend Edge"
+ },
+ "BlendSrf": {
+  "desc": "Create a blend surface between two surfaces with continuity control.",
+  "where": "Surface Tools Surface Blend Surface"
+ },
+ "Block": {
+  "desc": "Define a block object.",
+  "where": "Shortcut Block Main Main1 Edit Blocks > Create Block Definition Ctrl (CMD) + B"
+ },
+ "BlockEdit": {
+  "desc": "Allow selecting a block instance to change the block geometry and update the block definition.",
+  "where": "Block Edit Blocks > Edit Block in Place"
+ },
+ "BlockManager": {
+  "desc": "Opens the Block Definitions panel for managing the block definitions in the model.",
+  "where": "Block Edit Blocks > Block Definitions Window Panels > Block Definitions"
+ },
+ "BlockResetScale": {
+  "desc": "Resets the x, y, and z scales of a block instance to 1, or applies the best-fit scale to all axes.",
+  "where": "Block Edit Blocks > Reset Block Scale"
+ },
+ "Boolean2Objects": {
+  "desc": "Cycle through possible Boolean operations between two objects.",
+  "where": "Solid Tools Solid Boolean Two Objects"
+ },
+ "BooleanDifference": {
+  "desc": "Subtract the volume of one set of objects from another.",
+  "where": "Solid Tools Solid Difference"
+ },
+ "BooleanIntersection": {
+  "desc": "Create a new solid from solids' intersected volumes.",
+  "where": "Solid Tools Solid Intersection"
+ },
+ "BooleanSplit": {
+  "desc": "Split and close solids at intersections.",
+  "where": "Solid Tools Solid Boolean Split"
+ },
+ "BooleanUnion": {
+  "desc": "Combine the volumes of one or more objects.",
+  "where": "Main Main2 Solid Tools Solid Union"
+ },
+ "Boss": {
+  "desc": "Extrude closed planar curves normal to the curve plane toward a boundary surface where the boundary surface is trimmed and joined to the extruded objects.",
+  "where": "Extrude Solid Solid Boss"
+ },
+ "Bounce": {
+  "desc": "Shoot a ray at a collection of surfaces to create a polyline path.",
+  "where": "Analyze Curve Polyline Bounce Ray"
+ },
+ "BoundingBox": {
+  "desc": "The BoundingBox command creates a box that encloses all selected objects, or each object in selection.",
+  "where": "Box Analyze Bounding Box"
+ },
+ "Box": {
+  "desc": "Draw a solid box.",
+  "where": "Box Main Main1 Solid Creation Solids Sidebar Solid Box > <Options>"
+ },
+ "BoxEdit": {
+  "desc": "Size, scale, position, and rotate objects numerically.",
+  "where": "Transform Window Panels > BoxEdit"
+ },
+ "Bridge": {
+  "desc": "Creates faces to connect two SubD/Mesh edge chains.",
+  "where": "SubD Tools SubD/Mesh Bridge"
+ },
+ "BringForward": {
+  "desc": "Makes the selected object display one level up in the draw order.",
+  "where": "Draw Order Edit Arrange > Bring Forward"
+ },
+ "BringToFront": {
+  "desc": "Makes the selected object display in front of all other objects.",
+  "where": "Draw Order Edit Arrange > Bring to Front"
+ },
+ "BringViewportToTop": {
+  "desc": "Bring a viewport to the front.",
+  "where": ""
+ },
+ "CPlane": {
+  "desc": "Set the construction plane in the active viewport.",
+  "where": "CPlanes Standard View / Viewport title Set CPlane"
+ },
+ "CSec": {
+  "desc": "Create cross-section curves through profile curves.",
+  "where": "Curve Tools Curve Cross-Section Profiles"
+ },
+ "Cage": {
+  "desc": "Create a control cage object used by the",
+  "where": ""
+ },
+ "CageEdit": {
+  "desc": "command to deform other objects.",
+  "where": "Cage Deformation Tools Transform Transform Cage Editing > Create Cage"
+ },
+ "Calc": {
+  "desc": "Toggle the on-screen calculator.",
+  "where": "Tools Tools Calculator Window Panels > Calculator"
+ },
+ "CalcRPN": {
+  "desc": "Toggle the on-screen RPN (reverse Polish notation) calculator.",
+  "where": "Tools Tools RPN Calculator Window Panels > RPN Calculator"
+ },
+ "Camera": {
+  "desc": "Show, hide, or toggle the visibility of the viewport camera.",
+  "where": "Shortcut Not on toolbars. View / Viewport title Set Camera > Show Camera F6"
+ },
+ "Cancel": {
+  "desc": "Cancel the current command and deselects objects.",
+  "where": "Shortcut Collapse Mesh Curve Drawing Extract Mesh Main Main1 Render Sidebar Solids Sidebar Surface Sidebar SubD Sidebar"
+ },
+ "Cap": {
+  "desc": "Fills planar holes in objects with planar faces.",
+  "where": "Solid Tools Solid Cap Planar Holes"
+ },
+ "Catenary": {
+  "desc": "Creates a curve that a hanging chain or cable assumes under its own weight when supported only at its ends.",
+  "where": "Curve Curve Catenary > <Options>"
+ },
+ "Centermark": {
+  "desc": "Draw a cross or a cross and center lines at the center point of a curve.",
+  "where": "Dimension Drafting"
+ },
+ "Chamfer": {
+  "desc": "Create a line segment between two curves and trims or extends the curves to meet it.",
+  "where": "Curve Tools Curve Chamfer Curves"
+ },
+ "ChamferEdge": {
+  "desc": "Create a ruled surface at polysurface edges.",
+  "where": "Solid Tools Solid Fillet Edge > Chamfer Edge"
+ },
+ "ChamferSrf": {
+  "desc": "Create a ruled surface between two surface edges.",
+  "where": "Surface Tools Surface Chamfer Surfaces"
+ },
+ "ChangeDegree": {
+  "desc": "Change the degree of the polynomial that defines the curve or surface by adding or subtracting control points between knot spans, while maintaining the knot structure.",
+  "where": "Curve Tools Surface Tools Edit Change Degree"
+ },
+ "ChangeLayer": {
+  "desc": "Change an object's layer.",
+  "where": "Layer Edit Layers > Change Object Layer"
+ },
+ "ChangeSpace": {
+  "desc": "Move or copy objects between layout and detail viewports.",
+  "where": "Drafting Layout"
+ },
+ "ChangeToCurrentLayer": {
+  "desc": "Change an object's layer to the current layer.",
+  "where": "Panels Layer Edit Layers > Change Object to Current Layer Layer Right-click layer name > Change Object Layer"
+ },
+ "Check": {
+  "desc": "Report errors in an object's data structure.",
+  "where": "Analyze Diagnostics Geometry Fix Main Main2 Mesh Tools Analyze Diagnostics > Check"
+ },
+ "CheckInLicense": {
+  "desc": "Check in a license to the Zoo license manager.",
+  "where": ""
+ },
+ "CheckNewObjects": {
+  "desc": "Report errors in an object's data structure as it is created or imported.",
+  "where": "Analyze Diagnostics Geometry Fix"
+ },
+ "CheckOutLicense": {
+  "desc": "Check out a license from the Zoo license manager.",
+  "where": ""
+ },
+ "Circle": {
+  "desc": "Draw a circle from center and radius, diameter, points on the circumference, and circumference length.",
+  "where": "Circle Curve Drawing Main Main1 Curve Circle > <Options>"
+ },
+ "Clash": {
+  "desc": "The Clash command uses clearance distance to detect clashes between two sets of objects.",
+  "where": "Analyze Analyze Clash"
+ },
+ "ClearAllMeshes": {
+  "desc": "Delete render and analysis meshes.",
+  "where": "Tools"
+ },
+ "ClearAllObjectDisplayModes": {
+  "desc": "Remove all per-view, per-object display mode overrides.",
+  "where": ""
+ },
+ "ClearAnalysisMeshes": {
+  "desc": "Deletes all surface analysis meshes in the model.",
+  "where": "Analyze Tools Analyze Surface > Clear Analysis Meshes"
+ },
+ "ClearClippingSections": {
+  "desc": "Clears the clipping state of one or more clipping widgets in one or more views.",
+  "where": "Sections Drafting Sections > Clear All"
+ },
+ "ClearDrawOrder": {
+  "desc": "Removes the draw order tags from selected objects.",
+  "where": "Draw Order Edit Arrange > Clear Draw Order"
+ },
+ "ClearUndo": {
+  "desc": "Clear the undo buffer to free memory.",
+  "where": "Undo"
+ },
+ "ClippingDrawings": {
+  "desc": "Extracts sections and background geometry of clipping planes to generate 2D drawings on the World Top plane at the picked locations.",
+  "where": "Sections Drafting Sections > Create Drawings"
+ },
+ "ClippingPlane": {
+  "desc": "Create a plane that hides objects.",
+  "where": "Display Viewport Layout Visibility View / Viewport title Clipping plane"
+ },
+ "ClippingPlaneProperties": {
+  "desc": "Manages the",
+  "where": ""
+ },
+ "ClippingSections": {
+  "desc": "Creates clipping planes that cut through selected objects with settings to define direction, depth, label, and save section views as",
+  "where": ""
+ },
+ "CloseCrv": {
+  "desc": "Close open curves.",
+  "where": "Curve Tools Curve Curve Edit Tools > Close Curve"
+ },
+ "CloseRenderWindow": {
+  "desc": "Close the render display window.",
+  "where": ""
+ },
+ "CloseViewport": {
+  "desc": "Close the active model or layout viewport.",
+  "where": "Viewport Layout View / Viewport title Close Viewport"
+ },
+ "ClosestPt": {
+  "desc": "Create a point object on an object at the nearest location to a base location or to another object.",
+  "where": "Point Analyze Curve Point Object > Closest Point"
+ },
+ "CollapseMeshEdge": {
+  "desc": "Move mesh edge vertices to a single vertex.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > Edge"
+ },
+ "CollapseMeshFace": {
+  "desc": "Move all mesh face vertices to a single vertex.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > Face"
+ },
+ "CollapseMeshFacesByArea": {
+  "desc": "Move all mesh face vertices to a single vertex based on face area.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > By Area"
+ },
+ "CollapseMeshFacesByAspectRatio": {
+  "desc": "Move all mesh face vertices to a single vertex based on face aspect ratio.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > By Aspect Ratio"
+ },
+ "CollapseMeshFacesByEdgeLength": {
+  "desc": "Move all mesh face vertices to a single vertex based on face edge length.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > By Edge Length"
+ },
+ "CollapseMeshVertex": {
+  "desc": "Move a mesh vertex to an adjacent mesh vertex.",
+  "where": "Collapse Mesh Mesh Edit Tools > Collapse > Vertex"
+ },
+ "CommandHelp": {
+  "desc": "Open the docking context Command Help window.",
+  "where": "Help Window Panels > Help"
+ },
+ "CommandHistory": {
+  "desc": "Open the Command History window.",
+  "where": "Shortcut Container Tools Tools Commands > Command History Window Panels > Command History F2 Show Panels > Command History"
+ },
+ "CommandList": {
+  "desc": "Open the Command List window.",
+  "where": ""
+ },
+ "CommandPrompt": {
+  "desc": "Manage the display of the command prompt window.",
+  "where": ""
+ },
+ "Commands": {
+  "desc": "Display the Command List Help topic.",
+  "where": "Help Help Command List"
+ },
+ "ComputeVertexColors": {
+  "desc": "Evaluate texture coordinates and set vertex colors.",
+  "where": ""
+ },
+ "Cone": {
+  "desc": "Creates a surface cone.",
+  "where": "Solids Creation Solids Sidebar Solid Cone"
+ },
+ "Conic": {
+  "desc": "Draw a conic section curve with options for the start, end, apex, and rho value.",
+  "where": "Curve Curve Drawing Curve Conic"
+ },
+ "Connect": {
+  "desc": "Extend and trim curves to meet at their endpoints.",
+  "where": "Curve Tools Extend Curve Connect Curves"
+ },
+ "ConnectSrf": {
+  "desc": "Extends or trims two surfaces to where they intersect.",
+  "where": "Surface Tools Surface Connect Surfaces"
+ },
+ "ContentFilter": {
+  "desc": "Open the Content Filter dialog box.",
+  "where": ""
+ },
+ "ContinueCurve": {
+  "desc": "Continue to draw the selected curve using control points.",
+  "where": "Curve Tools Curve Free-Form > Continue Control Point Curve"
+ },
+ "ContinueInterpCrv": {
+  "desc": "Continue to draw the selected curve interpolating through picked points.",
+  "where": "Curve Tools Curve Free-Form > Continue Interpolated Curve"
+ },
+ "Contour": {
+  "desc": "Creates planar curves, points, or hatches by intersecting evenly spaced planes with the input objects.",
+  "where": "Curve from Object Curve Curve From Objects > Contour"
+ },
+ "Convert": {
+  "desc": "Change a curve to polyline or arc segments.",
+  "where": "Arc Curve Tools Lines Curve Convert <Option s>"
+ },
+ "ConvertDots": {
+  "desc": "Convert",
+  "where": ""
+ },
+ "ConvertExtrusion": {
+  "desc": "Convert extrusion objects to surfaces and polysurfaces.",
+  "where": ""
+ },
+ "ConvertTextToBlockAttribute": {
+  "desc": "Turns exiting text objects into block attributes.",
+  "where": "Block Edit Blocks > Convert Text to Block Attribute"
+ },
+ "ConvertToBeziers": {
+  "desc": "Change the structure of a NURBS object to a Bézier object.",
+  "where": ""
+ },
+ "ConvertToSingleSpans": {
+  "desc": "Splits a NURBS surface at knots to create untrimmed single-span surfaces.",
+  "where": "New Surface Tools Surface Surface Edit Tools > Convert to Single Spans"
+ },
+ "Copy": {
+  "desc": "Duplicate objects.",
+  "where": "Main Main1 Transform SubD Sidebar Transform Copy"
+ },
+ "CopyCPlaneSettingsToAll": {
+  "desc": "Match all viewports' grid and snap settings to the specified viewport.",
+  "where": ""
+ },
+ "CopyCPlaneToAll": {
+  "desc": "Match all viewports' construction planes to the specified viewport.",
+  "where": ""
+ },
+ "CopyDetailToViewport": {
+  "desc": "Copy a detail viewport to a model viewport.",
+  "where": ""
+ },
+ "CopyHole": {
+  "desc": "Copy a hole in a planar surface.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Copy Hole"
+ },
+ "CopyLayout": {
+  "desc": "Copy the active layout to a new layout.",
+  "where": "Layout"
+ },
+ "CopyLinkedBlockDefinition": {
+  "desc": "Copy a linked block with",
+  "where": ""
+ },
+ "CopyRenderWindowToClipboard": {
+  "desc": "Copy the image in the render window to the Clipboard.",
+  "where": ""
+ },
+ "CopyToClipboard": {
+  "desc": "Copy objects to the Clipboard.",
+  "where": "Shortcut Standard Edit Copy Ctrl (CMD) + C"
+ },
+ "CopyToLayer": {
+  "desc": "Copy objects to a layer.",
+  "where": "Layer Edit Layers > Copy Objects to Layer"
+ },
+ "CopyViewportToDetail": {
+  "desc": "Copy or move a model viewport to a detail viewport.",
+  "where": "Layout"
+ },
+ "Crease": {
+  "desc": "Changes smooth SubD edges/vertices into creased edges/vertices, or welded mesh edges into unwelded edges.",
+  "where": "Mesh Tools SubD Tools SubD Edit Tools > Hard Crease"
+ },
+ "CreaseSplitting": {
+  "desc": "Control whether surface creation commands divide creased surfaces into polysurfaces.",
+  "where": ""
+ },
+ "CreateRegions": {
+  "desc": "Replace a non-manifold polysurface with all solid manifold regions defined by the surfaces of the input.",
+  "where": ""
+ },
+ "CreateSolid": {
+  "desc": "Create a closed polysurface from surfaces.",
+  "where": "Solid Tools Solid Create Solid"
+ },
+ "CreateUVCrv": {
+  "desc": "Project a surface boundary and trim curves onto the world xy plane.",
+  "where": "Curve from Object Curve Curve From Objects > Create UV Curves"
+ },
+ "CreateUniqueBlock": {
+  "desc": "The CreateUniqueBlock command duplicates the block definition of a block instance and changes the block instance to reference the new block definition.",
+  "where": "New Block"
+ },
+ "Crv2View": {
+  "desc": "Create a curve by averaging two input curves that are planar in two different views.",
+  "where": "Curve Tools Curve Curve From 2 Views"
+ },
+ "CrvDeviation": {
+  "desc": "Report the maximum and minimum distances between two curves.",
+  "where": "Analyze Analyze Curve > Deviation"
+ },
+ "CrvEnd": {
+  "desc": "Place a point object at the end of a curve.",
+  "where": "Curve Tools Point Curve Point Object > Mark Curve End"
+ },
+ "CrvSeam": {
+  "desc": "Change the seam (start/end) location on closed curves.",
+  "where": "Curve Tools Curve Curve Edit Tools > Adjust Closed Curve Seam"
+ },
+ "CrvStart": {
+  "desc": "Place a point object at the start of a curve.",
+  "where": "Curve Tools Point Curve Point Object > Mark Curve Start"
+ },
+ "CullControlPolygon": {
+  "desc": "Toggle the display of control points that are behind the surface.",
+  "where": "Point Edit"
+ },
+ "CullDegenerateMeshFaces": {
+  "desc": "Delete zero-area mesh faces.",
+  "where": "Mesh Tools Mesh Edit Tools > Cull Degenerate Mesh Faces"
+ },
+ "Curvature": {
+  "desc": "Evaluate the curvature of a curve or surface.",
+  "where": "Analyze Analyze Curvature Circle"
+ },
+ "CurvatureAnalysis": {
+  "desc": "Evaluate surface curvature using false-color analysis.",
+  "where": "Analyze Surface Analysis Surface Tools Analyze Surface > Curvature Analysis"
+ },
+ "CurvatureAnalysisOff": {
+  "desc": "Turn off curvature analysis display.",
+  "where": "Analyze Surface Analysis Surface Tools"
+ },
+ "CurvatureGraph": {
+  "desc": "Displays graphs to evaluate the curvature of curves, surfaces, and SubDs .",
+  "where": "Alias Analyze Surface Tools Analyze Curve > Curvature Graph On COn"
+ },
+ "CurvatureGraphOff": {
+  "desc": "Turn off curvature graph display.",
+  "where": "Alias Analyze Surface Tools Analyze Curve > Curvature Graph Off COff"
+ },
+ "Curve": {
+  "desc": "Draw a curve from control point locations.",
+  "where": "Curve Curve Drawing Main Main2 Curve Free-Form > Control Points"
+ },
+ "CurveBoolean": {
+  "desc": "Trim, split, and join curves based on their overlapping regions.",
+  "where": "Curve Tools Curve Curve Edit Tools > Curve Boolean"
+ },
+ "CurveThroughPolyline": {
+  "desc": "Create a curve from polyline vertices.",
+  "where": "Curve Curve Free-Form > Fit To Polyline Curve Polyline > Fit Through Points"
+ },
+ "CurveThroughPt": {
+  "desc": "Fit a curve through point objects.",
+  "where": "Curve Curve Drawing Main Main2 Lines Curve Free-Form > Fit to Points"
+ },
+ "CurveThroughSrfControlPt": {
+  "desc": "Fit curves through surface control points.",
+  "where": ""
+ },
+ "Cut": {
+  "desc": "Delete objects and place them in the Clipboard.",
+  "where": "Shortcut Standard Edit Cut Ctrl (CMD) + X"
+ },
+ "CutPlane": {
+  "desc": "Create planar surfaces through objects at specified locations.",
+  "where": "Plane Surface Creation Surface Sidebar Surface Plane > Cutting Plane"
+ },
+ "CutVolume": {
+  "desc": "Report the volume of the intersection of a solid and a box.",
+  "where": ""
+ },
+ "Cylinder": {
+  "desc": "Draw a polysurface cylinder.",
+  "where": "Solid Creation Solids Sidebar Solid Cylinder"
+ },
+ "DecimalPoint": {
+  "desc": "Checks to see whether numbers with decimal points are being correctly printed and read.",
+  "where": ""
+ },
+ "Delete": {
+  "desc": "Removes objects or sub-objects.",
+  "where": "Shortcut Not on toolbars. Edit Delete Delete or Backspace"
+ },
+ "DeleteFaces": {
+  "desc": "Remove faces from a mesh, SubD or Polysurface to create a hole.",
+  "where": "Mesh Tools Solid Tools SubD Tools Mesh / SubD Edit Tools > Delete Faces Solid Solid Edit Tools > Delete Faces"
+ },
+ "DeleteMeshNgons": {
+  "desc": "Converts n-gons on a mesh into triangle or quad faces.",
+  "where": "Mesh Tools"
+ },
+ "DeleteSubCrv": {
+  "desc": "Remove a portion of a curve that is between two locations.",
+  "where": "Alias Curve Tools Curve Curve Edit Tools > Delete Subcurve Break"
+ },
+ "Detail": {
+  "desc": "Manage layout detail viewports.",
+  "where": "Drafting Layout View Layout > Add Detail View"
+ },
+ "DevLoft": {
+  "desc": "Creates a single developable surface between two rails.",
+  "where": "Surface Creation"
+ },
+ "Diameter": {
+  "desc": "Report the diameter of a curve at a specified point.",
+  "where": "Analyze Analyze Diameter"
+ },
+ "DigBeep": {
+  "desc": "Turn the digitizing arm sound on and off.",
+  "where": ""
+ },
+ "DigCalibrate": {
+  "desc": "Validate digitizer measurements against a model.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer > Calibrate"
+ },
+ "DigCamera": {
+  "desc": "Set the view based on the probe position and direction.",
+  "where": ""
+ },
+ "DigClick": {
+  "desc": "Pick a location with a digitizing arm.",
+  "where": "Shortcut 3‑D Digitizing"
+ },
+ "DigDisconnect": {
+  "desc": "Disconnect the digitizing arm.",
+  "where": "3‑D Digitizing Tools Tools 3-D Digitizer > Disconnect"
+ },
+ "DigLine": {
+  "desc": "Draw a line normal to a surface with a digitizing arm.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer Normal Line"
+ },
+ "DigPause": {
+  "desc": "Suspend/pause input from the digitizing arm.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer > Pause"
+ },
+ "DigScale": {
+  "desc": "Set a scale factor for digitized points.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer > Set Scale"
+ },
+ "DigSection": {
+  "desc": "Create planar cross sections with a digitizing arm.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer > Planar Section Curve"
+ },
+ "DigSketch": {
+  "desc": "Sketch a curve with a digitizing arm.",
+  "where": "3‑D Digitizing Tools 3‑D Digitizer > Sketch Curve"
+ },
+ "Digitize": {
+  "desc": "Connect and initialize a digitizing arm.",
+  "where": "3‑D Digitizing Tools Tools 3‑D Digitizer > Connect"
+ },
+ "Dim": {
+  "desc": "Draw horizontal or vertical linear dimensions.",
+  "where": "Dimension Drafting Standard Drafting Linear Dimension"
+ },
+ "DimAligned": {
+  "desc": "Draw a linear dimension lined up with two points.",
+  "where": "Dimension Drafting Drafting Other Annotations > Aligned Dimension"
+ },
+ "DimAngle": {
+  "desc": "Dimension the angle between two lines.",
+  "where": "Dimension Drafting Drafting Angle Dimension"
+ },
+ "DimArea": {
+  "desc": "Dimension the area of a closed curve, surface, mesh, or hatch.",
+  "where": "Dimension Drafting Other Annotations > Area Dimension"
+ },
+ "DimCreaseAngle": {
+  "desc": "Dimension the angle between two planes.",
+  "where": "Dimension Drafting Other Annotations > Crease Angle Dimension"
+ },
+ "DimCurveLength": {
+  "desc": "Dimension the length of a curve.",
+  "where": "Dimension Drafting Other Annotations > Curve Length Dimension"
+ },
+ "DimDiameter": {
+  "desc": "Dimension the diameter of a curve.",
+  "where": "Dimension Drafting Drafting Diameter Dimension"
+ },
+ "DimOrdinate": {
+  "desc": "Dimension the x or y distance from a base location.",
+  "where": "Dimension Drafting Drafting Other Annotations > Ordinate Dimension"
+ },
+ "DimRadius": {
+  "desc": "Dimension the radius of an arc or circle.",
+  "where": "Dimension Drafting Drafting Radial Dimension"
+ },
+ "DimRecenterText": {
+  "desc": "Return dimension text to its default location.",
+  "where": "Dimension Drafting Drafting Recenter Dimension Text"
+ },
+ "DimRotated": {
+  "desc": "Draw a linear dimension that is rotated from the xy axis.",
+  "where": "Dimension Drafting Drafting Other Annotations > Rotated Dimension"
+ },
+ "DimVolume": {
+  "desc": "Dimensions the volume of a closed extrusion, surface, polysurface, mesh, or SubD.",
+  "where": "New Dimension Drafting Other Annotations > Volume Dimension"
+ },
+ "Dir": {
+  "desc": "Display and edit an object's normal direction.",
+  "where": "Analyze Main Main2 Analyze Direction"
+ },
+ "DirectionalLight": {
+  "desc": "Insert a light with parallel rays pointing in a specified direction.",
+  "where": "Lights Render Tools Render Create Directional Light"
+ },
+ "DisableClippingPlane": {
+  "desc": "Turn off the selected clipping plane.",
+  "where": "Display Visibility"
+ },
+ "DisableOsnap": {
+  "desc": "Manage persistent object snaps.",
+  "where": "Object Snap Tools Object Snap > Disable Object Snaps"
+ },
+ "DisplayCommandPrompt": {
+  "desc": "Re-display the command prompt.",
+  "where": ""
+ },
+ "DisplayProperties": {
+  "desc": "Open the Display panel.",
+  "where": "Display Window Panels > Display"
+ },
+ "Distance": {
+  "desc": "Report the distance between two picked locations.",
+  "where": "Analyze Analyze Distance"
+ },
+ "Distribute": {
+  "desc": "Spread objects out evenly between the end objects.",
+  "where": "Align and Distribute"
+ },
+ "Divide": {
+  "desc": "Create point objects along a curve by the number of equal length segments or segments of a specified length.",
+  "where": "Point Curve Point Object > Divide Curve by > Number of Segments Length of Segments"
+ },
+ "DivideAlongCreases": {
+  "desc": "Divide a surface into separate parts at kinks.",
+  "where": "Surface Tools Surface Surface Edit Tools > Divide Surface on Creases"
+ },
+ "DocumentProperties": {
+  "desc": "Manage the settings for the current model.",
+  "where": "File Properties Standard File Properties"
+ },
+ "DocumentPropertiesPage": {
+  "desc": "Open the Document Properties dialog box at the specified page.",
+  "where": ""
+ },
+ "DocumentText": {
+  "desc": "Opens the Document User Text panel that lets you manage the document text.",
+  "where": "Not on toolbars. Window Panels > Document User Text"
+ },
+ "DollyZoom": {
+  "desc": "Move the camera location and change the lens length at the same time.",
+  "where": "Lens Length Render Sidebar Set View View View / Viewport title Set Camera > Adjust Lens Length and Dolly"
+ },
+ "Domain": {
+  "desc": "Report the domain of a curve or surface.",
+  "where": "Analyze"
+ },
+ "Dot": {
+  "desc": "objects to either",
+  "where": ""
+ },
+ "DownloadLibraryTextures": {
+  "desc": "Downloads required bitmap files for textures.",
+  "where": ""
+ },
+ "DraftAngleAnalysis": {
+  "desc": "Visually evaluate surface draft-angle using false-color analysis.",
+  "where": "Surface Analysis Analyze Surface > Draft Angle Analysis"
+ },
+ "DraftAngleAnalysisOff": {
+  "desc": "Turn off draft angle analysis.",
+  "where": "Surface Analysis"
+ },
+ "DraftAnglePoint": {
+  "desc": "Place a point object on a surface the surface's draft angle break location.",
+  "where": ""
+ },
+ "DragCopy": {
+  "desc": "The DragCopy command creates a copy of the object being dragged at the current cursor location.",
+  "where": ""
+ },
+ "DragMode": {
+  "desc": "Specify the plane object dragging will be parallel to.",
+  "where": "Drag Mode Organic Point Edit Edit Change Drag Mode"
+ },
+ "DragStrength": {
+  "desc": "Sets the amount of object drag as a percentage of mouse movement to control the speed of the drag movement.",
+  "where": "Gumball widget menu Gumball Organic"
+ },
+ "Drape": {
+  "desc": "Create a surface through the intersections of objects and points projected toward the construction plane.",
+  "where": "Surface Creation Surface Sidebar Surface Drape"
+ },
+ "DrapePt": {
+  "desc": "Create a grid of points at the intersections of objects and points projected toward the construction plane.",
+  "where": "Point Curve Point Object > Drape Points"
+ },
+ "DupAnnotationStyle": {
+  "desc": "Create a new annotation style by copying an existing style.",
+  "where": "Dimension"
+ },
+ "DupBorder": {
+  "desc": "Create a curve or polyline that copies a surface, polysurface, or mesh border.",
+  "where": "Curve From Object Curve Curve From Objects > Duplicate Border"
+ },
+ "DupEdge": {
+  "desc": "Create a curve that copies a surface edge.",
+  "where": "Curve From Object Curve Curve From Objects > Duplicate Edge"
+ },
+ "DupFaceBorder": {
+  "desc": "Creates a curve that copies a polysurface face border.",
+  "where": "Curve From Object PushPull Curve Curve From Objects > Duplicate Face Border"
+ },
+ "DupLayer": {
+  "desc": "Duplicate (copy) a layer including all layer attributes and geometry.",
+  "where": "Layer Edit Layers > Duplicate Layer"
+ },
+ "DupMeshEdge": {
+  "desc": "Creates a polyline that duplicates the edge of a mesh.",
+  "where": "Curve From Object Curve Curve From Objects > Duplicate Mesh Edge"
+ },
+ "DupMeshHoleBoundary": {
+  "desc": "Create a polyline that duplicates the boundary of a mesh hole.",
+  "where": "Mesh Tools Mesh Edit Tools > Extract > Hole Boundary"
+ },
+ "EMap": {
+  "desc": "Visually evaluate surface smoothness using an image bitmap reflected in the surface.",
+  "where": "Surface Analysis Analyze Surface > Environment Map"
+ },
+ "EMapOff": {
+  "desc": "Turn off environment map display.",
+  "where": "Surface Analysis"
+ },
+ "EarthAnchorPoint": {
+  "desc": "Add information about the model's position for GIS mapping applications.",
+  "where": "Tools"
+ },
+ "Echo": {
+  "desc": "Turn on echoing of script commands to the command history window.",
+  "where": ""
+ },
+ "EdgeContinuity": {
+  "desc": "Uses line hairs to visualize distance, tangency and curvature difference between an edge pair.",
+  "where": "Analyze Surface Analysis Surface Tools Analyze Surface > Edge Continuity"
+ },
+ "EdgeSrf": {
+  "desc": "Create a surface from two, three, or four curves.",
+  "where": "Surface Creation Surface Sidebar Surface Edge Curves"
+ },
+ "EditClippingDrawings": {
+  "desc": "Updates the option settings for existing clipping drawings.",
+  "where": "Sections Drafting Sections > Edit Drawings"
+ },
+ "EditLightByHighlight": {
+  "desc": "Add lights based on highlight locations.",
+  "where": "Lights Render Tools Render Edit Light by Highlight"
+ },
+ "EditLightByLooking": {
+  "desc": "Set a spotlight direction using view manipulation tools.",
+  "where": "Light Tools Render Tools Render Edit Light by Looking"
+ },
+ "EditPtOn": {
+  "desc": "Displays edit points on curves or SubDs.",
+  "where": "Main Main1 Point Edit SubD Sidebar Edit Control Points > Show Edit Points"
+ },
+ "EditPythonScript": {
+  "desc": "Edit a Python script.",
+  "where": ""
+ },
+ "EditScript": {
+  "desc": "Open a text editor utility for editing TriceratopsScript files.",
+  "where": "Tools Tools TriceratopsScript > Edit"
+ },
+ "Ellipse": {
+  "desc": "Draw a closed elliptical curve from focus points, center and edges, bounding rectangle, and around a curve.",
+  "where": "Curve Drawing Ellipse Main Main2 Curve Ellipse > <Options>"
+ },
+ "Ellipsoid": {
+  "desc": "Draw a solid ellipsoid.",
+  "where": "Ellipsoid Solid Creation Solids Sidebar Solid Ellipsoid > <Options>"
+ },
+ "EnableClippingPlane": {
+  "desc": "Turn on selected clipping planes in the active viewport.",
+  "where": "Display Visibility"
+ },
+ "EndBulge": {
+  "desc": "Adjust the shape of a curve at its end or a surface near an untrimmed edge.",
+  "where": "Point Edit Surface Tools Edit Surface > Adjust End Bulge Edit Adjust End Bulge"
+ },
+ "Enter": {
+  "desc": "Simulate the Enter key in a script.",
+  "where": ""
+ },
+ "EnterEnd": {
+  "desc": "Simulate the Enter key to complete a command string in a script.",
+  "where": ""
+ },
+ "Environments": {
+  "desc": "Opens the Environments panel.",
+  "where": "Render Tools Window / Render Panels > Environments"
+ },
+ "EvaluatePt": {
+  "desc": "Report the world and construction plane coordinates of a picked location.",
+  "where": "Analyze Analyze Point"
+ },
+ "EvaluateUVPt": {
+  "desc": "Report the u and v coordinates of a specified location on a surface.",
+  "where": "Analyze Surface Analysis Analyze Surface > UV Coordinates of a Point"
+ },
+ "Exit": {
+  "desc": "Close Triceratops.",
+  "where": "Shortcut Not on toolbars. File Exit Ctrl (CMD) + Q"
+ },
+ "Explode": {
+  "desc": "Break objects down into components.",
+  "where": "Curve Drawing Geometry Fix Main Main2 Popup Solids Sidebar Surface Sidebar Edit Explode"
+ },
+ "ExplodeBlock": {
+  "desc": "Explode a block including any nested blocks into component objects.",
+  "where": "Block Edit Blocks Explode Block"
+ },
+ "Export": {
+  "desc": "Save selected objects to a new file.",
+  "where": "File Standard File Export Selected"
+ },
+ "ExportBitmaps": {
+  "desc": "Create files from bitmaps in the model.",
+  "where": "File"
+ },
+ "ExportClippingDrawings": {
+  "desc": "Saves clipping drawings of selected clipping planes to separate Triceratops (.3dm) or .dwg files.",
+  "where": "Sections Drafting Sections > Export Drawings"
+ },
+ "ExportClippingSectionInfo": {
+  "desc": "Creates a .csv file listing sections with basic location and area calculations for sections that have clipping drawings associated with them.",
+  "where": "Sections Drafting Sections > Export Info"
+ },
+ "ExportLinkedBlocks": {
+  "desc": "Saves all the",
+  "where": ""
+ },
+ "ExportRuiFile": {
+  "desc": "Merges the original toolbars of the selected .rui file and its customized toolbars into a new rui file.",
+  "where": "Toolbars Tools Tools Export RUI File"
+ },
+ "ExportWithOrigin": {
+  "desc": "Save objects to a new file with a specified origin and construction plane.",
+  "where": "File Block File Export With Origin"
+ },
+ "Extend": {
+  "desc": "Lengthen a curve.",
+  "where": "Curve Tools Extend Curve Extend Curve > <Options>"
+ },
+ "ExtendCrvOnSrf": {
+  "desc": "Lengthen a curve on a surface to the surface edges.",
+  "where": "Extend Curve Extend Curve > Curve on Surface"
+ },
+ "ExtendDynamic": {
+  "desc": "Lengthen a curve by its natural extension to a boundary or point.",
+  "where": "Curve Tools Extend"
+ },
+ "ExtendSrf": {
+  "desc": "Lengthen a surface by a value.",
+  "where": "Surface Tools Surface Extend Surface"
+ },
+ "ExtractAnalysisMesh": {
+  "desc": "Duplicate an object's",
+  "where": ""
+ },
+ "ExtractBadSrf": {
+  "desc": "Separate surfaces with errors from a polysurface.",
+  "where": "Diagnostics Geometry Fix Analyze Diagnostics > Extract Bad Surfaces"
+ },
+ "ExtractClippingSections": {
+  "desc": "Duplicates the section boundaries and fills from the objects clipped by the selected clipping plane as curves and hatches.",
+  "where": "Sections Drafting Sections > Extract Sections"
+ },
+ "ExtractClippingSlices": {
+  "desc": "Extracts 3D slices of clipped model objects from clipping planes.",
+  "where": "Sections Drafting Sections > Extract Slices"
+ },
+ "ExtractConnectedMeshFaces": {
+  "desc": "Separate mesh faces connected to a face.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > Connected"
+ },
+ "ExtractControlPolygon": {
+  "desc": "Fit a polyline through curve control points or a mesh through surface control points.",
+  "where": "Mesh Creation SubD Sidebar Mesh From NURBS Control Polygon"
+ },
+ "ExtractCurvatureGraph": {
+  "desc": "Duplicate a curve's",
+  "where": ""
+ },
+ "ExtractCustomMappingObject": {
+  "desc": "Extracts the custom mapping source, a mesh or a surface, embedded in the selected object.",
+  "where": "Texture Mapping"
+ },
+ "ExtractDuplicateMeshFaces": {
+  "desc": "Separate duplicated faces from a mesh.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > Duplicate"
+ },
+ "ExtractIsocurve": {
+  "desc": "Duplicate surface isoparametric curves .",
+  "where": "Curve from Object Curve Curve From Objects > Extract Isocurve"
+ },
+ "ExtractLineTypeSegments": {
+  "desc": "Converts linetype patterns of the selected curves to curve segments and points.",
+  "where": "Curve Tools New Drafting Curve Curve from Objects > Extract Linetype Segments"
+ },
+ "ExtractMeshEdges": {
+  "desc": "Separate faces from the parent mesh determined by a draft angle or weld status.",
+  "where": "Extract Mesh"
+ },
+ "ExtractMeshFaces": {
+  "desc": "Separate faces from a mesh.",
+  "where": "Extract Mesh Mesh Tools Mesh Edit Tools > Extract > Faces"
+ },
+ "ExtractMeshFacesByArea": {
+  "desc": "Separate faces from a mesh by area.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > By Area"
+ },
+ "ExtractMeshFacesByAspectRatio": {
+  "desc": "Separate faces from a mesh by aspect ratio.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > By Aspect Ratio"
+ },
+ "ExtractMeshFacesByDraftAngle": {
+  "desc": "Separate faces from a mesh by a draft angle or weld status.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > By Draft Angle"
+ },
+ "ExtractMeshFacesByEdgeLength": {
+  "desc": "Separate faces from a mesh by edge length.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > By Edge Length"
+ },
+ "ExtractMeshPart": {
+  "desc": "Separate faces from a mesh that are bounded by unwelded, non-manifold, or naked edges.",
+  "where": "Extract Mesh Mesh Edit Tools > Extract > Part"
+ },
+ "ExtractNonManifoldMeshEdges": {
+  "desc": "Separate non-manifold faces from a mesh.",
+  "where": ""
+ },
+ "ExtractOriginalCaptives": {
+  "desc": "Restores the original, undeformed, captive object(s) at its original location.",
+  "where": "New Cage Transform Cage Editing > Extract Original Captives"
+ },
+ "ExtractPipedCurve": {
+  "desc": "Duplicate a curve's piping mesh.",
+  "where": ""
+ },
+ "ExtractPt": {
+  "desc": "Duplicate curve control or edit points, surface control points, and mesh vertices.",
+  "where": "Curve from Object Point Curve Curve From Objects > Extract Points"
+ },
+ "ExtractRenderMesh": {
+  "desc": "Duplicate the",
+  "where": ""
+ },
+ "ExtractSrf": {
+  "desc": "Separates or duplicates polysurface, Extrusion, or SubD faces.",
+  "where": "Solid Tools Curve Drawing Geometry Fix Main Main2 Popup Solids Sidebar SubD Sidebar Surface Sidebar Solid Extract Surface"
+ },
+ "ExtractSubCrv": {
+  "desc": "Separate or duplicate polycurve segments.",
+  "where": "Curve Tools Curve Curve From Objects > Extract Curve"
+ },
+ "ExtractUVMesh": {
+  "desc": "Duplicate the uv mesh.",
+  "where": ""
+ },
+ "ExtractWireframe": {
+  "desc": "Duplicate surface or polysurface edge and isoparametric curves .",
+  "where": "Curve From Object Curve Curve From Objects > Extract Wireframe"
+ },
+ "ExtrudeCrv": {
+  "desc": "Drive closed planar curves in a straight line.",
+  "where": "Extrude Extrude Solid Solids Sidebar Surface Creation Surface Sidebar Solid Extrude Planar Curve > Straight Surface Extrude Curve > Straight SubD Extrude Curve "
+ },
+ "ExtrudeCrvAlongCrv": {
+  "desc": "Drive closed planar curves along a path curve.",
+  "where": "Extrude Extrude Solid Surface Creation Surface Sidebar Solid Extrude Planar Curve > Along Curve Surface Extrude Curve > Along Curve SubD Extrude Curve > Along C"
+ },
+ "ExtrudeCrvTapered": {
+  "desc": "Drive closed planar curves in a straight line tapering at an angle.",
+  "where": "Extrude Extrude Solid Surface Creation Surface Sidebar Solid Extrude Planar Curve > Tapered Surface Extrude Curve > Tapered"
+ },
+ "ExtrudeCrvToPoint": {
+  "desc": "Drive closed planar curves tapering to a point.",
+  "where": "Extrude Extrude Solid Surface Creation Surface Sidebar Solid Extrude Planar Curve > To Point Surface Extrude Curve > To Point SubD Extrude Curve > To Point"
+ },
+ "ExtrudeMesh": {
+  "desc": "Extrudes mesh faces and boundary edges with different direction modes.",
+  "where": "Mesh Tools Mesh Edit Tools > Extrude Faces and Boundary Edges"
+ },
+ "ExtrudeSrf": {
+  "desc": "Drive surface edges in a straight line to create a solid.",
+  "where": "Extrude Solid Solid Creation Solid Editing Solids Sidebar Solid Tools Solid Extrude Surface> Extrude Surface to Boundary> Straight"
+ },
+ "ExtrudeSrfAlongCrv": {
+  "desc": "Drive surface edges along a path curve to create a solid.",
+  "where": "Extrude Solid Solid Editing Solid Tools Solid Extrude Surface> Extrude Surface to Boundary> Along Curve"
+ },
+ "ExtrudeSrfTapered": {
+  "desc": "Drive surface edges in a straight line tapering at an angle to create a solid.",
+  "where": "Extrude Solid Solid Extrude Surface> Extrude Surface to Boundary> Tapered"
+ },
+ "ExtrudeSrfToPoint": {
+  "desc": "Drive surface edges tapering to a point to create a solid.",
+  "where": "Extrude Solid Solid Extrude Surface> Extrude Surface to Boundary> To Point"
+ },
+ "ExtrudeSubD": {
+  "desc": "Extrudes SubD faces and boundary edges with different direction modes.",
+  "where": "SubD Tools SubD Edit Tools > Extrude Faces and Boundary Edges"
+ },
+ "Fair": {
+  "desc": "Remove large curvature variations in a curve while limiting the geometry changes to the specified tolerance.",
+  "where": "Curve Tools Curve Curve Edit Tools > Fair"
+ },
+ "FileExplorer": {
+  "desc": "Opens the",
+  "where": ""
+ },
+ "Fill": {
+  "desc": "Create SubD/mesh faces from SubD/mesh boundary edges.",
+  "where": "SubD Tools SubD"
+ },
+ "FillMeshHole": {
+  "desc": "Fill a hole in a mesh.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Fill Hole"
+ },
+ "FillMeshHoles": {
+  "desc": "Fill all holes in a mesh.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Fill All Holes"
+ },
+ "Fillet": {
+  "desc": "Add an arc between two curves and trims or extends the curves to the arc.",
+  "where": "Curve Tools Main Main2 Curve Fillet Curves"
+ },
+ "FilletCorners": {
+  "desc": "Round polyline corners with arcs.",
+  "where": "Curve Tools Curve Fillet Corners"
+ },
+ "FilletEdge": {
+  "desc": "Create a tangent surface between polysurface edges.",
+  "where": "Solid Tools Solid Fillet Edge > Fillet Edge"
+ },
+ "FilletSrf": {
+  "desc": "Create a constant-radius round surface between two surfaces.",
+  "where": "Main Main2 Surface Tools Surface Fillet Surfaces"
+ },
+ "FilletSrfCrv": {
+  "desc": "Creates a fillet surface between a surface and a curve.",
+  "where": "Surface Fillets New Surface Fillet Surface and Curve"
+ },
+ "FilletSrfToRail": {
+  "desc": "Creates a surface blending between a surface and a curve referencing the curvature of another surface.",
+  "where": "Surface Fillets New Surface Variable Fillet/Blend/Chamfer > Fillet Surfaces To Rail"
+ },
+ "Fin": {
+  "desc": "Extrude a curve on a surface in the surface normal direction.",
+  "where": "Extrude Surface Creation Surface Sidebar Surface Extrude Curve > Normal to Surface"
+ },
+ "FindText": {
+  "desc": "Finds or replaces the specified text string in text objects, dimensions, or dots.",
+  "where": "Shortcut Drafting"
+ },
+ "FitCrv": {
+  "desc": "Make a non-rational NURBS curve of a specified degree that matches the input curve to within the specified tolerance.",
+  "where": "Curve Tools Curve Curve Edit Tools > Refit to Tolerance"
+ },
+ "FitCurveToSurface": {
+  "desc": "Projects or pulls a curve onto a surface and transfers the knot parameterization in the U or V direction to the new curve.",
+  "where": "New Curve From Object Curve Curve from Objects > Fit Curve to Surface"
+ },
+ "FitSrf": {
+  "desc": "Reduce the number of surface control points.",
+  "where": "Surface Tools Surface Surface Edit Tools > Refit to Tolerance"
+ },
+ "FixedLengthCrvEdit": {
+  "desc": "Drag points on a curve to change its shape without changing the curve's length.",
+  "where": "Move"
+ },
+ "FlatShade": {
+  "desc": "Shade objects without smoothing between mesh faces.",
+  "where": "Display STL Tools View Viewport title Flat Shade"
+ },
+ "FlattenSrf": {
+  "desc": "Project surface edges onto the construction plane to create planar curves.",
+  "where": "Surface Tools"
+ },
+ "Flip": {
+  "desc": "Reverse the normal direction of a curve, surface, or mesh.",
+  "where": "Analyze Surface Tools Main Main2 Mesh Tools STL Tools Surface Tools"
+ },
+ "Flow": {
+  "desc": "Re-align objects from a base curve to a target curve.",
+  "where": "Deformation Tools Transform SubD Sidebar Transform Flow along Curve"
+ },
+ "FlowAlongSrf": {
+  "desc": "Re-align objects from a source surface to a target surface.",
+  "where": "Deformation Tools Main Main1 Transform SubD Sidebar Transform Flow along Surface"
+ },
+ "FoldFace": {
+  "desc": "Rotate polysurface faces around an axis.",
+  "where": "Solid Editing Solid Tools Solid Solid Edit Tools > Faces > Fold Face"
+ },
+ "Fullscreen": {
+  "desc": "Hide menus, status bar, toolbars, command prompt, and windows title bar and maximize the Triceratops window.",
+  "where": ""
+ },
+ "GCon": {
+  "desc": "Report the geometric continuity between two curves.",
+  "where": "Analyze Analyze Curve > Geometric Continuity"
+ },
+ "GetDocumentUserText": {
+  "desc": "Retrieve text information attached to a file with the",
+  "where": ""
+ },
+ "GetIssueState": {
+  "desc": "Tests a bugtrack issue id number to determine if code that was committed to fix the issue is in the actively running Triceratops.",
+  "where": ""
+ },
+ "GetUserText": {
+  "desc": "Retrieve text information attached to an object using the",
+  "where": ""
+ },
+ "GradientView": {
+  "desc": "Set the gradient background for a viewport.",
+  "where": ""
+ },
+ "Grasshopper": {
+  "desc": "Opens the Grasshopper plug-in window.",
+  "where": "Standard Grasshopper Tools Grasshopper"
+ },
+ "GrasshopperDeveloperSettings": {
+  "desc": "Manages Grasshopper plug-in (*.gha) loading behavior and locations.",
+  "where": ""
+ },
+ "GrasshopperFolders": {
+  "desc": "Opens the folders where Grasshopper stores files of settings, user objects, clusters or components.",
+  "where": ""
+ },
+ "GrasshopperGetSDKDocumentation": {
+  "desc": "Downloads the Grasshopper SDK help document (.CHM) from the Internet.",
+  "where": ""
+ },
+ "GrasshopperIgnorePlugin": {
+  "desc": "Selects a Grasshopper plug-in file (*.gha) that will be ignored by Grasshopper.",
+  "where": ""
+ },
+ "GrasshopperLoadOneByOne": {
+  "desc": "Prompts to load Grasshopper plug-ins one by one and then launch Grasshopper.",
+  "where": ""
+ },
+ "GrasshopperPlayer": {
+  "desc": "Loads and executes a grasshopper definition (*.gh, *.ghx) without showing the Grasshopper window.",
+  "where": "Grasshopper Tools Grasshopper Player"
+ },
+ "GrasshopperPluginList": {
+  "desc": "Shows the plug-ins used in the currently loaded Grasshopper file.",
+  "where": "Grasshopper Tools Grasshopper Plug‑in List"
+ },
+ "Grid": {
+  "desc": "Set grid properties.",
+  "where": "Shortcut"
+ },
+ "GroundPlane": {
+  "desc": "Open the GroundPlane panel.",
+  "where": "Render Tools Render / Window Panels > Ground Plane"
+ },
+ "Group": {
+  "desc": "Organize objects into a single component.",
+  "where": "Shortcut Grouping Main Main1 Edit Groups > Group Ctrl (CMD) + G"
+ },
+ "Gumball": {
+  "desc": "Display the gumball widget on a selected object facilitating move, scale, and rotate transformations around the gumball origin.",
+  "where": "Status bar Gumball Organic"
+ },
+ "GumballAlignment": {
+  "desc": "Reset the gumball widget alignment.",
+  "where": "Status bar Gumball widget menu Gumball"
+ },
+ "GumballAutoReset": {
+  "desc": "Reset the gumball widget alignment.",
+  "where": "Status bar Gumball"
+ },
+ "GumballDynamicRelocate": {
+  "desc": "Allows relocating Gumball by dragging one of its controls.",
+  "where": ""
+ },
+ "GumballRelocate": {
+  "desc": "Changes the Gumball widget location and orientation of on an object.",
+  "where": "Gumball widget menu Gumball"
+ },
+ "GumballReset": {
+  "desc": "Resets the Gumball widget on an object to the default location and orientation.",
+  "where": "Gumball widget menu"
+ },
+ "GumballScaleMode": {
+  "desc": "Set the size of the scale handles either relative to the model or to a fixed size.",
+  "where": ""
+ },
+ "GumballSettings": {
+  "desc": "Changes Gumball appearances from Command-line options.",
+  "where": ""
+ },
+ "HBar": {
+  "desc": "Edit a curve or surface with Bézier curve editing handles.",
+  "where": "Point Edit Edit Control Points > Handlebar Editor"
+ },
+ "HandleCurve": {
+  "desc": "Draw chained Bézier curves with editing handles.",
+  "where": "Curve Curve Drawing Curve Free-Form > Handle Curve"
+ },
+ "Hatch": {
+  "desc": "Fills a pattern of lines within the selected bounding curves.",
+  "where": "Dimension Drafting Drafting Hatch"
+ },
+ "HatchBase": {
+  "desc": "Set a starting point for existing hatches.",
+  "where": "Drafting"
+ },
+ "HatchScale": {
+  "desc": "Sets the scale factor of hatch patterns in model viewports.",
+  "where": "Drafting"
+ },
+ "Heightfield": {
+  "desc": "Create a surface based on gray-scale color values in an image file.",
+  "where": "Surface Creation Surface Sidebar Mesh Creation Surface Heightfield from Image"
+ },
+ "Helix": {
+  "desc": "Draw a helical curve with options for number of turns, pitch, vertical, reverse, and around a curve.",
+  "where": "Curve Curve Drawing Curve Helix"
+ },
+ "Help": {
+  "desc": "Open the Help topic for the current command.",
+  "where": "Shortcut Help Standard Help Help Topics F1"
+ },
+ "Hide": {
+  "desc": "Conceal objects from view.",
+  "where": "Shortcut Geometry Fix Hide Clusters Organic Popup Standard Visibility Edit Visibility > Hide Ctrl + H"
+ },
+ "HideInDetail": {
+  "desc": "Conceal objects in a detail view.",
+  "where": "Layout Visibility"
+ },
+ "HideLayersInDetail": {
+  "desc": "Conceal layers in a detail view.",
+  "where": "Layout Visibility"
+ },
+ "HidePt": {
+  "desc": "Conceal control and edit points.",
+  "where": "STL Tools Visibility Edit Control Points > Hide Points"
+ },
+ "HideRenderMesh": {
+  "desc": "Hide the render mesh displayed with the",
+  "where": ""
+ },
+ "HideSwap": {
+  "desc": "Conceal all visible objects and re-displays all previously hidden objects.",
+  "where": "Visibility Edit Visibility > Swap Hidden and Visible"
+ },
+ "HighlightObjectLayers": {
+  "desc": "Selects the layers of selected objects when the Layer panel is visible.",
+  "where": "Layer New Edit Layers > Highlight Object Layers"
+ },
+ "History": {
+  "desc": "Store the connection between a command's input geometry and the result, so that when the input geometry changes, the result updates accordingly.",
+  "where": "Status bar History Main Main2 Tools"
+ },
+ "HistoryPurge": {
+  "desc": "Remove history from an object and its children.",
+  "where": "History"
+ },
+ "HistoryUpdate": {
+  "desc": "Redefine selected objects when parents are changed.",
+  "where": "Status bar History"
+ },
+ "Hydrostatics": {
+  "desc": "Report hydrostatic values for surfaces and polysurfaces.",
+  "where": "Mass Properties Analyze Mass Properties > Hydrostatics"
+ },
+ "Hyperbola": {
+  "desc": "Draw a hyperbolic curve from focus points, vertices, or coefficient.",
+  "where": "Curve Curve Hyperbola > <Options>"
+ },
+ "Hyperlink": {
+  "desc": "Manage URL addresses attached to an object.",
+  "where": "Tools Tools Hyperlink > <Options>"
+ },
+ "IGESStudy": {
+  "desc": "Examine specific entities in an IGES file by limiting which portions of the IGES folder are parsed.",
+  "where": ""
+ },
+ "IgesImportOptions": {
+  "desc": "Decides if layer level numbers will be added to the end of the layer names on IGES import.",
+  "where": ""
+ },
+ "Import": {
+  "desc": "Merges objects from another model file.",
+  "where": "File Standard STL Tools File Import"
+ },
+ "ImportAnnotationStyles": {
+  "desc": "Import annotation styles into the current document.",
+  "where": "Dimension Drafting File > Import From File > Annotation Styles from 3dm File"
+ },
+ "ImportLayout": {
+  "desc": "Import a print layout viewport from another file.",
+  "where": "Shortcut Layout File > Import From File > Layouts From 3dm File View Layout > Import Click Add Viewport tab"
+ },
+ "IncrementalSave": {
+  "desc": "Save sequentially-numbered versions of a model.",
+  "where": "File File Incremental Save"
+ },
+ "InfinitePlane": {
+  "desc": "Intersect any plane with objects to return curves or points.",
+  "where": "Plane"
+ },
+ "Insert": {
+  "desc": "Insert block objects stored in the file or import a file as a block definition.",
+  "where": "Shortcut Block File Edit Blocks > Insert Block Instance File Insert Ctrl (CMD) + I"
+ },
+ "InsertControlPoint": {
+  "desc": "Add control points to a curve or a row of control points to a surface.",
+  "where": "Point Edit Edit Control Points > Insert Control Point"
+ },
+ "InsertEdge": {
+  "desc": "Inserts edges beside an edge loop or across an edge ring on a SubD or mesh.",
+  "where": "Mesh Tools SubD Tools SubD / Mesh Insert Edge"
+ },
+ "InsertEditPoint": {
+  "desc": "Add edit points to a curve.",
+  "where": "Organic Edit Control Points > Insert Edit Point"
+ },
+ "InsertKink": {
+  "desc": "Add kinks to a curve.",
+  "where": "Point Edit Edit Control Points > Insert Kink"
+ },
+ "InsertKnot": {
+  "desc": "Add knots to curves or surfaces.",
+  "where": "Point Edit Organic Edit Control Points > Insert Knot"
+ },
+ "InsertLineIntoCrv": {
+  "desc": "Flatten the curve segment between picked points.",
+  "where": "Curve Tools"
+ },
+ "InsertPoint": {
+  "desc": "Adds vertices and edges to a Mesh or SubD along the picked points on edges.",
+  "where": "Mesh Tools SubD Tools SubD / Mesh Insert Point"
+ },
+ "Inset": {
+  "desc": "Offsets the edges of selected mesh, SubD, or polysurface faces in a certain distance towards the center of each face.",
+  "where": "SubD Tools Mesh Tools PushPull Solid Editing Solid Tools SubD/Mesh Edit Tools > Inset"
+ },
+ "InterpCrv": {
+  "desc": "Fit a curve through picked locations.",
+  "where": "3‑D Digitizing Curve Curve Drawing Curve Free-Form > Interpolate Points"
+ },
+ "InterpCrvOnSrf": {
+  "desc": "Fit a curve through locations on a surface.",
+  "where": "3‑D Digitizing Curve Curve Free-Form > Interpolate on Surface"
+ },
+ "Intersect": {
+  "desc": "Create point objects or curves at the intersections of curves and surfaces.",
+  "where": "Curve from Object Curve Curve From Objects > Intersection"
+ },
+ "IntersectSelf": {
+  "desc": "Finds self-intersections or self-overlaps in curves and marks them with point objects or curve segments.",
+  "where": "Analyze Curve Curve From Objects > Intersect Self"
+ },
+ "IntersectTwoSets": {
+  "desc": "Find the intersection of one set of objects with another set of objects.",
+  "where": "Curve from Object Curve From Objects > Intersection of Two Sets"
+ },
+ "Invert": {
+  "desc": "Deselect all selected objects and select all previously unselected objects.",
+  "where": "Geometry Fix Select Select Points STL Tools Visibility Edit Select Objects > Invert"
+ },
+ "InvertPt": {
+  "desc": "Deselect all selected control or edit points and select all previously unselected control or edit points.",
+  "where": "Select Select Points Edit Control Points > Select Control Points > Invert"
+ },
+ "Isolate": {
+  "desc": "Hide all but the currently selected objects.",
+  "where": "Visibility"
+ },
+ "IsolateLock": {
+  "desc": "Lock all but the currently selected objects.",
+  "where": "Lock Visibility"
+ },
+ "Isometric": {
+  "desc": "Change the current viewport properties to a parallel projection isometric view looking from a specified quadrant toward 0.",
+  "where": "Isometric View Set View > Isometric > <Options>"
+ },
+ "Join": {
+  "desc": "Connect curves, surface edges, or surfaces to form a single object.",
+  "where": "Shortcut Curve Drawing Geometry Fix Main Main1 Popup Solids Sidebar STL Tools Surface Sidebar SubD Sidebar Edit Join SubD Edit tool > Join Ctrl (CMD) + J"
+ },
+ "JoinCopy": {
+  "desc": "Duplicates the selected objects and joins the duplicates.",
+  "where": "New Join Main Surface Sidebar Solids Sidebar SubD Sidebar Edit JoinCopy"
+ },
+ "JoinEdge": {
+  "desc": "Join two naked edges that are out of tolerance.",
+  "where": "Edge Tools Geometry Fix Surface and Analyze Edge Tools > Join 2 Naked Edges"
+ },
+ "Lasso": {
+  "desc": "Select objects by drawing a freehand shape.",
+  "where": "Organic Select Select Points Edit Select Objects Area and Volume Select Lasso Control Points > Select Control Points > Lasso"
+ },
+ "Layer": {
+  "desc": "Toggle Layer panel.",
+  "where": "Layer Standard Edit Layers > Edit Layers Window Panels > Layers"
+ },
+ "LayerBook": {
+  "desc": "Moves through the layers of a model sequentially, just like turning the pages of a book or a slide show for demonstration and training.",
+  "where": "LayerBook Tools Edit Layers > LayerBook"
+ },
+ "LayerStateManager": {
+  "desc": "Save and restore the current layer state.",
+  "where": "Layer Edit Layers > Layer State Manager Window Panels > Layer States"
+ },
+ "Layout": {
+  "desc": "Create a print layout viewport.",
+  "where": "Drafting Layout Viewport Layout View and Layout Title Layout > New Layout"
+ },
+ "LayoutProperties": {
+  "desc": "Manage layout viewport properties.",
+  "where": "Drafting Layout"
+ },
+ "Layouts": {
+  "desc": "Opens the Layouts panel that manages the layouts in the model.",
+  "where": "Drafting Window Panels > Layouts"
+ },
+ "Leader": {
+  "desc": "Draw an annotation leader with attached text.",
+  "where": "Dimension Drafting Drafting Leader"
+ },
+ "Length": {
+  "desc": "Report the length of curves or surface edges.",
+  "where": "Analyze Analyze Length"
+ },
+ "Libraries": {
+  "desc": "Open the Libraries panel.",
+  "where": "Render Tools Render / Window Panels > Libraries"
+ },
+ "Lights": {
+  "desc": "Open the Lights panel.",
+  "where": "Render Tools Render / Window Panels > Lights"
+ },
+ "LimitReferenceModel": {
+  "desc": "Limit the amount of reference geometry that is available to work on.",
+  "where": "Worksession File Worksession > Limit"
+ },
+ "Line": {
+  "desc": "Draw a single line segment.",
+  "where": "Curve Drawing Lines Curve Line > <Options>"
+ },
+ "LineThroughPt": {
+  "desc": "Fit a line through any combination of points, control points, and point-cloud objects.",
+  "where": "Lines"
+ },
+ "LinearLight": {
+  "desc": "Insert a tubular light.",
+  "where": "Lights Render Tools Render Create Linear Light"
+ },
+ "Lines": {
+  "desc": "Draw multiple adjoining line segments.",
+  "where": "Curve Drawing Lines Main Main1 Curve Line > Line Segments"
+ },
+ "LinetypeDisplay": {
+  "desc": "Configures how linetypes display in viewports.",
+  "where": "Drafting"
+ },
+ "Linetypes": {
+  "desc": "The Linetypes command shows document linetype definitions in a tabbed panel.",
+  "where": "Not on toolbars. Window Panels > Linetypes"
+ },
+ "List": {
+  "desc": "Report information about object's data structure.",
+  "where": "Diagnostics Analyze Diagnostics > List"
+ },
+ "LoadScript": {
+  "desc": "Load a TriceratopsScript.",
+  "where": "Not on toolbars. Tools menu Triceratops Script > Load"
+ },
+ "Lock": {
+  "desc": "Lock objects so they cannot be selected for editing.",
+  "where": "Shortcut Lock Popup Standard Visibility SubD Sidebar Edit Visibility > Lock Ctrl (CMD) + L"
+ },
+ "LockSwap": {
+  "desc": "Lock all unlocked objects and unlock all previously locked objects.",
+  "where": "Lock Visibility Edit Visibility > Swap Lock and Unlocked"
+ },
+ "LockViewport": {
+  "desc": "Toggles the locking state of the current viewport.",
+  "where": "Panel Viewport Layout View / Viewport Title Locked Properties View properties"
+ },
+ "Loft": {
+  "desc": "Fit a surface through profile curves that define the surface shape.",
+  "where": "Surface Creation Surface Sidebar Surface Loft"
+ },
+ "Login": {
+  "desc": "Log you into Triceratops using your Triceratops account.",
+  "where": ""
+ },
+ "Logout": {
+  "desc": "Log you out and returns any licenses borrowed from a Triceratops account.",
+  "where": ""
+ },
+ "MPlane": {
+  "desc": "Set up a relationship between a construction plane and an object.",
+  "where": "CPlanes View / Viewport title Set CPlane > Mobile Construction Plane"
+ },
+ "MacroEditor": {
+  "desc": "Open an edit window for script creation and testing.",
+  "where": "Tools Tools Commands > Macro Editor Window Panels > Macro Editor"
+ },
+ "Macros": {
+  "desc": "Opens the Macro Library dialog box to manage the macros in the default toolbars or linked rui files .",
+  "where": "New Tools Window Macros"
+ },
+ "Maelstrom": {
+  "desc": "Deform objects in a spiral.",
+  "where": "Deformation Tools"
+ },
+ "Make2D": {
+  "desc": "Project geometry to the construction plane.",
+  "where": "Curve From Object Dimension Drafting Drafting Make 2‑D Drawing"
+ },
+ "MakeHole": {
+  "desc": "Project a closed curve to a surface to define a hole.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Make Hole"
+ },
+ "MakeNonPeriodic": {
+  "desc": "Insert a kink at the start/end of a curve or surface.",
+  "where": "Curve Tools Surface Tools"
+ },
+ "MakePeriodic": {
+  "desc": "Remove the kink from the start/end of a curve or surface.",
+  "where": "Curve Tools Surface Tools Edit Make Periodic"
+ },
+ "MakeSubDFriendly": {
+  "desc": "Makes any curves SubD compatible.",
+  "where": "SubD Tools Curve Curve Edit Tools > Make SubD Friendly"
+ },
+ "MakeUniform": {
+  "desc": "Make the object knot vectors uniform without changing the control point locations.",
+  "where": "Curve Tools Surface Tools"
+ },
+ "MakeUniformUV": {
+  "desc": "Make the surface knots uniform in u or v direction.",
+  "where": "Surface Tools"
+ },
+ "MappingWidget": {
+  "desc": "Turn on texture mapping widgets.",
+  "where": "Render Tools Texture Mapping"
+ },
+ "MappingWidgetOff": {
+  "desc": "Turn off texture mapping widgets.",
+  "where": "Render Tools Texture Mapping"
+ },
+ "MarkFoci": {
+  "desc": "Place point objects at focus locations of conic curves.",
+  "where": "Point Curve Point Object > Mark Foci"
+ },
+ "Match": {
+  "desc": "Change a curve end to meet another curve or surface edge with a specified continuity.",
+  "where": "Curve Tools Curve Curve Edit Tools > Match"
+ },
+ "MatchAnnotation": {
+  "desc": "The MatchAnnotation command changes an annotation's properties to match another annotation.",
+  "where": ""
+ },
+ "MatchCrvDir": {
+  "desc": "Change a curve's direction to match another curve's direction.",
+  "where": "Curve Tools Curve Curve Edit Tools > Match Direction"
+ },
+ "MatchLayer": {
+  "desc": "Change an object's layer to match another object.",
+  "where": "Layer Edit Layers > Match Object Layer"
+ },
+ "MatchMapping": {
+  "desc": "Change an object's texture mapping properties to match another object.",
+  "where": "Texture Mapping"
+ },
+ "MatchMeshEdge": {
+  "desc": "Move naked mesh face edges to meet adjacent face edges.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Match Mesh Edge"
+ },
+ "MatchProperties": {
+  "desc": "Change an object's properties to match another object.",
+  "where": "Properties"
+ },
+ "MatchSrf": {
+  "desc": "Adjust a surface edge to have continuity with another surface edge.",
+  "where": "Surface Tools Surface Surface Edit Tools > Match"
+ },
+ "Materials": {
+  "desc": "Open or close the Materials panel.",
+  "where": "Render Tools Window / Render Panels > Materials"
+ },
+ "MaxViewport": {
+  "desc": "Maximize the active viewport.",
+  "where": "Shortcut Viewport Layout View Maximize Ctrl + M"
+ },
+ "Maximize": {
+  "desc": "Maximize the Triceratops application window.",
+  "where": ""
+ },
+ "Menus": {
+  "desc": "Opens the",
+  "where": ""
+ },
+ "Merge2MeshFaces": {
+  "desc": "Merge two triangular mesh faces into one quadrangular face.",
+  "where": "Not on toolbars. Mesh Edit Tools > Merge Two Triangles"
+ },
+ "MergeAllCoplanarFaces": {
+  "desc": "Combines the faces of each planar region on a mesh, polysurface, or SubD into a single face.",
+  "where": "PushPull Mesh Tools Solid Editing Solid Tools SubD Tools Solid Solid Edit Tools > Faces > Merge All Coplanar Faces Mesh / SubD Edit Tools > Merge All Coplanar F"
+ },
+ "MergeAllEdges": {
+  "desc": "Merge all possible edges of a surface or polysurface.",
+  "where": "Edge Tools Surface Analyze Edge Tools > Merge All Edges"
+ },
+ "MergeCoplanarFace": {
+  "desc": "Combines adjacent coplanar faces of a mesh, polysurface, or SubD into a single face.",
+  "where": "Mesh Tools Solid Editing Solid Tools SubD Tools Solid Solid Edit Tools > Faces > Merge Coplanar Face Mesh / SubD Edit Tools > Merge Coplanar Face"
+ },
+ "MergeCrv": {
+  "desc": "Combines curves connected end to end into a single curve.",
+  "where": ""
+ },
+ "MergeEdge": {
+  "desc": "Combine adjacent edges of the same surface.",
+  "where": "Edge Tools Surface Tools Surface Analyze Edge Tools > Merge Edge"
+ },
+ "MergeFaces": {
+  "desc": "Merges a connected set of SubD or mesh faces into a single face.",
+  "where": "Mesh Tools SubD Tools SubD / Mesh Edit Tools > Merge Faces"
+ },
+ "MergeSrf": {
+  "desc": "Combine two surfaces at untrimmed edges.",
+  "where": "Surface Tools Surface Surface Edit Tools > Merge"
+ },
+ "Mesh": {
+  "desc": "Create a mesh from a NURBS surface or polysurface.",
+  "where": "Main Main2 Mesh Creation Mesh Tools Mesh From NURBS Object"
+ },
+ "MeshBooleanDifference": {
+  "desc": "Subtract the volume of one set of objects from another resulting in a mesh.",
+  "where": "Mesh Booleans Mesh Mesh Boolean > Difference"
+ },
+ "MeshBooleanIntersection": {
+  "desc": "Create a new mesh from the intersected volumes of objects.",
+  "where": "Mesh Booleans Mesh Mesh Boolean > Intersection"
+ },
+ "MeshBooleanSplit": {
+  "desc": "Split and close objects at intersections.",
+  "where": "Mesh Booleans Mesh Mesh Boolean > Boolean Split"
+ },
+ "MeshBooleanUnion": {
+  "desc": "Combine the volumes of objects into a single mesh.",
+  "where": "Mesh Booleans Mesh Tools Mesh Mesh Boolean > Union"
+ },
+ "MeshBox": {
+  "desc": "Draw a mesh box.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Box"
+ },
+ "MeshCone": {
+  "desc": "Creates a mesh cone.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Cone"
+ },
+ "MeshCylinder": {
+  "desc": "Draw a mesh cylinder.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Cylinder"
+ },
+ "MeshEllipsoid": {
+  "desc": "Draw a mesh ellipsoid.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Ellipsoid"
+ },
+ "MeshFromLines": {
+  "desc": "Create a mesh from intersecting lines.",
+  "where": "Mesh Tools Mesh Creation"
+ },
+ "MeshFromPoints": {
+  "desc": "Creates a mesh from point objects or point clouds.",
+  "where": "Mesh Tools"
+ },
+ "MeshIntersect": {
+  "desc": "Create a polyline at the intersection of mesh objects.",
+  "where": "Mesh Tools Curve Curve From Objects > Intersection of Meshes"
+ },
+ "MeshOutline": {
+  "desc": "Create a polyline outline of mesh objects or surface render mesh.",
+  "where": "Curve from Object Curve Curve From Objects > Mesh Outline"
+ },
+ "MeshPatch": {
+  "desc": "Create a mesh from curves and points.",
+  "where": "Mesh Creation"
+ },
+ "MeshPlane": {
+  "desc": "Draw a rectangular mesh plane.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Plane"
+ },
+ "MeshPolyline": {
+  "desc": "Create a mesh from a closed polyline.",
+  "where": "Mesh Creation Mesh From Closed Polyline"
+ },
+ "MeshRepair": {
+  "desc": "Open the Mesh Repair wizard.",
+  "where": "Mesh Tools Window Panels > Mesh Repair"
+ },
+ "MeshSelfIntersect": {
+  "desc": "Creates polylines from self-intersections of mesh objects.",
+  "where": "Not on toolbars. Mesh Mesh Repair Tools > Mesh Self Intersect"
+ },
+ "MeshSphere": {
+  "desc": "Draw a mesh sphere.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Sphere"
+ },
+ "MeshSplit": {
+  "desc": "Divide meshes into parts with another object.",
+  "where": "Mesh Tools Mesh Edit Tools > Mesh Split"
+ },
+ "MeshToNURB": {
+  "desc": "Duplicate each mesh face with a NURBS surface.",
+  "where": "Main Main2 Mesh Tools"
+ },
+ "MeshTorus": {
+  "desc": "Draw a mesh torus.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Torus"
+ },
+ "MeshTrim": {
+  "desc": "Delete portions of a mesh inside or outside intersections with another object.",
+  "where": "Mesh Tools Mesh Edit Tools > Mesh Trim"
+ },
+ "MeshTruncatedCone": {
+  "desc": "Draw a mesh truncated cone.",
+  "where": "Mesh Creation Mesh Polygon Mesh Primitives > Truncated Cone"
+ },
+ "MigratePlugins": {
+  "desc": "Searches for 3rd-party plug-ins installed for previous versions of Triceratops to load in the current version of Triceratops if they are compatible.",
+  "where": ""
+ },
+ "Minimize": {
+  "desc": "Minimize the Triceratops application window.",
+  "where": ""
+ },
+ "Mirror": {
+  "desc": "Create a mirror-image copy of objects.",
+  "where": "Transform Transform Mirror"
+ },
+ "MirrorHole": {
+  "desc": "Create a mirror image copy of one or more holes in a single planar surface.",
+  "where": "Not on toolbars. Solid Solid Edit Tools > Holes > Mirror Hole"
+ },
+ "ModelBasepoint": {
+  "desc": "Set a world origin that is used when inserting the model into another.",
+  "where": "Block"
+ },
+ "ModifyRadius": {
+  "desc": "Change the radius of existing arcs and circles.",
+  "where": ""
+ },
+ "Move": {
+  "desc": "Move objects from one location to another.",
+  "where": "Alias Collapse Mesh Curve Drawing Extract Mesh Main Main2 Move Organic Render Sidebar Solids Sidebar Surface Sidebar Transform Transform Move m"
+ },
+ "MoveCrv": {
+  "desc": "Move a polycurve/polyline segment.",
+  "where": "Move Curve Curve Edit Tools > Move Curve Segment"
+ },
+ "MoveEdge": {
+  "desc": "Move a polysurface edge.",
+  "where": "Solid Editing Solid Tools Solid Solid Edit Tools > Edges > Move Edge"
+ },
+ "MoveExtractedIsocurve": {
+  "desc": "Allows moving a curve created by the ExtractIsocurve command with",
+  "where": ""
+ },
+ "MoveFace": {
+  "desc": "Move a polysurface face.",
+  "where": "Solid Editing Solid Tools Solid Solid Edit Tools > Faces > Move Face Move Face to Boundary"
+ },
+ "MoveHole": {
+  "desc": "Move a hole in a planar surface.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Move Hole"
+ },
+ "MoveTargetToObjects": {
+  "desc": "Move the target to the center of selected objects.",
+  "where": "Render Sidebar Set View View / Viewport title Set Camera > Move Target to Objects"
+ },
+ "MoveUVN": {
+  "desc": "Move curve or surface control points along the u, v, and normal directions of the object.",
+  "where": "Point Edit Transform Move UVN Window Panels > MoveUVN"
+ },
+ "MoveUntrimmedEdge": {
+  "desc": "Move the edge of an untrimmed polysurface face.",
+  "where": "Solid Editing Solid Tools"
+ },
+ "MoveUntrimmedFace": {
+  "desc": "Move an untrimmed polysurface face.",
+  "where": "Solid Editing Solid Tools"
+ },
+ "MultiPause": {
+  "desc": "Pause a script for the duration of multiple selections, for example in Join, Polyline, and FilletEdge.",
+  "where": ""
+ },
+ "MultiPipe": {
+  "desc": "Creates a SubD pipe frame with smooth conjunctions from intersected curves.",
+  "where": "SubD Tools SubD Sidebar SubD MultiPipe"
+ },
+ "NamedCPlane": {
+  "desc": "Manage the named construction planes list.",
+  "where": "CPlanes View Set CPlane > Named CPlanes Viewport title Set CPlane > Named CPlanes Window Panels > Named CPlanes"
+ },
+ "NamedPosition": {
+  "desc": "Toggle the Named Position panel to the location of objects.",
+  "where": "Move Window Panels > Named Positions"
+ },
+ "NamedSelections": {
+  "desc": "Opens the Named Selections panel that saves selection sets.",
+  "where": "Select Window Panels > Named Selections"
+ },
+ "NamedView": {
+  "desc": "Manage the named views.",
+  "where": "Render Sidebar Set View View Set View > Named Views Viewport title Set View > Named Views Window Panels > Named Views"
+ },
+ "NestedClippingDrawing": {
+  "desc": "Projects object sections from 3D space to the World XY-plane, on the current layer, with user-specified spacing and arrangement.",
+  "where": "Sections Drafting Sections > Nested Drawings"
+ },
+ "NetworkSrf": {
+  "desc": "Fit a surface through a network of crossing curves.",
+  "where": "Surface Creation Surface Sidebar Surface Curve Network"
+ },
+ "New": {
+  "desc": "Create a new model based on a template.",
+  "where": "Shortcut File Standard File New Ctrl (CMD) + N"
+ },
+ "NewFloatingViewport": {
+  "desc": "Create a new free-floating viewport.",
+  "where": "Viewport Layout"
+ },
+ "NewViewport": {
+  "desc": "Create a new viewport.",
+  "where": "Viewport Layout View / Viewport title Viewport Layout > New Viewport"
+ },
+ "NextOrthoViewport": {
+  "desc": "Activate the next viewport with an orthogonal projection.",
+  "where": ""
+ },
+ "NextPerspectiveViewport": {
+  "desc": "Activate the next viewport with a perspective projection.",
+  "where": ""
+ },
+ "NextU": {
+  "desc": "Select the control point in the positive u direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Next U"
+ },
+ "NextV": {
+  "desc": "Select the control point in the positive v direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Next V"
+ },
+ "NextViewport": {
+  "desc": "Activate the next viewport.",
+  "where": "Shortcut"
+ },
+ "NextViewportToTop": {
+  "desc": "Display the next viewport in front of all other viewports.",
+  "where": ""
+ },
+ "NoEcho": {
+  "desc": "Turn off echoing of script commands to the command history window.",
+  "where": ""
+ },
+ "NonmanifoldMerge": {
+  "desc": "Create a non-manifold polysurface from intersecting surfaces and polysurfaces.",
+  "where": ""
+ },
+ "Notes": {
+  "desc": "Open a text notes window.",
+  "where": "File File Notes Window Panels > Notes"
+ },
+ "Notifications": {
+  "desc": "The Notifications command opens the Notification panel.",
+  "where": "Not on toolbars. Window Panels > Notifications"
+ },
+ "Offset": {
+  "desc": "Copy a curve parallel to the original.",
+  "where": "Curve Tools Curve Offset Curve"
+ },
+ "OffsetCrvOnSrf": {
+  "desc": "Copy a curve on a surface parallel to the original.",
+  "where": "Curve Tools Curve Offset > Offset Curve on Surface"
+ },
+ "OffsetMesh": {
+  "desc": "Copies a mesh by moving the vertices a specified distance with different direction modes.",
+  "where": "Mesh Tools Mesh Offset Mesh"
+ },
+ "OffsetMultiple": {
+  "desc": "Copy curves or surface edges parallel to the original.",
+  "where": "Curve Tools"
+ },
+ "OffsetNormal": {
+  "desc": "Copy a curve on a surface parallel to the original in the surface normal direction.",
+  "where": "Curve Tools Curve Offset > Offset Normal to Surface"
+ },
+ "OffsetSrf": {
+  "desc": "Copy a surface parallel to the original.",
+  "where": "Surface Tools Solid Offset Surface Offset Surface"
+ },
+ "OffsetSubD": {
+  "desc": "Makes a copy of a SubD by moving its vertices towards the normal direction with the specified distance.",
+  "where": "SubD Tools SubD Offset SubD"
+ },
+ "OneLayerOff": {
+  "desc": "Turns off the selected object's layer.",
+  "where": "Layer Edit Layers > One Layer Off"
+ },
+ "OneLayerOn": {
+  "desc": "Turns a specified layer on and all other layers off.",
+  "where": "Layer Edit Layers > One Layer On"
+ },
+ "OneView": {
+  "desc": "Sets the active construction plane according to the current view direction to accommodate single-window modeling.",
+  "where": "View Viewport Layout"
+ },
+ "Open": {
+  "desc": "Opens an existing model file.",
+  "where": "Shortcut File Standard STL Tools File Open Ctrl (CMD) + O"
+ },
+ "OpenURL": {
+  "desc": "Prompts for entering a web address and opens the website in the default web browser.",
+  "where": ""
+ },
+ "Options": {
+  "desc": "settings to a file.",
+  "where": "Tools Tools Export Options"
+ },
+ "OptionsExport": {
+  "desc": "Save",
+  "where": ""
+ },
+ "OptionsImport": {
+  "desc": "Restore",
+  "where": ""
+ },
+ "OptionsPage": {
+  "desc": "Open the Options dialog box at a specified page.",
+  "where": ""
+ },
+ "Orient": {
+  "desc": "Transform objects using two reference and two target points.",
+  "where": "Transform Transform Orient > 2 Points"
+ },
+ "Orient3Pt": {
+  "desc": "Transform objects using three reference and three target points.",
+  "where": "Transform Transform Orient > 3 Points"
+ },
+ "OrientCameraToSrf": {
+  "desc": "Align the view to a surface normal.",
+  "where": "Set View View / Viewport title Set Camera > Orient Camera to Surface"
+ },
+ "OrientCrvToEdge": {
+  "desc": "Copy and align a curve to a surface edge.",
+  "where": "Transform Transform Orient > Curve to Edge"
+ },
+ "OrientOnCrv": {
+  "desc": "Transform objects along a curve normal.",
+  "where": "Transform Transform Orient > On Curve"
+ },
+ "OrientOnSrf": {
+  "desc": "Transform objects normal to a surface.",
+  "where": "Transform Transform Orient > On Surface"
+ },
+ "Ortho": {
+  "desc": "Restrict cursor movement to an angle.",
+  "where": "Shortcut Alias Status bar Object Snap"
+ },
+ "OrthoAngle": {
+  "desc": "Set the angle for cursor ortho movement.",
+  "where": "Status bar Object Snap"
+ },
+ "OrthoSnapToCPlaneZ": {
+  "desc": "Allows Ortho mode to track along the CPlane Z direction from the previously picked point.",
+  "where": "Status bar"
+ },
+ "Osnap": {
+  "desc": "Set object snaps state.",
+  "where": "Status bar Not on toolbars. Tools Object Snap > <Options> Osnap"
+ },
+ "PackSubDFaces": {
+  "desc": "Resets a SubD to the default face packing if adding creases or deleting faces breaks the rectangular quad grids.",
+  "where": "SubD Tools SubD Edit Tools > Pack Faces"
+ },
+ "PackTextures": {
+  "desc": "Separates faces of a polysurface in the texture UV space. Each face will display different portion of the texture.",
+  "where": "Render Tools Texture Tools"
+ },
+ "PackageManager": {
+  "desc": "Assists in the discovery, installation, and management of Triceratops and Grasshopper plug-ins.",
+  "where": "Tools Tools Package Manager"
+ },
+ "Pan": {
+  "desc": "Shift the location of the view camera and target parallel to the view plane.",
+  "where": "Shortcut Set View Standard View View Pan Viewport title Pan, Zoom, and Rotate > Pan View Shift +"
+ },
+ "Parabola": {
+  "desc": "Draw a parabolic curve from focus and vertex or endpoint.",
+  "where": "Curve Curve Drawing Curve Parabola > <Options>"
+ },
+ "Parabola3Pt": {
+  "desc": "Draw a parabolic curve through three picked points.",
+  "where": "Curve Curve Drawing"
+ },
+ "Paraboloid": {
+  "desc": "Draw a parabolic surface or capped solid.",
+  "where": "Solids Creation Solids Sidebar Solid Paraboloid > <Options>"
+ },
+ "Paste": {
+  "desc": "Insert objects from the Clipboard.",
+  "where": "Shortcut Standard Edit Paste Tools Commands > Paste from Clipboard Ctrl (CMD) + P"
+ },
+ "Patch": {
+  "desc": "Fit a surface through curves and point objects.",
+  "where": "Surface Creation Surface Sidebar Surface Patch"
+ },
+ "PatchSingleFace": {
+  "desc": "Fill a mesh hole with a single mesh face.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Patch Single Face"
+ },
+ "Pause": {
+  "desc": "Stop a script for user input.",
+  "where": ""
+ },
+ "PerspectiveAngle": {
+  "desc": "Set the viewport field-of-view angle.",
+  "where": "Render Sidebar Set View Viewport Layout"
+ },
+ "PerspectiveMatch": {
+  "desc": "Allow matching the view to the Wallpaper image.",
+  "where": "Render Sidebar Set View View / Viewport title Set Camera > Match Wallpaper Image"
+ },
+ "Picture": {
+  "desc": "Draw a rectangular planar surface with a bitmap texture.",
+  "where": "Plane Surface Creation Surface Sidebar Viewport Layout Surface Plane > Picture"
+ },
+ "Pipe": {
+  "desc": "Create a surface , polysurface , or extrusion object with a circular profile around a curve.",
+  "where": "Solid Creation Solids Sidebar Solid / SubD Pipe"
+ },
+ "PlaceHole": {
+  "desc": "Project a closed curve to a surface to define a hole.",
+  "where": "Holes Solid Editing Solid Tools Solid Solid Edit Tools > Holes > Place Hole"
+ },
+ "Plan": {
+  "desc": "Set the viewport to a parallel plan view.",
+  "where": "Set View View / Viewport title Set View > Plan"
+ },
+ "Planar": {
+  "desc": "Limit picking locations to an elevation.",
+  "where": "Alias Status bar"
+ },
+ "PlanarDifference": {
+  "desc": "Prompts for selecting two overlapping planar surfaces and subtracts the first using the second.",
+  "where": "Planar Booleans Surface Planar Boolean"
+ },
+ "PlanarIntersection": {
+  "desc": "Prompts for selecting two overlapping planar surfaces and creates a surface from their intersection.",
+  "where": "Planar Booleans Surface Planar Boolean"
+ },
+ "PlanarMesh": {
+  "desc": "Create a planar mesh from closed curves.",
+  "where": ""
+ },
+ "PlanarSrf": {
+  "desc": "Create a planar surface from planar curves.",
+  "where": "Surface Creation Surface Sidebar Surface Planar Curves"
+ },
+ "PlanarUnion": {
+  "desc": "Merges two overlapping planar surfaces into a single surface.",
+  "where": "Planar Booleans Surface Tools Surface Planar Boolean"
+ },
+ "Plane": {
+  "desc": "Draw a rectangular planar surface.",
+  "where": "Plane Surface Creation Surface Sidebar Surface Plane > <Options>"
+ },
+ "PlaneThroughPt": {
+  "desc": "Fit a rectangular planar surface through points.",
+  "where": "Plane Surface Creation Surface Sidebar Surface Plane > Through Points"
+ },
+ "PlayAnimation": {
+  "desc": "Play back an animation or animation preview.",
+  "where": "Animation Animation Preview Render Tools"
+ },
+ "PlugInManager": {
+  "desc": "Manages plug-in options.",
+  "where": "Tools"
+ },
+ "Point": {
+  "desc": "Draw a single point object.",
+  "where": "Main Main2 Point Curve Point Object > Single Point"
+ },
+ "PointCloud": {
+  "desc": "Create a set of vertices from point objects.",
+  "where": "Point Curve Point Cloud > <Options>"
+ },
+ "PointCloudContour": {
+  "desc": "Create a series of planar curves by intersecting spaced planes with a point cloud.",
+  "where": "Not on toolbars. Curve Curve from Objects> Contour Through Points"
+ },
+ "PointCloudSection": {
+  "desc": "Create a planar curve by intersecting a plane with points or pointcloud objects.",
+  "where": "Curve from Object Curve Curve from Objects> Section Through Points"
+ },
+ "PointDeviation": {
+  "desc": "Report the distance between points and a surface.",
+  "where": "Surface Analysis Analyze Surface > Point Set Deviation Window Panels > PointDeviation"
+ },
+ "PointGrid": {
+  "desc": "Draw a rectangular grid of point objects.",
+  "where": "Point"
+ },
+ "PointLight": {
+  "desc": "The PointLight command inserts an omni-directional light.",
+  "where": "Lights Render Tools Render Create Point Light"
+ },
+ "Points": {
+  "desc": "Draw multiple point objects.",
+  "where": "3‑D Digitizing Main Main2 Point Curve Point Object > Multiple Points"
+ },
+ "PointsFromUV": {
+  "desc": "Create point objects at specified surface u and v coordinates.",
+  "where": "Surface Analysis Analyze Surface > Point from UV Coordinates"
+ },
+ "PointsOff": {
+  "desc": "Turn off",
+  "where": ""
+ },
+ "PointsOn": {
+  "desc": "Display curve and surface control points.",
+  "where": "Shortcut Alias Curve Tools Geometry Fix Main Main2 Organic Point Edit STL Tools Surface Tools SubD Sidebar Edit Control Points > Control Points On F10 POn"
+ },
+ "Polygon": {
+  "desc": "Draw a polygon with a specified number of sides with options for inscribed/circumscribed, by edge, star-shaped, around a curve, and vertical.",
+  "where": "Curve Drawing Main Main1 Polygon Curve Polygon > <Options>"
+ },
+ "PolygonCount": {
+  "desc": "Report the number of mesh polygons in a selected object.",
+  "where": "Analyze Mesh Tools"
+ },
+ "Polyline": {
+  "desc": "Draw a multi-segment polyline with options for line and arc segments, tracking line helpers, and close.",
+  "where": "Curve Drawing Lines Main Main1 Curve Polyline > <Options>"
+ },
+ "PolylineOnMesh": {
+  "desc": "Draw a multi-segment polyline on a mesh.",
+  "where": "Lines Curve Polyline > On Mesh"
+ },
+ "PopupMenu": {
+  "desc": "Display a menu with favorites and most-recently-used commands.",
+  "where": ""
+ },
+ "PopupPopular": {
+  "desc": "Display a menu with the most-used commands.",
+  "where": ""
+ },
+ "PopupToolbar": {
+  "desc": "Open the specified toolbar at the cursor.",
+  "where": ""
+ },
+ "PrevU": {
+  "desc": "Select the control point in the negative u direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Previous U"
+ },
+ "PrevV": {
+  "desc": "Select the control point in the negative v direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Previous V"
+ },
+ "PrevViewport": {
+  "desc": "Activate the previous viewport.",
+  "where": "Not on toolbars. Ctrl + Shift + Tab"
+ },
+ "Print": {
+  "desc": "Print the current viewport or layouts.",
+  "where": "Shortcut Drafting File Standard Viewport Layout File Layout title Print Ctrl (CMD) + P"
+ },
+ "PrintDisplay": {
+  "desc": "Display objects using their Print Color and Print Width properties.",
+  "where": "Display Drafting View / Viewport title Print Preview"
+ },
+ "Project": {
+  "desc": "Project curves/points toward a construction plane to intersect a surface, polysurface, mesh, or SubD.",
+  "where": "Curve from Object Curve Tools Main Main1 SubD Sidebar Curve Curve From Objects > Project"
+ },
+ "ProjectToCPlane": {
+  "desc": "Flatten objects onto the construction plane.",
+  "where": "Transform Transform Project to CPlane"
+ },
+ "Properties": {
+  "desc": "Open the Properties panel.",
+  "where": "Shortcut Popup Properties Standard Edit Object Properties Window Panels > Properties F3"
+ },
+ "PropertiesPage": {
+  "desc": "Open the Properties panel at a specified page.",
+  "where": ""
+ },
+ "PtOffSelected": {
+  "desc": "Turn off control and edit points for selected objects.",
+  "where": "Point Edit"
+ },
+ "Pull": {
+  "desc": "Moves curves and points toward the normal direction of a surface, mesh, polysurface, or SubD to find intersections.",
+  "where": "Curve from Object SubD Sidebar Curve Curve From Objects > Pullback"
+ },
+ "Purge": {
+  "desc": "Delete unused block definitions, groups, layers, hatch patterns, linetypes, annotation styles, and materials.",
+  "where": "Tools Tools File Utilities > Purge Unused Information"
+ },
+ "PurgeRefObjects": {
+  "desc": "Delete worksession reference objects.",
+  "where": ""
+ },
+ "PushPull": {
+  "desc": "Extrudes a polysurface face to interactively add or remove volumes on the polysurface.",
+  "where": "Main New PushPull Solid Tools Solid PushPull"
+ },
+ "PushViewportToBack": {
+  "desc": "Send a named viewport behind all viewports.",
+  "where": ""
+ },
+ "Pyramid": {
+  "desc": "Draw a pyramid.",
+  "where": "Solids Creation Solids Sidebar Solid Pyramid"
+ },
+ "QuadRemesh": {
+  "desc": "Uses a unique algorithm to generate manageable polygon meshes, ideal for rendering, animation, CFD, FEA, and reverse-engineering.",
+  "where": "Mesh Tools SubD Tools SubD / Mesh Edit Tools > Quad Remesh"
+ },
+ "QuadrangulateMesh": {
+  "desc": "Merge mesh triangles into quadrangles.",
+  "where": "Mesh Tools"
+ },
+ "RLeaderEdit": {
+  "desc": "Run by script interface and OnDoubleClick to edit",
+  "where": ""
+ },
+ "RTextEdit": {
+  "desc": "Run by script interface and OnDoubleClick to edit",
+  "where": ""
+ },
+ "Radiate": {
+  "desc": "Creates a radial-symmetrical SubD with specified segments.",
+  "where": "SubD Tools SubD Symmetry > Radiate"
+ },
+ "RadiateFind": {
+  "desc": "Identifies the precisely shaped radial symmetry structure in a SubD and then automatically synchronizes editing between the identical regions around the central axis.",
+  "where": "SubD Tools SubD Symmetry > RadiateFind"
+ },
+ "Radius": {
+  "desc": "Report the radius of a curve.",
+  "where": "Analyze Analyze Radius"
+ },
+ "RailRevolve": {
+  "desc": "Revolve a profile curve around an axis and along a rail curve.",
+  "where": "Surface Creation Surface Sidebar Surface Rail Revolve"
+ },
+ "ReadCommandFile": {
+  "desc": "Read and execute a command script from a text file.",
+  "where": "Tools Tools Commands > Read from File"
+ },
+ "ReadEveryIGESEntity": {
+  "desc": "Import all IGES entities.",
+  "where": ""
+ },
+ "ReadViewportsFromFile": {
+  "desc": "Set the viewport layout to match that of another model.",
+  "where": "Set View Viewport Layout View / Viewport title Viewport Layout > Read From File"
+ },
+ "Rebuild": {
+  "desc": "Reconstruct curves, surfaces, and extrusion objects to a specified degree and control point number.",
+  "where": "Curve Tools Surface Tools Edit Rebuild"
+ },
+ "RebuildCrvNonUniform": {
+  "desc": "Interactively modify selected curves by non-uniformly re-spacing the control points.",
+  "where": "Curve Tools"
+ },
+ "RebuildEdges": {
+  "desc": "Restore surface edges to their surface.",
+  "where": "Edge Tools Surface Tools Surface and Analyze Edge Tools > Rebuild Edges"
+ },
+ "RebuildMesh": {
+  "desc": "Strip texture coordinates, vertex colors, surface curvatures, and surface parameters from a mesh.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Rebuild mesh"
+ },
+ "RebuildMeshNormals": {
+  "desc": "Remove mesh normals and reconstruct the face and vertex normals.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Rebuild Mesh Normals"
+ },
+ "RebuildUV": {
+  "desc": "Reconstructs selected surfaces to degree 3, with a specified control point number, in either the u or v direction.",
+  "where": "Surface Tools"
+ },
+ "RecordAnimation": {
+  "desc": "Render and save animation frames.",
+  "where": "Animation Render Tools"
+ },
+ "Rectangle": {
+  "desc": "Draw a rectangular closed polyline from with options for starting at the center, three points, vertical, and rounded with arc or conic corners.",
+  "where": "Curve Drawing Main Main2 Rectangle Curve Rectangle > <Options>"
+ },
+ "RectangularLight": {
+  "desc": "Insert a rectangular directional light.",
+  "where": "Lights Render Tools Render Create Rectangular Light"
+ },
+ "Redo": {
+  "desc": "Reverse the last Undo.",
+  "where": "Shortcut Geometry Fix Standard Undo Edit Redo Ctrl (CMD) + Y"
+ },
+ "RedoMultiple": {
+  "desc": "Reverse the Undo command multiple times.",
+  "where": "Undo Edit Redo Multiple"
+ },
+ "RedoView": {
+  "desc": "Reverse the last UndoView.",
+  "where": "Shortcut Render Sidebar Set View Standard View View Redo View Change End"
+ },
+ "ReduceMesh": {
+  "desc": "Reduce the number of mesh polygons and triangulates quadrangles.",
+  "where": "Mesh Tools Mesh Edit Tools > Collapse > Reduce Vertex Count"
+ },
+ "ReducePointCloud": {
+  "desc": "Removes random points of a specified number from a point cloud.",
+  "where": "New Point Tools Curve Point Cloud > Reduce Point Cloud"
+ },
+ "ReducePolyline": {
+  "desc": "Uses the Douglas-Peucker algorithm to reduce vertices of a polyline.",
+  "where": ""
+ },
+ "RefitTrim": {
+  "desc": "Replaces a trimmed surface edge with an untrimmed edge.",
+  "where": "Surface Tools Surface Surface Edit Tools > Refit Trimmed Edge"
+ },
+ "Reflect": {
+  "desc": "Makes a SubD symmetrical across a reflection plane and merges both sides into a single SubD.",
+  "where": "SubD Tools SubD Symmetry > Reflect"
+ },
+ "RefreshAllTextures": {
+  "desc": "Re-read the texture from their files and refresh the display.",
+  "where": "Texture Tools"
+ },
+ "RefreshShade": {
+  "desc": "Regenerate an object's render mesh.",
+  "where": "Not on toolbars. View / Viewport title Refresh Shade"
+ },
+ "ReleaseFromCage": {
+  "desc": "Remove objects from a control cage.",
+  "where": "Cage"
+ },
+ "RemapCPlane": {
+  "desc": "Reorient objects to a different construction plane.",
+  "where": "Transform Transform Orient > Remap to CPlane"
+ },
+ "RememberCopyOptions": {
+  "desc": "Specify whether Copy option on transform commands is stored.",
+  "where": ""
+ },
+ "RemoveAllNakedMicroEdges": {
+  "desc": "Removes very small single naked edges that fold or loop back on themselves and have no matching edge to which they can be joined.",
+  "where": "Edge Tools Geometry Fix STL Tools"
+ },
+ "RemoveControlPoint": {
+  "desc": "Remove control points from a curve or surface.",
+  "where": "Point Edit Edit Control Points > Remove Control Point"
+ },
+ "RemoveCrease": {
+  "desc": "Smoothes creased SubD edges/vertices, or welds mesh edges.",
+  "where": "Mesh Tools SubD Tools SubD Edit Tools > Remove Crease"
+ },
+ "RemoveFromGroup": {
+  "desc": "Detach objects from their parent group.",
+  "where": "Grouping Edit Groups > Remove From Group"
+ },
+ "RemoveGuide": {
+  "desc": "Removes infinite construction guides.",
+  "where": "Curve Tools Tools"
+ },
+ "RemoveKnot": {
+  "desc": "Delete specified knots from a curve or surface.",
+  "where": "Organic Point Edit Edit Control Points > Remove Knot"
+ },
+ "RemoveMappingChannel": {
+  "desc": "Remove mapping channels from an object.",
+  "where": "Texture Mapping"
+ },
+ "RemoveMultiKnot": {
+  "desc": "Remove multiple knots from curves and surfaces.",
+  "where": "Curve Tools Surface Tools"
+ },
+ "RemovePerFaceColors": {
+  "desc": "Clears per-face display colors or rendering materials on polysurfaces or SubDs.",
+  "where": "Display SubD Tools Edit Remove Per Face Colors"
+ },
+ "RemoveSymmetry": {
+  "desc": "Removes the SubD symmetry constraints set by the",
+  "where": ""
+ },
+ "Render": {
+  "desc": "Render the objects using the current renderer.",
+  "where": "Render Tools Standard Render Render"
+ },
+ "RenderArctic": {
+  "desc": "Renders opaque materials, scene lighting, ground plane and background as if they are white.",
+  "where": ""
+ },
+ "RenderAssignMaterialToLayer": {
+  "desc": "Assigns a material to a layer from the command-line.",
+  "where": ""
+ },
+ "RenderAssignMaterialToLayersOfObjects": {
+  "desc": "Assigns a material to the selected object's layer from the command-line.",
+  "where": ""
+ },
+ "RenderAssignMaterialToObjects": {
+  "desc": "Assigns a material to the selected objects from the command-line.",
+  "where": ""
+ },
+ "RenderBlowup": {
+  "desc": "Render a selected area of the current viewport in the render window at the resolution specified in the Rendering panel.",
+  "where": ""
+ },
+ "RenderInWindow": {
+  "desc": "Render a selected area in the render window at viewport resolution.",
+  "where": ""
+ },
+ "RenderMergeIdenticalMaterials": {
+  "desc": "Finds materials with the same settings in the model, keeps one of them, and deletes the rest. Material assignments will update accordingly.",
+  "where": "Render Tools Render Merge Identical Materials"
+ },
+ "RenderOpenLastRendering": {
+  "desc": "Open last rendering in render window.",
+  "where": "Not on toolbars. Render Open Last Rendering"
+ },
+ "RenderOpenRenderImage": {
+  "desc": "Open an image with the .rimage format.",
+  "where": ""
+ },
+ "RenderPreview": {
+  "desc": "Renders the current viewport in the Render window with a rough quality for a fast preview.",
+  "where": "Render Tools Render Render Preview"
+ },
+ "RenderPreviewInWindow": {
+  "desc": "Renders a selected area of the current viewport in the Render window with a rough quality for a fast preview.",
+  "where": ""
+ },
+ "RenderPreviewWindow": {
+  "desc": "Renders a selected area in the viewport with a rough quality for a fast preview.",
+  "where": ""
+ },
+ "RenderReportImageFiles": {
+  "desc": "Opens a dialog box to manage external image files.",
+  "where": ""
+ },
+ "RenderReportMissingImageFiles": {
+  "desc": "Opens a dialog box to manage missing external image files.",
+  "where": ""
+ },
+ "RenderWindow": {
+  "desc": "Render a selected area in the viewport at viewport resolution.",
+  "where": ""
+ },
+ "Rendering": {
+  "desc": "Open the Render panel.",
+  "where": "Render Tools Standard Window Panels > Rendering"
+ },
+ "RepairSubD": {
+  "desc": "Inspects and deletes damaged components, wire edges, and Non-manifold edges on SubDs.",
+  "where": "SubD Tools SubD Repair Tools > Repair SubD"
+ },
+ "Reparameterize": {
+  "desc": "Recalculate an object's parameter space to match its 3-D geometry.",
+  "where": ""
+ },
+ "Repeat": {
+  "desc": "Repeat any command or script/macro.",
+  "where": "Tools Tools Repeat Command Script"
+ },
+ "ReplaceBlock": {
+  "desc": "Replace block instances with a different block definition.",
+  "where": "Block"
+ },
+ "ReplaceEdge": {
+  "desc": "Untrim selected surface edges and retrim the edges.",
+  "where": "Surface Tools Surface Edge Tools > Replace Edge"
+ },
+ "Rescue3dmFile": {
+  "desc": "Recovers geometry objects that can be read from a damaged 3dm file.",
+  "where": "Diagnostics Tools Tools File Utilities > Rescue .3DM File"
+ },
+ "RescueBlockOrphans": {
+  "desc": "Searches for block definition geometry that is not referenced by any block definition and recovers the block definitions to the file.",
+  "where": ""
+ },
+ "Reset": {
+  "desc": "Restores the window layout, toolbars, or all settings to the initial state of the Triceratops app.",
+  "where": "New Tools"
+ },
+ "ResetMessageBoxes": {
+  "desc": "Clears the \"Do not show this dialog/message again\" check boxes in all dialogs.",
+  "where": ""
+ },
+ "Restore": {
+  "desc": "Restore the application window from being maximized.",
+  "where": ""
+ },
+ "RevCloud": {
+  "desc": "Draw revision cloud curves.",
+  "where": "Dimension Drafting Other Annotations > Revision Cloud"
+ },
+ "Revert": {
+  "desc": "Discard changes and revert to the previously saved document.",
+  "where": "File File Revert"
+ },
+ "Revolve": {
+  "desc": "Create a surface or SubD by revolving a profile curve around an axis.",
+  "where": "Surface Creation Surface Sidebar SubD Tools SubD Sidebar Surface / SubD Revolve"
+ },
+ "RevolvedHole": {
+  "desc": "Create holes by revolving a profile curve around an axis.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Revolved Hole"
+ },
+ "Rib": {
+  "desc": "Extrude a curve in two directions to a boundary surface.",
+  "where": "Extrude Solid Solid Rib"
+ },
+ "Ribbon": {
+  "desc": "Offset a curve and create a ruled surface between the curves.",
+  "where": "Extrude Surface Creation Surface Sidebar Surface Extrude Curve > Ribbon"
+ },
+ "RibbonOffset": {
+  "desc": "Offsets a closed curve and then creates a ruled or sweep2 surface between the input and offset curves.",
+  "where": "Curve Tools Surface Creation Curve Offset > Ribbon Offset"
+ },
+ "Rotate": {
+  "desc": "Rotate objects around an axis perpendicular to the construction plane.",
+  "where": "Main Main2 Transform Transform Rotate"
+ },
+ "Rotate3D": {
+  "desc": "Rotate objects around a 3-D axis.",
+  "where": "Main Main2 Transform Transform Rotate 3-D"
+ },
+ "RotateCamera": {
+  "desc": "Rotate the view target around the camera.",
+  "where": "LookAbout Set View Standard View View / Viewport title Set Camera > Rotate Camera"
+ },
+ "RotateHole": {
+  "desc": "Rotate a hole around an axis.",
+  "where": "Holes Solid Tools Solid Solid Edit Tools > Holes > Rotate Hole"
+ },
+ "RotateView": {
+  "desc": "Rotate the view camera around the target.",
+  "where": "Shortcut Set View Standard View View Rotate Viewport Title Zoom, Pan, and Rotate > Rotate View"
+ },
+ "RoundHole": {
+  "desc": "Create circular holes in surfaces.",
+  "where": "Holes Solid Editing Solid Tools Solid Solid Edit Tools > Holes > Round Hole"
+ },
+ "Run": {
+  "desc": "Run another application from inside Triceratops.",
+  "where": ""
+ },
+ "RunPythonScript": {
+  "desc": "Run a Python script.",
+  "where": ""
+ },
+ "RunScript": {
+  "desc": "Run a TriceratopsScript.",
+  "where": "Not on toolbars. Tools menu Triceratops Script > Run"
+ },
+ "STEPTree": {
+  "desc": "Browse the structure of a STEP file.",
+  "where": ""
+ },
+ "Save": {
+  "desc": "Save the current model.",
+  "where": "Shortcut File Popup Standard STL Tools File Save Ctrl (CMD) + S"
+ },
+ "SaveACopy": {
+  "desc": "Saves the current Triceratops model, including unsaved data, to a new 3dm file. The current date and time will be added to the file name.",
+  "where": "File New File Save a Copy"
+ },
+ "SaveAs": {
+  "desc": "Save the current model with a different name, close the current model, and open the new model.",
+  "where": "File Popup STL Tools File Save As"
+ },
+ "SaveAsTemplate": {
+  "desc": "Save the current model as a template file.",
+  "where": "File File Save As Template"
+ },
+ "SaveClippingSectionCPlanes": {
+  "desc": "Saves",
+  "where": ""
+ },
+ "SaveClippingSectionViews": {
+  "desc": "Saves the views of selected clipping sections to the",
+  "where": ""
+ },
+ "SaveRenderWindowAs": {
+  "desc": "Save the image in the render window to a file.",
+  "where": "Render Tools"
+ },
+ "SaveSmall": {
+  "desc": "Save geometry objects without render or analysis meshes.",
+  "where": "File File Save Small"
+ },
+ "SaveWindowLayout": {
+  "desc": "Saves the current arrangement of containers, panels, and toolbars to a new custom Window Layout.",
+  "where": "New Tools Window Window Layouts > Save Window Layout"
+ },
+ "Scale": {
+  "desc": "Change the size of objects uniformly in the x, y, and z directions.",
+  "where": "Main Main1 Scale Transform Transform Scale > Scale 3-D"
+ },
+ "Scale1D": {
+  "desc": "Change the size of objects in one direction.",
+  "where": "Scale Organic Transform Scale > Scale 1-D"
+ },
+ "Scale2D": {
+  "desc": "Change the size of objects uniformly in two directions.",
+  "where": "Scale Main Main1 Transform Transform Scale > Scale 2-D"
+ },
+ "ScaleByPlane": {
+  "desc": "Change the size of objects in two directions non-uniformly on the specified plane.",
+  "where": "Scale"
+ },
+ "ScaleNU": {
+  "desc": "Change the size of objects non-uniformly in three directions.",
+  "where": "Scale Transform Scale > Non-Uniform Scale"
+ },
+ "ScalePositions": {
+  "desc": "Change the spacing between objects.",
+  "where": "Scale"
+ },
+ "ScaleTextHeight": {
+  "desc": "Changes the Model space scale value in the text properties of the selected text.",
+  "where": "Drafting Transform Scale > Scale Text Height"
+ },
+ "ScreenCaptureToClipboard": {
+  "desc": "Save an image of a viewport to the Clipboard including viewport edges, cursor image, and viewport menu.",
+  "where": ""
+ },
+ "ScreenCaptureToFile": {
+  "desc": "Save an image of the viewport as a bitmap file including viewport edges, cursor image, and viewport menu.",
+  "where": ""
+ },
+ "ScriptEditor": {
+  "desc": "Opens the Script Editor window for Python and C# programing.",
+  "where": "Tools New Tools Script > Edit"
+ },
+ "Section": {
+  "desc": "Creates planar curves, points, or hatches by intersecting a plane with the input objects.",
+  "where": "Curve from Object Curve Curve From Objects > Section"
+ },
+ "SelAll": {
+  "desc": "Select all objects.",
+  "where": "Shortcut Select Standard Edit Select Objects > All Objects Ctrl (CMD) + A"
+ },
+ "SelAnnotationStyle": {
+  "desc": "Select annotation objects of a specified style.",
+  "where": "Select Edit Select by Object Property > By Annotation Style"
+ },
+ "SelBadObjects": {
+  "desc": "Select all objects that do not pass",
+  "where": ""
+ },
+ "SelBlockInstance": {
+  "desc": "Select all block instances.",
+  "where": "Select Edit Select Objects > Blocks Block Instances"
+ },
+ "SelBlockInstanceNamed": {
+  "desc": "Select all block instances by name.",
+  "where": "Select Edit Select by Object Property > By Block Name"
+ },
+ "SelBoundary": {
+  "desc": "Selects objects with a view based boundary defined by a closed curve.",
+  "where": "Select Edit Select Objects > Area and Volume Select > Boundary"
+ },
+ "SelBox": {
+  "desc": "Select objects inside, outside, or crossing a box-shaped volume.",
+  "where": "Select Edit Select Objects > Area and Volume Select > Box"
+ },
+ "SelBrush": {
+  "desc": "Drag the mouse like a brush stroke to select objects.",
+  "where": "Select SubD Tools Edit Select Objects > Area and Volume Select > Brush"
+ },
+ "SelBrushPoints": {
+  "desc": "Drag mouse like a brush stroke to select points and control points.",
+  "where": "Select Points Edit Control Points > Select Control Points > Brush"
+ },
+ "SelCaptives": {
+  "desc": "Select captive objects of a specified cage controls.",
+  "where": "Cage"
+ },
+ "SelChain": {
+  "desc": "Select curve or surface edges that touch end-to-end.",
+  "where": "Select Select Chain Edit Select Objects > Chain"
+ },
+ "SelChildren": {
+  "desc": "Select children of specified parents.",
+  "where": "History Select History Edit Select Objects > History > Children"
+ },
+ "SelCircular": {
+  "desc": "Draws a circle on the view plane to select objects.",
+  "where": "Select Edit Select Objects > Area and Volume Select > Circular"
+ },
+ "SelClippingPlane": {
+  "desc": "Select all clipping planes.",
+  "where": "Select Edit Select Objects > Clipping Planes"
+ },
+ "SelClippingPlaneInViewport": {
+  "desc": "Selects the clipping planes that clip the current model or detail viewport.",
+  "where": "New Select Visibility Select Edit Select Objects > Clipping Planes in Viewport"
+ },
+ "SelClosedCrv": {
+  "desc": "Select all closed curves.",
+  "where": "Select Curves"
+ },
+ "SelClosedMesh": {
+  "desc": "Select all closed mesh objects.",
+  "where": "Select Meshes"
+ },
+ "SelClosedPolysrf": {
+  "desc": "Select all closed polysurfaces.",
+  "where": "Select Polysurfaces"
+ },
+ "SelClosedSrf": {
+  "desc": "Select all closed surfaces.",
+  "where": "Select Surfaces"
+ },
+ "SelClosedSubD": {
+  "desc": "Select all Triceratops SubD objects in the model that do not have a boundary and are not locked or hidden.",
+  "where": ""
+ },
+ "SelColor": {
+  "desc": "Selects all objects of a specified display color or material diffuse color depending on the display mode of the active viewport.",
+  "where": "Select Edit Select by Object Property > By Color"
+ },
+ "SelConnected": {
+  "desc": "Select adjacent control points.",
+  "where": "Select Points Edit Control Points > Select Control Points > Connected"
+ },
+ "SelConnectedMeshFaces": {
+  "desc": "Select mesh faces from the parent mesh object that are connected to a selected face.",
+  "where": ""
+ },
+ "SelControlPoint": {
+  "desc": "Select all control points.",
+  "where": "Select Points"
+ },
+ "SelControlPointRegion": {
+  "desc": "Select a range of control points on a curve or surface.",
+  "where": "Select Points"
+ },
+ "SelControls": {
+  "desc": "Select all cage controls.",
+  "where": "Cage"
+ },
+ "SelCrossing": {
+  "desc": "Select with a crossing window.",
+  "where": "Shortcut"
+ },
+ "SelCrv": {
+  "desc": "Select all curves.",
+  "where": "Select Select Curves Edit Select Objects > Curves"
+ },
+ "SelDetail": {
+  "desc": "Select all Detail view rectangles in a Layout viewport.",
+  "where": ""
+ },
+ "SelDim": {
+  "desc": "Select all dimensions.",
+  "where": "Drafting Select Edit Select Objects > Dimensions"
+ },
+ "SelDimAngular": {
+  "desc": "Selects all angular dimension objects.",
+  "where": "Select Dimensions Edit Dimension Types > Angular Dimensions"
+ },
+ "SelDimCentermark": {
+  "desc": "Selects all center mark dimension objects.",
+  "where": "Select Dimensions Edit Dimension Types > Centermarks"
+ },
+ "SelDimLinear": {
+  "desc": "Selects all linear dimension objects.",
+  "where": "Select Dimensions Edit Dimension Types > Linear Dimensions"
+ },
+ "SelDimOrdinate": {
+  "desc": "Selects all ordinate dimension objects.",
+  "where": "Select Dimensions Edit Dimension Types > Ordinate Dimensions"
+ },
+ "SelDimOverride": {
+  "desc": "Selects dimension objects that have style settings changed and different from the associated annotation styles.",
+  "where": "Select Dimensions Edit Select Objects > Dimensions with Style Override"
+ },
+ "SelDimRadial": {
+  "desc": "Selects all radius and diameter dimension objects.",
+  "where": "Select Dimensions Edit Dimension Types > Radial Dimensions"
+ },
+ "SelDimTextOverride": {
+  "desc": "Selects dimension objects with non-default dimension text.",
+  "where": "Select Dimensions Edit Select Objects > Dimensions with Text Override"
+ },
+ "SelDot": {
+  "desc": "Select all annotation dots.",
+  "where": "Select"
+ },
+ "SelDup": {
+  "desc": "Select geometrically identical objects.",
+  "where": "Select Edit Select Objects > Duplicate Objects"
+ },
+ "SelDupAll": {
+  "desc": "Select all visible geometrically identical objects.",
+  "where": "Select"
+ },
+ "SelEdgeLoop": {
+  "desc": "Selects a loop of mesh/SubD edges by picking an edge in the loop.",
+  "where": "Select Meshes Select SubD SubD Tools Texture Tools"
+ },
+ "SelEdgeRing": {
+  "desc": "Selects a ring of mesh/SubD edges by picking an edge in the ring.",
+  "where": "Select Meshes Select SubD SubD Tools"
+ },
+ "SelExtrusion": {
+  "desc": "Select Extrusion objects.",
+  "where": "Select Polysurfaces Edit Select Objects > Extrusions"
+ },
+ "SelFaceLoop": {
+  "desc": "Selects a loop of mesh/SubD faces by picking an edge between any two faces in the loop.",
+  "where": "Select Meshes Select SubD SubD Tools"
+ },
+ "SelFacesToBoundary": {
+  "desc": "Selects SubD or mesh faces surrounded by selected faces, borders, or both.",
+  "where": "New Select SubD SubD Tools Edit Select Objects > Faces to Boundary"
+ },
+ "SelFence": {
+  "desc": "Select a using a crossing sketched polyline.",
+  "where": "Select"
+ },
+ "SelFontUse": {
+  "desc": "Selects annotations by font.",
+  "where": "Select Dimensions Edit Select by Object Property > By Annotation Font"
+ },
+ "SelGroup": {
+  "desc": "Select a group by name.",
+  "where": "Select Edit Select by Object Property > By Group Name"
+ },
+ "SelHatch": {
+  "desc": "Select hatch objects.",
+  "where": "Select Edit Select Objects > Hatches"
+ },
+ "SelID": {
+  "desc": "Select objects by object ID number.",
+  "where": "Select"
+ },
+ "SelKey": {
+  "desc": "Select objects by their user attribute key.",
+  "where": "Select"
+ },
+ "SelKeyValue": {
+  "desc": "Select objects by their user attribute key and value.",
+  "where": "Select"
+ },
+ "SelLast": {
+  "desc": "Select the last changed objects.",
+  "where": "Select Edit Select Objects > Last Created Objects"
+ },
+ "SelLayer": {
+  "desc": "Select all objects on a layer.",
+  "where": "Select Edit Select by Object Property > By Layer"
+ },
+ "SelLayerNumber": {
+  "desc": "Select objects by layer number.",
+  "where": "Select"
+ },
+ "SelLeader": {
+  "desc": "Select all leaders.",
+  "where": "Not on toolbars. Edit Select Objects > Leaders"
+ },
+ "SelLight": {
+  "desc": "Select all lights.",
+  "where": "Select Edit Select Objects > Lights"
+ },
+ "SelLine": {
+  "desc": "Select all lines.",
+  "where": "Select Curves Edit Select Objects > Lines"
+ },
+ "SelLinetype": {
+  "desc": "Select objects with the specified linetype.",
+  "where": "Select Curves"
+ },
+ "SelMappingWidget": {
+  "desc": "Select all texture mapping widgets.",
+  "where": ""
+ },
+ "SelMaterialName": {
+  "desc": "Selects objects/sub-objects with the same render material name.",
+  "where": ""
+ },
+ "SelMesh": {
+  "desc": "Select all mesh objects.",
+  "where": "Select Select Meshes Edit Select Objects > Polygon Meshes"
+ },
+ "SelMeshEdges": {
+  "desc": "Select edges from the parent mesh determined by an angle between mesh face normals.",
+  "where": ""
+ },
+ "SelMeshFacesByArea": {
+  "desc": "Select mesh faces from the parent mesh object that are within a specified range of area.",
+  "where": ""
+ },
+ "SelMeshFacesByAspectRatio": {
+  "desc": "Select mesh faces from the parent mesh object that are greater than the specified aspect ratio limit.",
+  "where": ""
+ },
+ "SelMeshFacesByDraftAngle": {
+  "desc": "Separate mesh faces from the parent mesh object based on the angle of the faces to the view.",
+  "where": ""
+ },
+ "SelMeshFacesByEdgeLength": {
+  "desc": "Select mesh faces from the parent mesh object that have an edge length greater or less than a specified value.",
+  "where": ""
+ },
+ "SelMeshPart": {
+  "desc": "Select all mesh faces radiating out from the selected face to naked or unwelded edges in the parent mesh object.",
+  "where": ""
+ },
+ "SelMirroredBlocks": {
+  "desc": "Selects the block instances that were mirrored or scaled with a negative factor.",
+  "where": "New Select Edit Select Objects > Blocks Mirrored Block Instances"
+ },
+ "SelNakedMeshEdgePt": {
+  "desc": "Select unwelded vertices on mesh edges.",
+  "where": "STL Tools"
+ },
+ "SelName": {
+  "desc": "Select objects by name.",
+  "where": "Select Edit Select by Object Property > By Object Name"
+ },
+ "SelNamedViewWidget": {
+  "desc": "Select all",
+  "where": ""
+ },
+ "SelNonManifold": {
+  "desc": "Select non-manifold objects.",
+  "where": "Select"
+ },
+ "SelNone": {
+  "desc": "Deselect all objects.",
+  "where": "Shortcut Select Standard Edit Select Objects > None Esc"
+ },
+ "SelObjectsWithHistory": {
+  "desc": "Select objects that have history.",
+  "where": "History Select Select History Edit Select Objects > History > Objects with History"
+ },
+ "SelOpenCrv": {
+  "desc": "Select all open curves.",
+  "where": "Select Curves"
+ },
+ "SelOpenMesh": {
+  "desc": "Select all open mesh objects.",
+  "where": "Select Meshes"
+ },
+ "SelOpenPolysrf": {
+  "desc": "Select all open polysurfaces.",
+  "where": "Edge Tools Select Polysurfaces"
+ },
+ "SelOpenSrf": {
+  "desc": "Select all open surfaces.",
+  "where": "Select Surfaces"
+ },
+ "SelOpenSubD": {
+  "desc": "Select all Triceratops SubD objects in the model that have a boundary and are not locked or hidden.",
+  "where": ""
+ },
+ "SelParents": {
+  "desc": "Select parents of specified children.",
+  "where": "History Select History Edit Select Objects > History > Parents"
+ },
+ "SelPicture": {
+  "desc": "Select all objects created with the",
+  "where": ""
+ },
+ "SelPlanarCrv": {
+  "desc": "Select all planar curves.",
+  "where": "Select Curves"
+ },
+ "SelPlanarSrf": {
+  "desc": "Select all planar surfaces.",
+  "where": "Select Surfaces"
+ },
+ "SelPolyline": {
+  "desc": "Select all polylines.",
+  "where": "Select Curves Edit Select Objects > Polylines"
+ },
+ "SelPolysrf": {
+  "desc": "Select all polysurfaces.",
+  "where": "Alias Select Select Polysurfaces Edit Select Objects > Polysurfaces SelPolysurface"
+ },
+ "SelPrev": {
+  "desc": "Re-select the previous selection set.",
+  "where": "Select Edit Select Objects > Previous Selection"
+ },
+ "SelPt": {
+  "desc": "Select all",
+  "where": ""
+ },
+ "SelPtCloud": {
+  "desc": "Select all point cloud objects.",
+  "where": "Select"
+ },
+ "SelRectangular": {
+  "desc": "Emulates the regular window selection action with some control options.",
+  "where": "New Select Edit Select Objects > Area and Volume Select > Rectangular"
+ },
+ "SelRenderColor": {
+  "desc": "Select objects by their render color.",
+  "where": ""
+ },
+ "SelSelfIntersectingCrv": {
+  "desc": "Selects the curves that pass through themselves.",
+  "where": "Select Curves Edit Select Objects > Self‑Intersecting Curves"
+ },
+ "SelShortCrv": {
+  "desc": "Select all curves shorter than a specified length.",
+  "where": "Select Curves"
+ },
+ "SelSmall": {
+  "desc": "Select all objects smaller than a specified size.",
+  "where": "Select Edit Select Objects > Area and Volume Select > Small Objects"
+ },
+ "SelSrf": {
+  "desc": "Select all surfaces.",
+  "where": "Select Select Surfaces Edit Select Objects > Surfaces"
+ },
+ "SelSubD": {
+  "desc": "Select all Triceratops SubD objects in the model that are not locked or hidden.",
+  "where": "Select SubD SubD Tools Edit Select Objects > SubD objects"
+ },
+ "SelSubDEdges": {
+  "desc": "Selects different types of edges on selected SubDs.",
+  "where": "Edge Tools New Select SubD SubD Tools"
+ },
+ "SelSubDFriendlyCrv": {
+  "desc": "Selects SubD friendly (compatible) curves.",
+  "where": "Select Curves Select SubD Edit Select Objects > SubD Friendly Curves"
+ },
+ "SelText": {
+  "desc": "Select all text.",
+  "where": "Select Edit Select Objects > Text"
+ },
+ "SelTrimmedSrf": {
+  "desc": "Select all trimmed surfaces.",
+  "where": "Select Surfaces"
+ },
+ "SelU": {
+  "desc": "Select all connected control points in the u direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Select U"
+ },
+ "SelUV": {
+  "desc": "Select connected control points in the u and v directions.",
+  "where": "Select Points Edit Control Points > Select Control Points > Select UV"
+ },
+ "SelUntrimmedSrf": {
+  "desc": "Select all untrimmed surfaces.",
+  "where": "Select Surfaces"
+ },
+ "SelV": {
+  "desc": "Select all connected control points in v direction.",
+  "where": "Select Points Edit Control Points > Select Control Points > Select V"
+ },
+ "SelValue": {
+  "desc": "Select objects by their user attribute value.",
+  "where": "Select"
+ },
+ "SelVisible": {
+  "desc": "Select all surfaces or meshes that are in front of other objects with a crossing selection.",
+  "where": "Select Meshes Select Polysurfaces Select Surfaces Edit Select Objects > Visible Surfaces and Meshes"
+ },
+ "SelVolumeObject": {
+  "desc": "Select objects enclosed by an extrusion object, surface, polysurface, or mesh.",
+  "where": "Select"
+ },
+ "SelVolumePipe": {
+  "desc": "Select objects inside, outside, or crossing a pipe-shaped volume.",
+  "where": "Not on toolbars. Edit Select Objects > Area and Volume Select > Pipe"
+ },
+ "SelVolumeSphere": {
+  "desc": "Select objects inside, outside, or crossing a spherical volume.",
+  "where": "Select Edit Select Objects > Area and Volume Select > Sphere"
+ },
+ "SelWindow": {
+  "desc": "Select with an enclosing window.",
+  "where": "Alias"
+ },
+ "Select": {
+  "desc": "Select objects.",
+  "where": ""
+ },
+ "SelectionFilter": {
+  "desc": "Restrict a selection mode to specified object types.",
+  "where": "Status bar Select Edit Selection Filter Filter"
+ },
+ "SelectionFilterEdges": {
+  "desc": "Restricts selection to edges of surfaces, meshes, and SubDs.",
+  "where": "Select SubD SubD Tools"
+ },
+ "SelectionFilterEnable": {
+  "desc": "Enables or disables the global selection filter.",
+  "where": ""
+ },
+ "SelectionFilterFaces": {
+  "desc": "The SelectionFilterFaces command restricts selection to surfaces, mesh faces, and SubD faces.",
+  "where": "Select SubD SubD Tools"
+ },
+ "SelectionFilterNone": {
+  "desc": "Resets the filter settings. Object selection returns to the default behavior.",
+  "where": "Select SubD SubD Tools Select"
+ },
+ "SelectionFilterToggle": {
+  "desc": "Cycles sub-object selection filters through surfaces/faces, curves/edges, points/vertices/control points, and none.",
+  "where": "Shortcut"
+ },
+ "SelectionFilterVertices": {
+  "desc": "Restricts selection to object grips .",
+  "where": "Select SubD SubD Tools"
+ },
+ "SendBackward": {
+  "desc": "Makes the selected object display one level down in the draw order.",
+  "where": "Draw Order Edit Arrange > Send Backward"
+ },
+ "SendToBack": {
+  "desc": "Makes the selected object display behind all other objects.",
+  "where": "Draw Order Edit Arrange > Send to Back"
+ },
+ "SetActiveViewport": {
+  "desc": "Activate a named viewport.",
+  "where": "Not on toolbars. View / Viewport title Active Viewport"
+ },
+ "SetCurrentRenderPlugIn": {
+  "desc": "Specify a rendering plug-in.",
+  "where": "Not on toolbars. Render Current Render"
+ },
+ "SetCustomLinetype": {
+  "desc": "Edits an object's custom linetype properties in a floating dialog.",
+  "where": ""
+ },
+ "SetDimensionLayer": {
+  "desc": "Decides if dimensions will be created on the current layer or the specified layer.",
+  "where": "Dimension Layer Drafting Set Dimension Layer"
+ },
+ "SetDisplayMode": {
+  "desc": "Specify a viewport display mode.",
+  "where": "Shortcuts"
+ },
+ "SetDocumentUserText": {
+  "desc": "command.",
+  "where": ""
+ },
+ "SetFlythroughAnimation": {
+  "desc": "Animate the camera and target movement along a path curve.",
+  "where": "Animation Setup"
+ },
+ "SetGroupName": {
+  "desc": "Name a group.",
+  "where": "Grouping Edit Groups > Set Group Name"
+ },
+ "SetIgesLayerLevelMap": {
+  "desc": "Control the correspondence between Triceratops layers and IGES levels.",
+  "where": ""
+ },
+ "SetLayerLinetype": {
+  "desc": "Specify a linetype for a specified layer.",
+  "where": ""
+ },
+ "SetLayerToObject": {
+  "desc": "Set the current layer to match a specified object.",
+  "where": "Layer Edit Layers > Set Current Layer to Object"
+ },
+ "SetLinetype": {
+  "desc": "Specify a curve's linetype.",
+  "where": "Dimension Drafting"
+ },
+ "SetLinetypeScale": {
+  "desc": "Specify the global linetype scale from the command line.",
+  "where": ""
+ },
+ "SetMaximizedViewport": {
+  "desc": "Maximize a named viewport inside the application window.",
+  "where": "Shortcut"
+ },
+ "SetMeshSurfaceParameters": {
+  "desc": "Bakes the custom mapping of a mesh object into its default surface mapping .",
+  "where": ""
+ },
+ "SetObjectDisplayMode": {
+  "desc": "Assign separate display attributes to objects, overriding viewport settings.",
+  "where": "Display"
+ },
+ "SetObjectName": {
+  "desc": "Assign a name to an object.",
+  "where": ""
+ },
+ "SetOneDaySunAnimation": {
+  "desc": "Animate sun movement through a specified calendar day.",
+  "where": "Animation Setup"
+ },
+ "SetOrtho": {
+  "desc": "Turn ortho mode on, off, or toggle the current state.",
+  "where": "Status bar"
+ },
+ "SetPathAnimation": {
+  "desc": "Animate the camera and target movement along separate path curves.",
+  "where": "Animation Setup"
+ },
+ "SetPerFaceColorByFacePack": {
+  "desc": "Changes colors of SubD faces based on the divisions of rectangular quad grids.",
+  "where": "Display SubD Tools SubD Edit Tools > Set Per Face Color By Face Pack"
+ },
+ "SetPlanar": {
+  "desc": "Turn Planar mode on, off, or toggle the current state.",
+  "where": "Status bar"
+ },
+ "SetPt": {
+  "desc": "Moves selected points and control points of objects to a specified location in the x, y, and/or z directions.",
+  "where": "Transform Transform Set XYZ Coordinates"
+ },
+ "SetRedrawOff": {
+  "desc": "Disable screen redraw, construction plane, and view changes during scripts.",
+  "where": "View"
+ },
+ "SetRedrawOn": {
+  "desc": "Enable screen redraw, construction plane, and view changes during scripts.",
+  "where": "View"
+ },
+ "SetSeasonalSunAnimation": {
+  "desc": "Animate sun movement through a specified week, month, or year.",
+  "where": "Animation Setup"
+ },
+ "SetSnap": {
+  "desc": "Turn grid snap on, off, or toggle the current state.",
+  "where": "Status bar"
+ },
+ "SetSpotlightToView": {
+  "desc": "Match spotlight direction to the viewport camera direction.",
+  "where": "Light Tools Render Tools Render Set Spotlight to View"
+ },
+ "SetSurfaceTangent": {
+  "desc": "Set the tangent direction of an untrimmed surface.",
+  "where": "Surface Tools Surface Surface Edit Tools > Set Edge Tangent Direction"
+ },
+ "SetTurntableAnimation": {
+  "desc": "Animate camera rotation once around the current target point.",
+  "where": "Animation Setup"
+ },
+ "SetUserText": {
+  "desc": "command.",
+  "where": ""
+ },
+ "SetView": {
+  "desc": "Change the view to a standard construction plane view.",
+  "where": "CPlane View Render Tools Set View Standard View / Viewport title Set View <Options>"
+ },
+ "SetViewFocusDistance": {
+  "desc": "Pick a point in a perspective viewport to set the in-focus distance in rendering when Focal Blur is enabled.",
+  "where": ""
+ },
+ "SetViewToSpotlight": {
+  "desc": "Match the view to a spotlight direction.",
+  "where": "Light Tools Render Tools Render Set View to Spotlight"
+ },
+ "SetWorkingFolder": {
+  "desc": "Specify the default folder for saving and opening files.",
+  "where": "File"
+ },
+ "SetZoomExtentsBorder": {
+  "desc": "Set distance between objects and viewport edges for Zoom Extents.",
+  "where": ""
+ },
+ "Shade": {
+  "desc": "Temporarily shade the current viewport.",
+  "where": "Display Standard"
+ },
+ "ShadeSelected": {
+  "desc": "Shade selected objects only.",
+  "where": "Display View Viewport title Shade Selected Objects Only"
+ },
+ "Shear": {
+  "desc": "Skew objects parallel to one axis at an angle.",
+  "where": "Transform SubD Sidebar Transform Shear"
+ },
+ "Shell": {
+  "desc": "Remove the selected surfaces from a polysurface, and then offset the remaining surfaces to create a solid with a specified thickness.",
+  "where": "Solid Tools Solids Sidebar Solid Shell"
+ },
+ "ShortPath": {
+  "desc": "Create the shortest possible curve (geodesic) between two points on a surface.",
+  "where": "Curve from Object"
+ },
+ "Show": {
+  "desc": "Redisplay all hidden objects.",
+  "where": "Shortcut Geometry Fix Hide Clusters Organic Popup Standard Visibility Visibility Edit Visibility > Show Ctrl + Alt + H"
+ },
+ "ShowDir": {
+  "desc": "Open the Direction Analysis control and turn on direction analysis for curves, surfaces, and polysurfaces.",
+  "where": "Analyze Surface Analysis Surface Tools"
+ },
+ "ShowDirOff": {
+  "desc": "Close the Direction Analysis control, and turn off direction analysis.",
+  "where": "Analyze Surface Analysis Surface Tools"
+ },
+ "ShowEdges": {
+  "desc": "Highlight edges of surfaces and polysurfaces. Displays the Edge Analysis control.",
+  "where": "Analyze Diagnostics Edge Tools Geometry Fix Surface Tools Surface and Analyze Edge Tools > Show Edges"
+ },
+ "ShowEdgesOff": {
+  "desc": "Turn off edge display.",
+  "where": "Analyze Diagnostics Edge Tools Geometry Fix Surface Tools Analyze Edge Tools > Show Edges"
+ },
+ "ShowEnds": {
+  "desc": "Open the End Analysis control, and display the endpoints of curves.",
+  "where": "Analyze Curve Tools Diagnostics Analyze Curve > Show Ends"
+ },
+ "ShowEndsOff": {
+  "desc": "Close the End Analysis control, and turn off endpoints of curves.",
+  "where": "Analyze Curve Tools Diagnostics"
+ },
+ "ShowInDetail": {
+  "desc": "Redisplay hidden objects in a detail view.",
+  "where": "Layout Visibility"
+ },
+ "ShowLayersInDetail": {
+  "desc": "Redisplay hidden layers in a detail view.",
+  "where": "Layout Visibility"
+ },
+ "ShowOsnap": {
+  "desc": "Show the Osnap panel.",
+  "where": "Object Snap Standard Tools Object Snap > Persistent Osnap Dialog Window Panels > Osnap"
+ },
+ "ShowPt": {
+  "desc": "Redisplay all hidden control points and edit points.",
+  "where": "STL Tools Visibility Select Points Edit Control Points > Show Points"
+ },
+ "ShowRenderMesh": {
+  "desc": "command.",
+  "where": ""
+ },
+ "ShowSelected": {
+  "desc": "Redisplay selected hidden objects.",
+  "where": "Shortcut Visibility Geometry Fix Edit Visibility > Show Selected Ctrl (CMD) + Shift + H"
+ },
+ "ShowSelectedInDetail": {
+  "desc": "Redisplay selected hidden objects in a detail view.",
+  "where": "Layout Visibility"
+ },
+ "ShowToolbar": {
+  "desc": "Open a specified toolbar.",
+  "where": "Not on toolbars. Window Toolbars"
+ },
+ "ShowZBuffer": {
+  "desc": "Create a grayscale z-buffer bitmap with the same dimensions as the viewport.",
+  "where": ""
+ },
+ "ShrinkTrimmedSrf": {
+  "desc": "Contract the underlying untrimmed surface close to trimming boundaries.",
+  "where": "Geometry Fix Surface Tools Surface Surface Edit Tools > Shrink Trimmed Surface"
+ },
+ "ShrinkTrimmedSrfToEdge": {
+  "desc": "Contract the underlying untrimmed surface as close as possible to the trimming boundaries.",
+  "where": "Geometry Fix Surface Tools"
+ },
+ "ShrinkWrap": {
+  "desc": "Creates a mesh wrapping around the selected geometry including NURBS surfaces, SubDs, meshes, pointclouds, and point objects.",
+  "where": "New Mesh Tools Mesh Shrink Wrap"
+ },
+ "Silhouette": {
+  "desc": "Create outline curves from a surface or polysurface.",
+  "where": "Curve from Object Curve Curve From Objects > Silhouette"
+ },
+ "SimplifyCrv": {
+  "desc": "Replace each curve segment that has the geometry of a line or an arc with a true line or arc.",
+  "where": "Curve Tools Curve Curve Edit Tools > Simplify Lines and Arcs"
+ },
+ "Sketch": {
+  "desc": "Drag the mouse to draw a curve.",
+  "where": "Curve Curve Drawing Curve Free-Form > Sketch Sketch on Surface Sketch on Polygon Mesh"
+ },
+ "Slab": {
+  "desc": "Offset a polyline, and extrude and cap the result to create a solid.",
+  "where": "Extrude Solid Solid Slab"
+ },
+ "Slide": {
+  "desc": "Moves selected vertices (or vertices of selected edges) along adjacent edges.",
+  "where": "Mesh Tools SubD Tools Transform SubD / Mesh Edit Tools > Slide"
+ },
+ "Smash": {
+  "desc": "Flatten a surface without restriction to single-directional curvature.",
+  "where": "Surface Tools Surface > Surface Flattening > Smash Double-Curved Surface"
+ },
+ "Smooth": {
+  "desc": "Average the positions of curve and surface control points and mesh vertices and evens out the spacing to remove unwanted detail and loops.",
+  "where": "Geometry Fix Transform SubD Sidebar Transform Smooth"
+ },
+ "Snap": {
+  "desc": "Toggle the current snap mode state.",
+  "where": "Shortcut Alias Status bar"
+ },
+ "SnapSize": {
+  "desc": "Specify the grid snap spacing.",
+  "where": "Status bar Object Snap"
+ },
+ "SnapToLocked": {
+  "desc": "Allow snaps to work on locked objects and locked layers.",
+  "where": "Object Snap Tools Object Snap > Snap To Locked Objects"
+ },
+ "SnapToMeshObject": {
+  "desc": "Constrains mouse picking on the selected mesh object.",
+  "where": "Object Snap Tools Object Snap > Snap to Mesh Object"
+ },
+ "SnapToMeshes": {
+  "desc": "Enables/disables snapping to mesh edges using Near, Mid, Int, and Perp object snaps.",
+  "where": "Options"
+ },
+ "SnapToOccluded": {
+  "desc": "Allow object snaps to work on objects that are hidden behind other objects.",
+  "where": ""
+ },
+ "SnapToSubDObject": {
+  "desc": "Constrains mouse picking on the selected SubD object.",
+  "where": "Object Snap New Curve Tools Object Snap > Snap to SubD Object"
+ },
+ "Snapshots": {
+  "desc": "The Snapshots command saves and restores",
+  "where": ""
+ },
+ "SoftEditCrv": {
+  "desc": "Move the surrounding curve area smoothly relative to the distance.",
+  "where": "Move Transform Curve Curve Edit Tools > Soft Edit"
+ },
+ "SoftEditSrf": {
+  "desc": "Move the surrounding surface area smoothly relative to the distance.",
+  "where": "Move Surface Surface Edit Tools > Soft Edit"
+ },
+ "SoftMove": {
+  "desc": "Move objects relative to a center with falloff.",
+  "where": "Move Transform Soft Move"
+ },
+ "SoftTransform": {
+  "desc": "Changes moving behavior of mesh and SubD vertices based on different radial falloff shapes.",
+  "where": "Move Transform SubD Sidebar"
+ },
+ "SolidPtOn": {
+  "desc": "Turn on pseudo control points for polysurfaces.",
+  "where": "Solid Tools Solid Solid Edit Tools > Turn On Points"
+ },
+ "Sphere": {
+  "desc": "Draw a solid sphere.",
+  "where": "Solid Creation Solids Sidebar Sphere Solid Sphere > <Options>"
+ },
+ "SphereTangentToThreeSurfaces": {
+  "desc": "Create a spherical surface of a given radius tangent to the three selected surfaces.",
+  "where": ""
+ },
+ "Spiral": {
+  "desc": "Draw a spiral curve with options for number of turns, pitch, flat, vertical, and around a curve.",
+  "where": "Curve Curve Spiral"
+ },
+ "Split": {
+  "desc": "Divide objects using other objects as cutters.",
+  "where": "Shortcut Curve Drawing Geometry Fix Main Main2 Solids Sidebar SubD Sidebar Surface Sidebar Edit Split Surface Surface Edit Tools Split at Isocurve SubD Edit Too"
+ },
+ "SplitDisjointMesh": {
+  "desc": "Divide into separate objects meshes that do not connect, but are still one object.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Split Disjoint Mesh"
+ },
+ "SplitEdge": {
+  "desc": "Divide a surface edge.",
+  "where": "Edge Tools Surface Tools Surface and Analyze Edge Tools > Split Edge"
+ },
+ "SplitFace": {
+  "desc": "Divides the selected surface of a polysurface by drawing a polyline, selected curves, or isocurves.",
+  "where": "PushPull Solid Editing Solid Tools Solid Solid Edit Tools > Faces > Split Face"
+ },
+ "SplitMeshEdge": {
+  "desc": "Divide a mesh edge.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Split Edge"
+ },
+ "SplitMeshWithCurve": {
+  "desc": "Divide a mesh with a curve.",
+  "where": ""
+ },
+ "SplitRefitSurface": {
+  "desc": "Splits a surface using a curve, and refits the two parts so that the edges from the split operation become untrimmed edges of two surfaces.",
+  "where": "New Surface Tools"
+ },
+ "SplitViewportHorizontal": {
+  "desc": "Divide a viewport horizontally into two viewports.",
+  "where": "Viewport Layout View / Viewport title Viewport Layout > Split Horizontal"
+ },
+ "SplitViewportVertical": {
+  "desc": "Divide a viewport vertically into two viewports.",
+  "where": "Viewport Layout View / Viewport title Split Vertical"
+ },
+ "Splop": {
+  "desc": "Copy, rotate, scale, and wrap objects on a surface.",
+  "where": "Deformation Tools"
+ },
+ "Spotlight": {
+  "desc": "Insert a light cone object.",
+  "where": "Lights Render Tools Standard Render Create Spotlight"
+ },
+ "Squish": {
+  "desc": "Flatten a non-developable (curved in two directions) 3-D mesh or NURBS surface into a flat 2-D pattern.",
+  "where": "Surface Tools Surface > Surface Flattening > Squish Double-Curved Surface"
+ },
+ "SquishBack": {
+  "desc": "Return curves and surfaces to the original",
+  "where": ""
+ },
+ "SquishInfo": {
+  "desc": "Provide information about the settings used to squish the object.",
+  "where": ""
+ },
+ "SrfControlPtGrid": {
+  "desc": "Draw a surface from a grid of points that represent surface control points.",
+  "where": "Surface Creation Surface Sidebar"
+ },
+ "SrfPt": {
+  "desc": "Draw a surface from three or four corner points.",
+  "where": "Main Main1 Surface Creation Surface Sidebar Surface Corner Points"
+ },
+ "SrfPtGrid": {
+  "desc": "Draw a surface from a grid of points that lie on the surface.",
+  "where": "Surface Creation Surface Sidebar Surface Point Grid"
+ },
+ "SrfSeam": {
+  "desc": "Change the location where the start and end edges meet on a closed surface.",
+  "where": "Surface Tools Surface Surface Edit Tools > Adjust Closed Surface Seam"
+ },
+ "StepUnitsAndTolerance": {
+  "desc": "The StepUnitsAndTolerance command prompts to select a STEP file and reports its unit and tolerance.",
+  "where": ""
+ },
+ "Stitch": {
+  "desc": "Matches the positions of a pair of mesh/SubD vertices.",
+  "where": "Mesh Tools SubD Tools Mesh / SubD Edit Tools > Stitch"
+ },
+ "Stretch": {
+  "desc": "Scale areas of an object in one direction.",
+  "where": "Deformation Tools SubD Sidebar Transform Stretch"
+ },
+ "SubCrv": {
+  "desc": "Shorten a curve to the new picked endpoints and select.",
+  "where": "Curve Tools Select Curves Curve Curve Edit Tools > Subcurve"
+ },
+ "SubDBox": {
+  "desc": "Creates a Subdivision box object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Box"
+ },
+ "SubDCone": {
+  "desc": "Creates a Subdivision cone object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Cone"
+ },
+ "SubDCrease": {
+  "desc": "Adds weight-blended soft crease edges to SubDs.",
+  "where": "New SubD Tools SubD Edit Tools > Soft Crease"
+ },
+ "SubDCylinder": {
+  "desc": "Creates a Subdivision cylinder object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Cylinder"
+ },
+ "SubDDisplayToggle": {
+  "desc": "Switches the appearance of all SubD objects between box (flat) and smooth modes.",
+  "where": "Shortcut Display SubD Tools View / Viewport Title SubD Display Toggle Tab"
+ },
+ "SubDEllipsoid": {
+  "desc": "Creates a Subdivision ellipsoid object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Ellipsoid"
+ },
+ "SubDExpandEdges": {
+  "desc": "Expands selected SubD edges into faces.",
+  "where": "SubD Tools SubD Expand Edges"
+ },
+ "SubDFaceEdgeVertexToggle": {
+  "desc": "Toggles SubD sub-object selection between SubD faces, edges, and vertices.",
+  "where": "Select SubD SubD Tools"
+ },
+ "SubDLoft": {
+  "desc": "Creates a SubD through selected curves that define the shape.",
+  "where": "SubD Tools SubD Sidebar SubD Loft"
+ },
+ "SubDPlane": {
+  "desc": "Creates a subdivision plane object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Plane"
+ },
+ "SubDSphere": {
+  "desc": "Creates a subdivision sphere object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Sphere"
+ },
+ "SubDSpinEdge": {
+  "desc": "Rotates a picked SubD edge by marching each end to the next vertex simultaneously.",
+  "where": "New SubD Tools SubD Edit Tools > Spin Edge"
+ },
+ "SubDSweep1": {
+  "desc": "The SubDSweep1 command sweeps a shape curve along a rail curve to create a SubD.",
+  "where": "SubD Tools SubD Sidebar SubD Sweep 1 rail"
+ },
+ "SubDSweep2": {
+  "desc": "The SubDSweep2 command sweeps a shape curve along two rail curves to create a SubD.",
+  "where": "SubD Tools SubD Sidebar SubD Sweep 2 rails"
+ },
+ "SubDTorus": {
+  "desc": "Creates a subdivision torus object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Torus"
+ },
+ "SubDTruncatedCone": {
+  "desc": "Creates a subdivision truncated cone object.",
+  "where": "SubD Tools SubD Sidebar SubD Primitives > Truncated Cone"
+ },
+ "SubDUnfriend": {
+  "desc": "Makes the constrained control points of a SubD friendly curve editable.",
+  "where": "SubD Tools Curve Curve Edit Tools > SubDUnfriend"
+ },
+ "SubDivide": {
+  "desc": "Applies iterations of the Catmull-Clark subdivision to whole Mesh/SubD objects or selected faces.",
+  "where": "SubD Tools Mesh / SubD Edit Tools > Subdivide"
+ },
+ "Sun": {
+  "desc": "Open the Sun panel.",
+  "where": "Render Tools Render / Window Panels > Sun"
+ },
+ "SwapMeshEdge": {
+  "desc": "Transpose the corners of mesh triangles.",
+  "where": "Mesh Tools Mesh Mesh Repair Tools > Swap Edge"
+ },
+ "SwapView": {
+  "desc": "Exchange the views in two viewports with one another.",
+  "where": ""
+ },
+ "Sweep1": {
+  "desc": "Fit a surface through profile curves and one edge curve.",
+  "where": "Surface Creation Surface Sidebar Surface Sweep 1 Rail"
+ },
+ "Sweep2": {
+  "desc": "Fit a surface through profile curves and two edge curves.",
+  "where": "Surface Creation Surface Sidebar Surface Sweep 2 Rails"
+ },
+ "Symmetry": {
+  "desc": "Mirror a copy of a curve or surface with continuity.",
+  "where": "Curve Tools Surface Tools Transform Symmetry"
+ },
+ "SynchronizeCPlanes": {
+  "desc": "Update all viewports to standard views.",
+  "where": ""
+ },
+ "SynchronizeRenderColors": {
+  "desc": "Change an object's material color to match its display color.",
+  "where": "Render Tools"
+ },
+ "SystemInfo": {
+  "desc": "Reports information about the computer hardware and operating system.",
+  "where": "Diagnostics Tools Help System Information"
+ },
+ "Taper": {
+  "desc": "Deform objects toward or away from an axis.",
+  "where": "Deformation Tools Transform SubD Sidebar Transform Taper"
+ },
+ "Text": {
+  "desc": "Create annotation text.",
+  "where": "Dimension Drafting Drafting Text Block"
+ },
+ "TextObject": {
+  "desc": "Draw text-shaped curves, surfaces, or polysurfaces based on TrueType fonts.",
+  "where": "Main Main1 Solid Text"
+ },
+ "TextProperties": {
+  "desc": "Opens the Text page in the Properties panel.",
+  "where": ""
+ },
+ "Textures": {
+  "desc": "Open or close the Textures panel.",
+  "where": "Render Tools Window / Render Panels > Textures"
+ },
+ "ThicknessAnalysis": {
+  "desc": "Use false-color display to evaluate the thickness of a solid.",
+  "where": "Surface Analysis"
+ },
+ "ThicknessAnalysisOff": {
+  "desc": "Turn off thickness analysis display.",
+  "where": "Surface Analysis"
+ },
+ "TiltView": {
+  "desc": "Rotate the view around the view axis.",
+  "where": "View View / Viewport title Set Camera > Tilt View"
+ },
+ "ToNURBS": {
+  "desc": "Convert objects like polycurves, extrusions, meshes, SubDs, true circles and arcs, to NURBS geometry components.",
+  "where": "Geometry Fix SubD Tools"
+ },
+ "ToSubD": {
+  "desc": "Converts a mesh, a surface or an extrusion object into a SubD object.",
+  "where": "Geometry Fix SubD Tools SubD From Object"
+ },
+ "ToggleFloatingViewport": {
+  "desc": "Toggle the viewport between docked and floating.",
+  "where": "Viewport Layout View / Viewport title Viewport Layout > Float Viewport"
+ },
+ "ToggleLeftSidebar": {
+  "desc": "Show or hide the left sidebar of the Triceratops window.",
+  "where": "Status bar"
+ },
+ "ToggleRenderMesh": {
+  "desc": "Toggle the display state of render meshes on an object.",
+  "where": ""
+ },
+ "ToggleRightSidebar": {
+  "desc": "Show or hide the right sidebar of the Triceratops window.",
+  "where": "Status bar"
+ },
+ "ToolbarLock": {
+  "desc": "Locks locations of docked containers.",
+  "where": "Not on toolbars. Toolbar options menu Lock Docked Containers"
+ },
+ "Torus": {
+  "desc": "Draw a NURBS torus (donut shape).",
+  "where": "Solid Creation Solids Sidebar Solid Torus"
+ },
+ "TriangulateMesh": {
+  "desc": "Split each quadrangular mesh face into two triangles.",
+  "where": "Mesh Tools STL Tools"
+ },
+ "TriangulateNonPlanarQuads": {
+  "desc": "Split each non-planar quadrangular mesh face into two triangles.",
+  "where": "Mesh Tools Mesh Edit Tools > Triangulate Non‑Planar Quads"
+ },
+ "TriangulateRenderMeshes": {
+  "desc": "Split each quadrangular polygon render mesh face into two triangles.",
+  "where": ""
+ },
+ "Trim": {
+  "desc": "Cut and delete selected portions of an object at the intersection with another object.",
+  "where": "Shortcut Curve Drawing Geometry Fix Main Main1 Solids Sidebar Surface Sidebar Edit Trim Ctrl (CMD) + T"
+ },
+ "TruncatedCone": {
+  "desc": "Draw a NURBS truncated cone.",
+  "where": "Solids Creation Solids Sidebar Solid Truncated Cone"
+ },
+ "TruncatedPyramid": {
+  "desc": "Draw a pyramid whose apex is truncated by a plane.",
+  "where": "Solid Creation Solids Sidebar Solid Truncated Pyramid"
+ },
+ "Tube": {
+  "desc": "Draw a closed cylinder with a concentric cylindrical hole.",
+  "where": "Solid Creation Solids Sidebar Solid Tube"
+ },
+ "Turntable": {
+  "desc": "Rotate a view around the target.",
+  "where": "Set View View View / Viewport title Set Camera > Turntable"
+ },
+ "Tutorials": {
+  "desc": "Download and open sample and tutorial models.",
+  "where": "Not on toolbars. Help Learn Triceratops > Tutorial and Samples Window Panels > Tutorials"
+ },
+ "TweenCurves": {
+  "desc": "Create curves between two open or closed input curves.",
+  "where": "Curve Curve Tools Curve Tween Curves"
+ },
+ "TweenSurfaces": {
+  "desc": "Create intermediate surfaces between two input surfaces.",
+  "where": "Surface Tools Surface Tween Surfaces"
+ },
+ "Twist": {
+  "desc": "Deform objects by rotating portions around an axis.",
+  "where": "Deformation Tools Transform SubD Sidebar Transform Twist"
+ },
+ "UVEditor": {
+  "desc": "Project the texture coordinates of the selected object to a specified region of space.",
+  "where": "Texture Mapping"
+ },
+ "Undo": {
+  "desc": "Undo the last action.",
+  "where": "Shortcut Alias Geometry Fix Standard Undo Edit Undo Ctrl (CMD) + Z U"
+ },
+ "UndoMultiple": {
+  "desc": "Display a list of recent commands to reverse.",
+  "where": "Undo Edit Undo Multiple"
+ },
+ "UndoSelected": {
+  "desc": "Reverse recent changes for a single object only.",
+  "where": "Undo"
+ },
+ "UndoView": {
+  "desc": "Undo the last view change.",
+  "where": "Shortcut Render Sidebar Set View Standard View View Undo View Change Home"
+ },
+ "Ungroup": {
+  "desc": "Remove the group status from objects.",
+  "where": "Shortcut Grouping Main Main2 Edit Groups > Ungroup Ctrl (CMD) + Shift + G"
+ },
+ "UngroupAll": {
+  "desc": "Ungroups the selected group and the groups nested in it all at once.",
+  "where": "New Grouping Main Edit Groups > Ungroup All"
+ },
+ "UnifyMeshNormals": {
+  "desc": "Change the normal direction mesh faces so they all point in a consistent direction.",
+  "where": "Mesh Tools STL Tools Mesh Mesh Repair Tools > Unify Normals"
+ },
+ "Unisolate": {
+  "desc": "Show objects previously hidden by the",
+  "where": ""
+ },
+ "UnisolateLock": {
+  "desc": "Unlock objects previously hidden by the",
+  "where": ""
+ },
+ "UnjoinEdge": {
+  "desc": "Split joined polysurface edges.",
+  "where": "Solid Creation Solid Tools"
+ },
+ "Unlock": {
+  "desc": "Unlock all locked objects.",
+  "where": "Shortcut Lock Visibility SubD Sidebar Popup Standard Edit Visibility > Unlock Ctrl (CMD) + Alt + L"
+ },
+ "UnlockSelected": {
+  "desc": "Unlock selected locked objects.",
+  "where": "Shortcut Lock Visibility Edit Visibility > Unlock Selected Ctrl (CMD) + Shift + L"
+ },
+ "UnpackTextures": {
+  "desc": "Maps each face of a polysurface to the whole texture UV space. Every face will display the complete texture with some stretch or compression.",
+  "where": "Texture Tools"
+ },
+ "UnrollSrf": {
+  "desc": "Flatten (develop) a surface or polysurface with curvature in one direction to a planar surface.",
+  "where": "Surface Tools Surface Surface Flattening > Unroll Developable Surface"
+ },
+ "UnrollSrfUV": {
+  "desc": "Flatten (",
+  "where": ""
+ },
+ "Untrim": {
+  "desc": "Remove trim curves from trimmed surfaces.",
+  "where": "Geometry Fix Surface Tools Curve Drawing Geometry Fix Main Main1 Solids Sidebar Surface Sidebar Surface Surface Edit Tools > Untrim Detach Trim"
+ },
+ "UntrimAll": {
+  "desc": "Untrims interior (holes) and exterior trims on the selected surfaces all at once.",
+  "where": "Surface Tools Surface Surface Edit Tools > Untrim All Detach All"
+ },
+ "UntrimBorder": {
+  "desc": "Untrims all exterior trims of the selected surfaces. Interior trims (holes) will remain.",
+  "where": "Not on toolbars. Surface Surface Edit Tools > Untrim Border Detach Border"
+ },
+ "UntrimHoles": {
+  "desc": "Untrims selected holes (interior trims) that do not touch surface borders.",
+  "where": "Holes Solid Tools Surface Surface Edit Tools > Detach Holes Untrim Holes Solid Solid Edit Tools > Holes > Delete Hole"
+ },
+ "Unweld": {
+  "desc": "Add creases to a smooth mesh by creating coincident vertices.",
+  "where": "Welding Mesh Edit Tools > Unweld"
+ },
+ "UnweldEdge": {
+  "desc": "Add creases to a smooth mesh by creating coincident vertices along selected edges.",
+  "where": "Welding Mesh Edit Tools > Unweld Selected Edges"
+ },
+ "UnweldVertex": {
+  "desc": "Unweld selected vertices.",
+  "where": "Welding"
+ },
+ "Unwrap": {
+  "desc": "Project surface mapping texture coordinates and the texture of an object onto the world xy plane.",
+  "where": "Texture Mapping"
+ },
+ "UpdateClippingDrawings": {
+  "desc": "Updates clipping drawings to reflect changes in the clipped geometry.",
+  "where": "Sections Drafting Sections > Update Drawings"
+ },
+ "UseExtrusions": {
+  "desc": "Specify whether extrusion objects or polysurfaces are used when extruding straight‑sided objects.",
+  "where": ""
+ },
+ "VariableBlendSrf": {
+  "desc": "Create a blend surface between surface edges with varying radius values.",
+  "where": "Surface Tools Surface Variable Fillet/Chamfer/Blend > Variable Blend Surfaces"
+ },
+ "VariableChamferSrf": {
+  "desc": "Create a chamfer surface between surface edges with varying distance values.",
+  "where": "Surface Tools Surface Variable Fillet/Blend/Chamfer > Variable Chamfer Surfaces"
+ },
+ "VariableFilletSrf": {
+  "desc": "Create a round tangent surface between two surface edges with varying radius values.",
+  "where": "Surface Tools Surface Variable Fillet/Blend/Chamfer > Variable Fillet Surfaces"
+ },
+ "VariableOffsetSrf": {
+  "desc": "Copies a surface in the normal direction with different distances at specified locations.",
+  "where": "Surface Tools Surface Variable Offset Surface"
+ },
+ "ViewCaptureToClipboard": {
+  "desc": "Save an image of the current view to the Clipboard.",
+  "where": "Display Surface Analysis View / Viewport title Capture > To Clipboard"
+ },
+ "ViewCaptureToFile": {
+  "desc": "Save an image of the current view to a file.",
+  "where": "Display Surface Analysis View / Viewport title Capture > To File"
+ },
+ "ViewClippingSections": {
+  "desc": "Displays sections from selected clipping planes in specified viewports..",
+  "where": "Sections Drafting Sections > View"
+ },
+ "ViewFirstFrame": {
+  "desc": "Display the first animation frame.",
+  "where": "Animation Preview"
+ },
+ "ViewFrameNumber": {
+  "desc": "Display the specified animation frame number.",
+  "where": "Animation Preview"
+ },
+ "ViewLastFrame": {
+  "desc": "Display the last animation frame.",
+  "where": "Animation Preview"
+ },
+ "ViewNextFrame": {
+  "desc": "Display the next animation frame.",
+  "where": "Animation Preview"
+ },
+ "ViewPreviousFrame": {
+  "desc": "Display the previous animation frame.",
+  "where": "Animation Preview"
+ },
+ "ViewportProperties": {
+  "desc": "Title, size, projection, camera and target, lens length, wallpaper.",
+  "where": "Properties Viewport Layout View / Viewport title Viewport Properties"
+ },
+ "ViewportTabs": {
+  "desc": "Display a tab control UI along the viewport edge.",
+  "where": "Viewport Layout View / Viewport title Viewport Layout > Show/Hide Viewport Tabs"
+ },
+ "Volume": {
+  "desc": "Reports the volume of the supported object types.",
+  "where": "Mass Properties Analyze Mass Properties > Volume"
+ },
+ "VolumeCentroid": {
+  "desc": "Report the coordinates of and place a point object at the volume centroid of surfaces and polysurfaces.",
+  "where": "Mass Properties Analyze Mass Properties > Volume Centroid"
+ },
+ "VolumeMoments": {
+  "desc": "Report the volume moments of inertia of surfaces and polysurfaces.",
+  "where": "Mass Properties Analyze Mass Properties > Volume Moments"
+ },
+ "WalkAbout": {
+  "desc": "Toggle between WalkAbout and normal navigation modes.",
+  "where": "Set View"
+ },
+ "WebBrowser": {
+  "desc": "Opens the Web Browser panel.",
+  "where": "HTML Tools Tools Web Browser Window Panels > Web Browser"
+ },
+ "Weight": {
+  "desc": "Edit the weight of a curve or surface control point.",
+  "where": "Point Edit Edit Control Points > Edit Weight"
+ },
+ "Weld": {
+  "desc": "Remove creases from a mesh by merging coincident mesh vertices.",
+  "where": "Mesh Tools STL Tools Welding Mesh Edit Tools > Weld"
+ },
+ "WeldEdge": {
+  "desc": "Merges coincident vertices along selected unwelded mesh edges, or smooths selected creased edges in SubDs.",
+  "where": "Welding"
+ },
+ "WeldVertices": {
+  "desc": "Remove creases from a mesh by merging all selected mesh vertices.",
+  "where": "Mesh Tools Welding Mesh Edit Tools > Weld Selected Vertices"
+ },
+ "What": {
+  "desc": "Report object properties details.",
+  "where": "Diagnostics"
+ },
+ "WindowLayout": {
+  "desc": "Opens the Window Layouts dialog box, where you can list, save, restore, export, or import container arrangements.",
+  "where": "New Tools Window Window Layouts > Manage Window Layouts"
+ },
+ "WireCut": {
+  "desc": "Trim a polysurface with a curve similar to cutting foam with a heated wire.",
+  "where": "Solid Editing Solid Tools Solid Solid Edit Tools > Wire Cut"
+ },
+ "Worksession": {
+  "desc": "Manage a list of models that can be used as reference geometry.",
+  "where": "File Worksession File Worksession > <Options>"
+ },
+ "Zebra": {
+  "desc": "Visually evaluate surface smoothness and continuity using a stripe map.",
+  "where": "Surface Analysis Analyze Surface > Zebra"
+ },
+ "ZebraOff": {
+  "desc": "Turn off zebra analysis.",
+  "where": "Surface Analysis"
+ },
+ "Zoom": {
+  "desc": "Move the viewport camera so the area defined by a window selection fills the viewport.",
+  "where": "Alias Shortcut Popup Render Sidebar Set View Standard View View Zoom Viewport title Pan, Zoom, and Rotate Layout title Zoom Detail title Pan, Zoom, and Rotate Z"
+ },
+ "Zoom1To1Calibrate": {
+  "desc": "Calibrate the screen for the Zoom command, 1To1 option.",
+  "where": "Set View View View / Viewport title Zoom One to One Calibration"
+ },
+ "ZoomEnds": {
+  "desc": "Zoom to include all end display markers on selected curves.",
+  "where": ""
+ },
+ "ZoomLens": {
+  "desc": "Adjust the lens length of the viewport camera in a perspective view.",
+  "where": "Shortcut Render Sidebar Set View View View / Viewport title Set Camera > Adjust Lens Length Ctrl + Shift + Alt +"
+ },
+ "ZoomNaked": {
+  "desc": "Zoom to include all naked edges on selected objects with naked edges.",
+  "where": "Edge Tools"
+ },
+ "ZoomNonManifold": {
+  "desc": "Zoom to include all non-manifold edges on selected objects with non-manifold edges.",
+  "where": ""
+ }
+}

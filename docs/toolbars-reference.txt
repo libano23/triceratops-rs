@@ -1,0 +1,1437 @@
+## standard_toolbar.htm
+icons: new, open, import_rt, save, export_save_rt, print, documentproperties, options_docprops_rt, cut, copyclip, paste, paste_tocurrentlayer_rt, undo, redo_rt, pan, rotateview, rotatecamera_rt, zoom_dynamic, zoom_factor_rt, zoom, zoom_target_rt, zoom_extents, zoom_all_extents_rt, zoom_selected, zoom_selected_all_rt, undoview, redoview_rt, 4view, 4view_zoomextentsall_rt, setview_right, cplane, showosnap, selall, hide, show_rt, lock, unlock_rt, layer, properties, shade, shade_all_rt, viewport_shaded, viewport_wireframe_shaded_rt, render, render_rt, spotlight, options, dim, dim_continue_rt, grasshopper, help
+
+New
+ Create a new model based on a template.
+ Open
+ Opens an existing model file.
+ Import
+ Merges objects from another model file.
+ Save
+ Save the current model.
+ Link to File toolbar
+ Export
+ Save selected objects to a new file.
+ Print
+ Print the current viewport or layouts.
+ DocumentProperties
+ Manage the settings for the current model.
+ Options
+ Manage global options.
+ Cut
+ Delete objects and place them in the Clipboard.
+ CopyToClipboard
+ Copy objects to the Clipboard.
+ Paste
+ Insert objects from the Clipboard.
+ Paste + ChangeToCurrentLayer
+ Insert objects from the Clipboard to the current layer.
+ Undo
+ Undo the last action.
+ Link to Undo toolbar
+ Redo
+ Reverse the last Undo.
+ Pan
+ Shift the location of the view camera and target parallel to the view plane.
+ RotateView
+ Rotate the view camera around the target.
+ RotateCamera
+ Rotate the view target around the camera.
+ Zoom Dynamic
+ Zoom the view as you drag the mouse.
+ Zoom by scale factor
+ Zoom the view in or out the specified amount.
+ Zoom
+ Move the viewport camera so the area defined by a window selection fills the viewport.
+ Zoom Target
+ Zoom the view by specifying a target and window.
+ Zoom Extents
+ Zoom the view to show all objects.
+ Zoom, All Extents
+ Zoom the view to show all objects in all viewports.
+ Zoom Selected
+ Zoom the view to show all selected objects.
+ Zoom All Selected
+ Zoom all viewports to show all selected objects.
+ UndoView
+ Undo the last view change.
+ Link to View toolbar
+ RedoView
+ Reverse the last UndoView.
+ 4View
+ Set up a four-viewport workspace.
+ Link to Viewport Layout toolbar
+ 4View then Zoom All Extents
+ Set up a four-viewport workspace and zoom extents in all.
+ SetView,World Right
+ Change the view to the world right view.
+ Link to Set View toolbar
+ CPlane
+ Set the construction plane in the active viewport.
+ Link to Construction Planes toolbar
+ ShowOsnap
+ Show the Osnap panel.
+ Link to Object Snap toolbar
+ SelAll
+ Select all objects.
+ Link to Select toolbar
+ Hide
+ Conceal objects from view.
+ Link to Visibility toolbar
+ Show
+ Redisplay all hidden objects.
+ Lock
+ Lock objects so they cannot be selected for editing.
+ Link to Lock toolbar
+ Unlock
+ Unlock all locked objects.
+ Layer
+ Toggle Layer panel.
+ Link to Layer toolbar
+ Properties
+ Open the Properties panel.
+ Link to Properties toolbar
+ Shade
+ Temporarily shade the current viewport.
+ Shade all viewports
+ Temporarily shade all viewports.
+ Shaded viewport display mode
+ Set the viewport to opaque shaded mode.
+ Link to Display toolbar
+ Wireframe viewport display mode
+ Set the viewport display to unshaded wireframe.
+ Render
+ Render the objects using the current renderer.
+ Link to Render toolbar
+ Render Settings
+ Toggle the Rendering panel.
+ Spotlight
+ Insert a light cone object.
+ Link to Lights toolbar
+ Options
+ Manage global options.
+ Link to Tools toolbar
+ Dim
+ Draw horizontal or vertical linear dimensions.
+ Link to Dimension toolbar
+ Dim, Continue
+ Continue horizontal or vertical linear dimensions.
+ Grasshopper
+ Opens the Grasshopper plug-in window.
+ Link to Grasshopper toolbar
+ Help
+ Open the Help topic for the current command.
+ Link to Help toolbar
+
+## cplanes_toolbar.htm
+icons: cplane, cplane_elevation, cplane_object, cplane_srf, cplane_curve, cplane_rotate, cplane_vertical, cplane_3pts, cplane_x, cplane_z, cplane_prev, cplane_next_rt, cplane_selectsaved, cplane_panel, namedcplane_save, namedcplane_restore_rt, readnamedcplanesfromfile, cplane_universal, cplane_standard_rt, cplane_toview, cplane_world_top, cplane_world_bottom, cplane_world_front, cplane_world_back, cplane_world_right, cplane_world_left, mplane, autoaligncplane, autoaligncplane_rt
+
+CPlane
+ Set the construction plane in the active viewport.
+ CPlane, Elevation
+ Set the construction plane in the active viewport by moving it up or down.
+ CPlane, Object
+ Set the construction plane in the active viewport to an object.
+ CPlane, Surface
+ Set the construction plane in the active viewport to a surface.
+ CPlane, Curve
+ Set the construction plane in the active viewport perpendicular to a curve.
+ CPlane, Rotate
+ Rotate the construction plane in the active viewport.
+ CPlane, Vertical
+ Set the construction plane in the active viewport vertical to the current CPlane.
+ CPlane, 3Point
+ Set the construction plane in the active viewport by specifying three points.
+ CPlane, XAxis
+ Set the construction plane in the active viewport by specifying the x axis direction.
+ CPlane, ZAxis
+ Set the construction plane in the active viewport by specifying the z axis direction.
+ Undo CPlane
+ Set the construction plane in the active viewport to the previously used construction plane.
+ Redo CPlane
+ Set the construction plane in the active viewport to the next construction plane.
+ NamedCPlane, Select
+ Choose a named construction plane option.
+ NamedCPlane
+ Manage the named construction planes list.
+ NamedCPlane, Save
+ Save a named construction plane.
+ NamedCPlane, Restore
+ Restore a named construction plane.
+ NamedCPlane, Import
+ Import named construction planes from a file.
+ Options, Modeling Aids Universal CPlanes
+ Link construction plane origins, angle, and up direction together.
+ Options, Modeling Aids: Standard CPlanes
+ Construction planes in each viewport are independent of each other.
+ CPlane, View
+ Set the construction plane in the active viewport parallel to the view
+ CPlane, World Top
+ Set the construction plane in the active viewport to the world top construction plane.
+ CPlane, World Bottom
+ Set the construction plane in the active viewport to the world bottom construction plane.
+ CPlane, World Front
+ Set the construction plane in the active viewport to the world front construction plane.
+ CPlane, World Back
+ Set the construction plane in the active viewport to the world back construction plane.
+ CPlane, World Right
+ Set the construction plane in the active viewport to the world right construction plane.
+ CPlane, World Left
+ Set the construction plane in the active viewport to the world left construction plane.
+ MPlane
+ Set up a relationship between a construction plane and an object.
+ AutoAlignCPlane, Enabled
+ Toggles Auto CPlane on/off. 
+ AutoAlignCPlane, Sticky
+ Toggles the sticky mode of Auto CPlane on/off.
+
+## set_view_toolbar.htm
+icons: pan, rotateview, rotatecamera_rt, zoom_dynamic, zoom_extents, zoom_all_extents_rt, zoom, zoom_selected, zoom_selected_all_rt, undoview, redoview_rt, dollyzoom, zoomlens_rt, zoom_1_1, zoom1to1calibrate_rt, setview_top, setview_bottom, setview_front, setview_right, setview_left, setview_back, setview_perspective, namedview, namedview_togglepanel, namedview_save, namedview_save_restore_rt, readviewportsfromfile, viewportproperties_2ptperspective, perspectiveangle_2pt_rt, viewport_placetarget, viewport_placecameratarget_rt, movetargettoobjects, plan, orientcameratosrf, perspectivematch, setview_cplane_bottom, setview_cplane_top, setview_cplane_front, setview_cplane_back, setview_cplane_right, setview_cplane_left, turntable, turntable_onecycle_rt, walkabout, isometric, view_rotate_increment
+
+Pan
+ Shift the location of the view camera and target parallel to the view plane.
+ RotateView
+ Rotate the view camera around the target.
+ RotateCamera
+ Rotate the view target around the camera.
+ Zoom Dynamic
+ Zoom the view as you drag the mouse.
+ Zoom Extents
+ Zoom the view to show all objects.
+ Zoom, All Extents
+ Zoom the view to show all objects in all viewports.
+ Zoom
+ Move the viewport camera so the area defined by a window selection fills the viewport.
+ Zoom Selected
+ Zoom the view to show all selected objects.
+ Zoom All Selected
+ Zoom all viewports to show all selected objects.
+ UndoView
+ Undo the last view change.
+ RedoView
+ Reverse the last UndoView.
+ DollyZoom
+ Move the camera location and change the lens length at the same time.
+ ZoomLens
+ Adjust the lens length of the viewport camera in a perspective view.
+ Zoom 1To1
+ Zoom the active viewport so that the view is full scale.
+ Zoom1To1Calibrate
+ Calibrate the screen for the Zoom command, 1To1 option.
+ SetView,World Top
+ Change the view to the world top view.
+ SetView,World Bottom
+ Change the view to the world bottom view.
+ SetView,World Front
+ Change the view to the world front view.
+ SetView,World Right
+ Change the view to the world right view.
+ SetView,World Left
+ Change the view to the world left view.
+ SetView,World Back
+ Change the view to the world back view.
+ SetView,World Perspective
+ Change the view to the world perspective view.
+ NamedView
+ Manage the named views.
+ Named Views panel, Toggle
+ Display or hide the Named Views panel.
+ NamedView, Save
+ Save a named view.
+ NamedView, Restore
+ Restore a named view.
+ ReadViewportsFromFile
+ Set the viewport layout to match that of another model.
+ Set 2-Point Perspective
+ Set the projection to two-point perspective.
+ PerspectiveAngle
+ Set the viewport field-of-view angle.
+ Viewport properties, Target
+ Set the viewport target location.
+ Viewport properties, Camera and Target
+ Set the viewport camera and target locations.
+ MoveTargetToObjects
+ Move the target to the center of selected objects.
+ Plan
+ Set the viewport to a parallel plan view.
+ OrientCameraToSrf
+ Align the view to a surface normal.
+ PerspectiveMatch
+ Allow matching the view to the Wallpaper image.
+ SetView,CPlane Bottom
+ Change the view to the construction plane bottom view.
+ SetView,CPlane Top
+ Change the view to the construction plane top view.
+ SetView,CPlane Front
+ Change the view to the construction plane front view.
+ SetView,CPlane Back
+ Change the view to the construction plane back view.
+ SetView,CPlane Right
+ Change the view to the construction plane right view.
+ SetView,CPlane Left
+ Change the view to the construction plane left view.
+ Turntable
+ Rotate a view around the target.
+ Turntable, One cycle
+ Rotate a view around the target one time.
+ WalkAbout
+ Toggle between WalkAbout and normal navigation modes.
+ Link to Walkabout toolbar
+ Isometric
+ Change the current viewport properties to a parallel projection isometric view looking from a specified quadrant toward 0.
+ Link to Isometric toolbar
+ Set rotate increment
+ Set the view rotate step size for keyboard rotation.
+
+## display_toolbar.htm
+icons: viewport_wireframe, viewport_wireframe_all_rt, viewport_shaded, viewport_shaded_all_rt, shade, shade_all_rt, viewport_rendered, viewport_rendered_all_rt, viewport_raytraced, viewport_ghosted, viewport_ghosted_all_rt, viewport_x-ray, viewport_x-ray_all_rt, viewport_monochrome, viewport_monochrome_rt, viewport_arctic, viewport_arctic_all_rt, viewport_technical, viewport_technical_all_rt, viewport_pen, viewport_pen_all_rt, viewport_artistic, viewport_artistic_all_rt, subddisplaytoggle, render_meshsettings, flatshade, shadeselected, setobjectdisplaymode, viewcapturetofile, viewcapturetoclipboard_rt, clippingplane, disableclippingplane, enableclippingplane_rt, panel_display, printdisplay, removeperfacecolors, setperfacecolorbyfacepack
+
+Wireframe viewport display mode
+ Set the viewport display to unshaded wireframe.
+ Set all viewports to Wireframe display mode
+ Sets all viewport displays to unshaded wireframe.
+ Shaded viewport display mode
+ Set the viewport to opaque shaded mode.
+ Set all viewports to Shaded display mode
+ Sets all viewport displays to shaded mode.
+ Shade
+ Temporarily shade the current viewport.
+ Shade, All
+ Temporarily shade all viewports.
+ Rendered viewport display mode
+ Shade objects with a simulation of the rendered view.
+ Set all viewports to Rendered display mode
+ Sets all viewport displays to Rendered mode.
+ Raytraced viewport display mode
+ Display the viewport with real-time rendering that supports calculating reflection and refraction.
+ Ghosted viewport display mode
+ Shade objects so surfaces are translucent.
+ Set all viewports to Ghosted display mode
+ Sets all viewport displays to Ghosted mode.
+ X-Ray viewport display mode
+ Shade with unobscured isoparametric curves.
+ Set all viewports to X-Ray display mode
+ Sets all viewport displays to X-Ray mode.
+ Monochrome viewport display mode
+ All objects display white with gray scale shading, black silhouettes and edges. 
+ Set all viewports to Monochrome display mode
+ Sets all viewport displays to Monochrome mode.
+ Arctic display mode
+ Uses white for all objects and the background with soft shadows to give the feeling of the Arctic.
+ Set all viewports to Arctic display mode
+ Sets all viewports to Arctic mode.
+ Technical display mode
+ Uses real-time silhouettes and intersections, creases, borders, blended shaded and rendered display. Objects behind other objects are occluded.
+ Set all viewports to Technical display mode
+ Sets all viewports to Technical mode.
+ Pen display mode
+ Uses white with black lines to simulate a pen drawing.
+ Set all viewports to Pen display mode
+ Sets all viewports to Pen mode.
+ Artistic display mode
+ Uses an image background and soft lines to create a pencil drawing effect.
+ Set all viewports to Artistic display mode
+ Sets all viewports to Artistic mode.
+ SubDDisplayToggle
+ Switches the appearance of all SubD objects between box (flat) and smooth modes. 
+ Mesh document properties
+ Manage the display/render mesh settings for the current model.
+ FlatShade
+ Shade objects without smoothing between mesh faces.
+ ShadeSelected
+ Shade selected objects only.
+ SetObjectDisplayMode
+ Assign separate display attributes to objects, overriding viewport settings.
+ ViewCaptureToFile
+ Save an image of the current view to a file.
+ ViewCaptureToClipboard
+ Save an image of the current view to the Clipboard.
+ ClippingPlane
+ Create a plane that hides objects.
+ DisableClippingPlane
+ Turn off the selected clipping plane.
+ EnableClippingPlane
+ Turn on selected clipping planes in the active viewport.
+ Toggle display panel
+ Opens and closes the Display Panel.
+ PrintDisplay
+ Display objects using their Print Color and Print Width properties.
+ RemovePerFaceColors
+ Clears per-face display colors or rendering materials on polysurfaces or SubDs.
+ SetPerFaceColorByFacePack
+ Changes colors of SubD faces based on the divisions of rectangular quad grids.
+
+## select_toolbar.htm
+icons: selall, selnone, selectionfilter, selectionfilter_rt, invert, invertpt_invert_rt, namedselections, sellast, selprev, selname, selid, seldup, seldupall_rt, selcolor, sellayer, sellayernumber_rt, selpt, selptcloud, selblockinstance, selblockinstancenamed_rt, selmirroredblocks, sellight, selhatch, seldim, seltext_rt, selannotationstyle, selgroup, seldot, selpolysrf, selclippingplane, selclippingplane_rt, selclippingplaneinviewport, selsrf, selmesh, selsubd, selcrv, lasso, selchain, selobjectswithhistory, selrectangular, selvolumesphere, selbox, selcircular, selboundary, selbrush, selsmall, selfence, selvolumeobject, selcontrols, selkey, selvalue, selkeyvalue, selnonmanifold
+
+SelAll
+ Select all objects.
+ SelNone
+ Deselect all objects.
+ SelectionFilter
+ Restrict a selection mode to specified object types.
+ SelectionFilterNone
+ Resets the filter settings. Object selection returns to the default behavior.
+ Invert
+ Deselect all selected objects and select all previously unselected objects.
+ InvertPt
+ Deselect all selected control or edit points and select all previously unselected control or edit points.
+ NamedSelections
+ Opens the Named Selections panel that saves selection sets.
+ SelLast
+ Select the last changed objects.
+ SelPrev
+ Re-select the previous selection set.
+ SelName
+ Select objects by name.
+ SelID
+ Select objects by object ID number.
+ SelDup
+ Select geometrically identical objects.
+ SelDupAll
+ Select all visible geometrically identical objects.
+ SelColor
+ Selects all objects of a specified display color or material diffuse color depending on the display mode of the active viewport.
+ SelLayer
+ Select all objects on a layer.
+ SelLayerNumber
+ Select objects by layer number.
+ SelPt
+ Select all point objects, control points, edit points, and solid points.
+ SelPtCloud
+ Select all point cloud objects.
+ SelBlockInstance
+ Select all block instances.
+ SelBlockInstanceNamed
+ Select all block instances by name.
+ SelMirroredBlocks
+ Selects the block instances that were mirrored or scaled with a negative factor. 
+ SelLight
+ Select all lights.
+ SelHatch
+ Select hatch objects.
+ SelDim
+ Select all dimensions.
+ Link to: Select Dimensions toolbar
+ SelText
+ Select all text.
+ SelAnnotationStyle
+ Select annotation objects of a specified style.
+ SelGroup
+ Select a group by name.
+ SelDot
+ Select all annotation dots.
+ SelPolysrf
+ Select all polysurfaces.
+ Link to Select Polysurfaces toolbar
+ SelClippingPlane
+ Select all clipping planes.
+ SelClippingPlaneInViewport
+ Selects the clipping planes that clip the current model or detail viewport. 
+ SelClippingPlaneInViewport
+ Selects the clipping planes that clip the current model or detail viewport. 
+ SelSrf
+ Select all surfaces.
+ Link to Select Surfaces toolbar
+ SelMesh
+ Select all mesh objects.
+ Link to Select Meshes toolbar
+ SelSubD
+ Select all Triceratops SubD objects in the model that are not locked or hidden.
+ Link to Select SubD toolbar
+ SelCrv
+ Select all curves.
+ Link to Select Curves toolbar
+ Lasso
+ Select objects by drawing a freehand shape.
+ Link to Select Points toolbar
+ SelChain
+ Select curve or surface edges that touch end-to-end.
+ Link to Select Chain toolbar
+ SelObjectsWithHistory
+ Select objects that have history.
+ Link to Select History toolbar
+ SelRectangular
+ Emulates the regular window selection action with some control options. 
+ SelVolumeSphere
+ Select objects inside, outside, or crossing a spherical volume.
+ SelBox
+ Select objects inside, outside, or crossing a box-shaped volume.
+ SelCircular
+ Draws a circle on the view plane to select objects.
+ SelBoundary
+ Selects objects with a view based boundary defined by a closed curve.
+ SelBrush
+ Drag the mouse like a brush stroke to select objects.
+ SelSmall
+ Select all objects smaller than a specified size.
+ SelFence
+ Select a using a crossing sketched polyline.
+ SelVolumeObject
+ Select objects enclosed by an extrusion object, surface, polysurface, or mesh.
+ SelControls
+ Select all cage controls.
+ SelKey
+ Select objects by their user attribute key.
+ SelValue
+ Select objects by their user attribute value.
+ SelKeyValue
+ Select objects by their user attribute key and value.
+ SelNonManifold
+ Select non-manifold objects.
+
+## viewport_layout_toolbar.htm
+icons: 3view, 3view_zoomextentsall_rt, 4view, 4view_zoomextentsall_rt, maxviewport, newviewport, closeviewport_newviewport_rt, viewportproperties, splitviewporthorizontal, splitviewportvertical, synchronizeviews, togglelinkedviewports_synchronizeviews_rt, perspectiveangle, perspectiveangle_rt, viewportproperties_2ptperspective, perspectiveangle_2pt_rt, grid_on, grid_off_rt, viewport_set_lens_length, picture, layout, layout_new_1_detail_rt, viewporttabs, viewporttabs_visibility_rt, togglefloatingviewport, newfloatingviewport, newfloatingviewport_perspective_rt, readviewportsfromfile, clippingplane, print, oneview, lockviewport
+
+3View
+ Set up a three-viewport workspace.
+ 3View + Zoom, Extents, All
+ Set up a three-viewport workspace and zoom all viewports to object extents.
+ 4View
+ Set up a four-viewport workspace.
+ 4View + Zoom, Extents, All
+ Set up a four-viewport workspace and zoom extents in all.
+ MaxViewport
+ Maximize the active viewport.
+ NewViewport
+ Create a new viewport.
+ CloseViewport
+ Close the active model or layout viewport.
+ ViewportProperties
+ Title, size, projection, camera and target, lens length, wallpaper.
+ SplitViewportHorizontal
+ Divide a viewport horizontally into two viewports.
+ SplitViewportVertical
+ Divide a viewport vertically into two viewports.
+ Synchronize Views
+ Set the scale and center of all viewports to match the active viewport.
+ Options, Toggle linked viewports
+ Toggle linked viewports.
+ Viewport Properties,Toggle Projection
+ Toggle between parallel and perspective projection.
+ PerspectiveAngle
+ Set the viewport field-of-view angle.
+ Set 2-Point Perspective
+ Set the projection to two-point perspective.
+ PerspectiveAngle
+ Set the viewport field-of-view angle.
+ Grid, On
+ Turn the grid display on.
+ Grid, Off
+ Turn the grid display off.
+ Set lens length
+ Set the viewport camera lens length.
+ Link to: Lens Length toolbar
+ Picture
+ Draw a rectangular planar surface with a bitmap texture.
+ New Layout, 1 Detail
+ Create a print layout viewport.
+ Link to: Drafting toolbar
+ New Layout, 4 details
+ Create a print layout viewport with one detail.
+ ViewportTabs
+ Display a tab control UI along the viewport edge.
+ Toggle viewport tab display
+ Toggle the viewport tab display on or off.
+ ToggleFloatingViewport
+ Toggle the viewport between docked and floating.
+ NewFloatingViewport
+ Create a new free-floating viewport.
+ NewFloatingViewport, Perspective
+ Create a new free-floating viewport, copying the active viewport.
+ ReadViewportsFromFile
+ Set the viewport layout to match that of another model.
+ ClippingPlane
+ Create a plane that hides objects.
+ Print
+ Print the current viewport or layouts.
+ OneView
+ Sets the active construction plane according to the current view direction to accommodate single-window modeling.
+ LockViewport
+ Toggles the locking state of the current viewport.
+
+## visibility_toolbar.htm
+icons: hide, show_rt, show, showselected, isolate, unisolate_rt, hideswap, hideindetail, showindetail_rt, showselectedindetail, showlayersindetail, showlayersindetail_rt, lock, lock_rt, unlock, unlockselected, isolatelock, unisolatelock_rt, lockswap, invert_hidept, showpt_rt, hidept, hidept_rt, clippingplane, disableclippingplane, enableclippingplane_rt, selclippingplaneinviewport, hidea, hidea_rt, hideb, hideb_rt, hidec, hidec_rt
+
+Hide
+ Conceal objects from view.
+ Show
+ Redisplay all hidden objects.
+ Show
+ Redisplay all hidden objects.
+ ShowSelected
+ Redisplay selected hidden objects.
+ Isolate
+ Hide all but the currently selected objects.
+ Unisolate
+ Show objects previously hidden by the Isolate command.
+ HideSwap
+ Conceal all visible objects and re-displays all previously hidden objects.
+ HideInDetail
+ Conceal objects in a detail view.
+ ShowInDetail
+ Redisplay hidden objects in a detail view.
+ ShowSelectedInDetail
+ Redisplay selected hidden objects in a detail view.
+ ShowLayersInDetail
+ Redisplay hidden layers in a detail view.
+ HideLayersInDetail
+ Conceal layers in a detail view.
+ Lock
+ Lock objects so they cannot be selected for editing.
+ Unlock
+ Unlock all locked objects.
+ Unlock
+ Unlock all locked objects.
+ UnlockSelected
+ Unlock selected locked objects.
+ IsolateLock
+ Lock all but the currently selected objects.
+ UnisolateLock
+ Unlock objects previously hidden by the IsolateLock command.
+ LockSwap
+ Lock all unlocked objects and unlock all previously locked objects.
+ InvertPt
+ Deselect all selected control or edit points and select all previously unselected control or edit points.
+ ShowPt
+ Redisplay all hidden control points and edit points.
+ HidePt
+ Conceal control and edit points.
+ ShowPt
+ Redisplay all hidden control points and edit points.
+ ClippingPlane
+ Create a plane that hides objects.
+ DisableClippingPlane
+ Turn off the selected clipping plane.
+ EnableClippingPlane
+ Turn on selected clipping planes in the active viewport.
+ SelClippingPlaneInViewport
+ Selects the clipping planes that clip the current model or detail viewport. 
+ Hide, A
+ Hide a cluster of objects named A.
+ Show, A
+ Show cluster A.
+ Hide, B
+ Hide a cluster of objects named B.
+ Show, B
+ Show cluster B.
+ Hide, C
+ Hide a cluster of objects named C.
+ Show, C
+ Show cluster C.
+
+## transform_toolbar.htm
+icons: move, move_vertical, move_vertical_rt, softeditcrv, copy, copy_inplace_rt, rotate, rotate3d_rt, scale, scale2d_scale_rt, mirror, mirror_3pt_rt, orient, orient3pt_orient_rt, boxedit, orientonsrf, orientoncrv, orientcrvtoedge, remapcplane, array, arraypolar, projecttocplane, setpt, align, twist, bend, taper, flow, shear, smooth, flowalongsrf, cageedit, cage_rt, slide, softtransform, softtransform_rt, move_x+, move_world_x+_rt
+
+Move
+ Move objects from one location to another.
+ Move, Vertical
+ Moves objects perpendicular to the current construction plane.
+ Move, Normal
+ Moves objects in the normal direction of the picked location on another object.
+ SoftEditCrv
+ Move the surrounding curve area smoothly relative to the distance.
+ Link to Move toolbar
+ Copy
+ Duplicate objects.
+ Copy, InPlace
+ Duplicate objects in the same location as the original.
+ Rotate
+ Rotate objects around an axis perpendicular to the construction plane.
+ Rotate3D
+ Rotate objects around a 3-D axis.
+ Scale
+ Change the size of objects uniformly in the x, y, and z directions.
+ Link to Scale toolbar
+ Scale2D
+ Change the size of objects uniformly in two directions.
+ Mirror
+ Create a mirror-image copy of objects.
+ Mirror, 3Point
+ Create a mirror-image copy of objects on a 3-point plane.
+ Orient
+ Transform objects using two reference and two target points.
+ Orient3Pt
+ Transform objects using three reference and three target points.
+ BoxEdit
+ Size, scale, position, and rotate objects numerically.
+ OrientOnSrf
+ Transform objects normal to a surface.
+ OrientOnCrv
+ Transform objects along a curve normal.
+ OrientCrvToEdge
+ Copy and align a curve to a surface edge.
+ RemapCPlane
+ Reorient objects to a different construction plane.
+ Array
+ Copy and space objects in columns, rows, and levels.
+ Link to Array toolbar
+ ArrayPolar
+ Copy and space objects around a central location.
+ ProjectToCPlane
+ Flatten objects onto the construction plane.
+ SetPt
+ Moves selected points and control points of objects to a specified location in the x, y, and/or z directions.
+ Align
+ Aligns objects by their bounding boxes, or aligns object grips such as control points, edit points, and vertices.
+ Link to Align and Distribute toolbar
+ Twist
+ Deform objects by rotating portions around an axis.
+ Bend
+ Deform objects along an arc.
+ Taper
+ Deform objects toward or away from an axis.
+ Flow
+ Re-align objects from a base curve to a target curve.
+ Shear
+ Skew objects parallel to one axis at an angle.
+ Smooth
+ Average the positions of curve and surface control points and mesh vertices and evens out the spacing to remove unwanted detail and loops.
+ FlowAlongSrf
+ Re-align objects from a source surface to a target surface.
+ Link to Deformation tools toolbar
+ CageEdit
+ Deform objects smoothly using control cage objects.
+ Link to Cage toolbar
+ Cage
+ Create a control cage object used by the CageEdit command to deform other objects.
+ Slide
+ Moves selected vertices (or vertices of selected edges) along adjacent edges.
+ SoftTransform
+ Changes moving behavior of mesh and SubD vertices based on different radial falloff shapes.
+ Toggle SoftTransform
+ Turns on/off soft transform mode for SubD and mesh vertices. 
+ Move X+
+ Move one unit in the positive construction plane x direction.
+ Link to Organic toolbar
+ Move World X+
+ Move one unit in the positive world x direction.
+
+## curve_tools_toolbar.htm
+icons: fillet, fillet_repeat_rt, chamfer, chamfer_repeat_rt, connect, connect_repeat_rt, filletcorners, blendcrv, blend_blendcrv_rt, arcblend, match, symmetry_crv, pointson, pointsoff_rt, offset, offsetmultiple_rt, offsetnormal, removemultiknot, offsetcrvonsrf, extenddynamic, extend_toboundary_rt, crvseam, crv2view, matchcurvedir, csec, rebuild, rebuild_master_rt, rebuildcrvnonuniform, fitcrv, changedegree, fair, makeuniform, simplifycrv, extractlinetypesegments, convert_polyline, convert_arcs_rt, makeperiodic, makenonperiodic_rt, closecrv, continuecurve, continueinterpcrv_rt, deletesubcrv, extractsubcrv, subcrv, subcrv_copy_rt, insertlineintocrv, tweencurves, offsetmultiple, curveboolean, curveboolean_deleteinput_rt, project, project_loose_rt, crvstart, crvend_rt, showends, showendsoff_rt, moveextractedisocurve, addguide, removeguide_rt, ribbonoffset
+
+Fillet
+ Add an arc between two curves and trims or extends the curves to the arc.
+ Fillet, Repeat
+ Repeats the Fillet command until canceled.
+ Chamfer
+ Create a line segment between two curves and trims or extends the curves to meet it.
+ Chamfer, Repeat
+ Repeats the Chamfer command until canceled.
+ Connect
+ Extend and trim curves to meet at their endpoints.
+ Connect, Repeat
+ Repeats the Connect command until canceled.
+ FilletCorners
+ Round polyline corners with arcs.
+ BlendCrv
+ Connect two curves with continuity control.
+ Blend
+ Connect two curves maintaining continuity.
+ ArcBlend
+ Create an arc blend curve between two curves.
+ Match
+ Change a curve end to meet another curve or surface edge with a specified continuity.
+ Symmetry
+ Mirror a copy of a curve or surface with continuity.
+ PointsOn
+ Display curve and surface control points.
+ Link to Point Edit toolbar
+ PointsOff
+ Turn off control, edit, and solid points display.
+ Offset
+ Copy a curve parallel to the original.
+ OffsetMultiple
+ Copy curves or surface edges parallel to the original.
+ OffsetNormal
+ Copy a curve on a surface parallel to the original in the surface normal direction.
+ RemoveMultiKnot
+ Remove multiple knots from curves and surfaces.
+ OffsetCrvOnSrf
+ Copy a curve on a surface parallel to the original.
+ ExtendDynamic
+ Lengthen a curve by its natural extension to a boundary or point.
+ Link to Extend toolbar
+ Extend, to boundary
+ Lengthen a curve to a boundary curve or edge.
+ CrvSeam
+ Change the seam (start/end) location on closed curves.
+ Crv2View
+ Create a curve by averaging two input curves that are planar in two different views.
+ MatchCrvDir
+ Change a curve's direction to match another curve's direction.
+ CSec
+ Create cross-section curves through profile curves.
+ Rebuild
+ Reconstruct curves, surfaces, and extrusion objects to a specified degree and control point number.
+ Rebuild, SelectMasterCurve
+ Rebuild curves to match a master curve.
+ RebuildCrvNonUniform
+ Interactively modify selected curves by non-uniformly re-spacing the control points.
+ FitCrv
+ Make a non-rational NURBS curve of a specified degree that matches the input curve to within the specified tolerance.
+ ChangeDegree
+ Change the degree of the polynomial that defines the curve or surface by adding or subtracting control points between knot spans, while maintaining the knot structure.
+ Fair
+ Remove large curvature variations in a curve while limiting the geometry changes to the specified tolerance.
+ MakeUniform
+ Make the object knot vectors uniform without changing the control point locations.
+ SimplifyCrv
+ Replace each curve segment that has the geometry of a line or an arc with a true line or arc.
+ ExtractLineTypeSegments
+ Converts linetype patterns of the selected curves to curve segments and points. 
+ Convert, Curve to polyline
+ Change a curve to polyline segments.
+ Convert, Curve to arcs
+ Change a curve to arc segments.
+ MakePeriodic
+ Remove the kink from the start/end of a curve or surface.
+ MakeNonPeriodic
+ Insert a kink at the start/end of a curve or surface.
+ CloseCrv
+ Close open curves.
+ ContinueCurve
+ Continue to draw the selected curve using control points.
+ ContinueInterpCrv
+ Continue to draw the selected curve interpolating through picked points.
+ DeleteSubCrv
+ Remove a portion of a curve that is between two locations.
+ ExtractSubCrv
+ Separate or duplicate polycurve segments.
+ SubCrv
+ Shorten a curve to the new picked endpoints and select.
+ SubCrv, Copy
+ Copy a shortened curve.
+ InsertLineIntoCrv
+ Flatten the curve segment between picked points.
+ TweenCurves
+ Create curves between two open or closed input curves.
+ OffsetMultiple
+ Copy curves or surface edges parallel to the original.
+ CurveBoolean
+ Trim, split, and join curves based on their overlapping regions.
+ Curve Boolean: Delete inputs
+ Trim, split, and join curves based on their overlapping regions and delete all input curves.
+ Project
+ Project curves/points toward a construction plane to intersect a surface, polysurface, mesh, or SubD.
+ Link to Curve From Object toolbar
+ Project, Loose
+ Project curves/points toward a construction plane to intersect a surface using the Loose option.
+ CrvStart
+ Place a point object at the start of a curve.
+ CrvEnd
+ Place a point object at the end of a curve.
+ ShowEnds
+ Open the End Analysis control, and display the endpoints of curves.
+ ShowEndsOff
+ Close the End Analysis control, and turn off endpoints of curves.
+ MoveExtractedIsocurve
+ Allows moving a curve created by the ExtractIsocurve command with History.
+ AddGuide
+ Adds infinite construction guides.
+ RemoveGuide
+ Removes infinite construction guides.
+ RibbonOffset
+ Offsets a closed curve and then creates a ruled or sweep2 surface between the input and offset curves.
+
+## surface_tools_toolbar.htm
+icons: filletsrf, extendsrf, chamfersrf, variablefilletsrf, variableblendsrf_variablefilletsrf_rt, variablechamfersrf, blendsrf, pointson, pointsoff_rt, offsetsrf, variableoffsetsrf, setsurfacetangent, matchsrf, matchsrf_multiple_rt, mergesrf, refittrim, connectsrf, symmetry, tweensurfaces, rebuild_srf, rebuilduv, fitsrf, changedegree_srf, splitedge, splitedge_rt, rebuildedges, untrim_srf, untrim_srf_keep_rt, untrimall, splitrefitsurface, shrinktrimmedsrf, shrinktrimmedsrftoedge_rt, makeuniform, makeuniformuv_makeuniform_rt, makesrfperiodic, makesrfnonperiodic_rt, srfseam, removeedge, unrollsrf, flattensrf_rt, smash, squish, squish_rt, endbulge_srf, dividealongcreases, dividealongcreases_tangents_rt, removemultiknot, curvatureanalysis, curvatureanalysisoff_rt, showedges, showedgesoff_rt, curvaturegraph, curvaturegraphoff_rt, showdir, showdiroff_rt, flip, edgecontinuity
+
+FilletSrf
+ Create a constant-radius round surface between two surfaces.
+ ExtendSrf
+ Lengthen a surface by a value.
+ ChamferSrf
+ Create a ruled surface between two surface edges.
+ VariableFilletSrf
+ Create a round tangent surface between two surface edges with varying radius values.
+ VariableBlendSrf
+ Create a blend surface between surface edges with varying radius values.
+ VariableChamferSrf
+ Create a chamfer surface between surface edges with varying distance values.
+ BlendSrf
+ Create a blend surface between two surfaces with continuity control.
+ PointsOn
+ Display curve and surface control points.
+ Link to Point Edit toolbar
+ PointsOff
+ Turn off control, edit, and solid points display.
+ OffsetSrf
+ Copy a surface parallel to the original.
+ VariableOffsetSrf
+ Copies a surface in the normal direction with different distances at specified locations.
+ SetSurfaceTangent
+ Set the tangent direction of an untrimmed surface.
+ MatchSrf
+ Adjust a surface edge to have continuity with another surface edge.
+ MatchSrf, Multiple Matches
+ Allows selection of more than one edge to match.
+ MergeSrf
+ Combine two surfaces at untrimmed edges.
+ RefitTrim
+ Replaces a trimmed surface edge with an untrimmed edge.
+ ConnectSrf
+ Extends or trims two surfaces to where they intersect.
+ Symmetry
+ Mirror a copy of a curve or surface with continuity.
+ TweenSurfaces
+ Create intermediate surfaces between two input surfaces.
+ Rebuild
+ Reconstruct curves, surfaces, and extrusion objects to a specified degree and control point number.
+ RebuildUV
+ Reconstructs selected surfaces to degree 3, with a specified control point number, in either the u or v direction.
+ FitSrf
+ Reduce the number of surface control points.
+ ChangeDegree
+ Change the degree of the polynomial that defines the curve or surface by adding or subtracting control points between knot spans, while maintaining the knot structure.
+ SplitEdge
+ Divide a surface edge.
+ MergeEdge
+ Combine adjacent edges of the same surface.
+ RebuildEdges
+ Restore surface edges to their surface.
+ Untrim
+ Remove trim curves from trimmed surfaces.
+ UnTrim, KeepTrimObjects
+ Remove trim curves and joined surfaces keeping the trimmed objects.
+ UntrimAll
+ Untrims interior (holes) and exterior trims on the selected surfaces all at once.
+ SplitRefitSurface
+ Splits a surface using a curve, and refits the two parts so that the edges from the split operation become untrimmed edges of two surfaces. 
+ ShrinkTrimmedSrf
+ Contract the underlying untrimmed surface close to trimming boundaries.
+ ShrinkTrimmedSrfToEdge
+ Contract the underlying untrimmed surface as close as possible to the trimming boundaries.
+ MakeUniform
+ Make the object knot vectors uniform without changing the control point locations.
+ MakeUniformUV
+ Make the surface knots uniform in u or v direction.
+ MakePeriodic
+ Remove the kink from the start/end of a curve or surface.
+ MakeNonPeriodic
+ Insert a kink at the start/end of a curve or surface.
+ SrfSeam
+ Change the location where the start and end edges meet on a closed surface.
+ ReplaceEdge
+ Untrim selected surface edges and retrim the edges.
+ UnrollSrf
+ Flatten (develop) a surface or polysurface with curvature in one direction to a planar surface.
+ FlattenSrf
+ Project surface edges onto the construction plane to create planar curves.
+ Smash
+ Flatten a surface without restriction to single-directional curvature.
+ Squish
+ Flatten a non-developable (curved in two directions) 3-D mesh or NURBS surface into a flat 2-D pattern.
+ SquishBack
+ Return curves and surfaces to the original squished 3-D shape.
+ EndBulge
+ Adjust the shape of a curve at its end or a surface near an untrimmed edge.
+ DivideAlongCreases
+ Divide a surface into separate parts at kinks.
+ DivideAlongCreases, split at tangents
+ Divide a surface into separate parts at creases and tangents.
+ RemoveMultiKnot
+ Remove multiple knots from curves and surfaces.
+ CurvatureAnalysis
+ Evaluate surface curvature using false-color analysis.
+ Link to Surface Analysis toolbar
+ CurvatureAnalysisOff
+ Turn off curvature analysis display.
+ ShowEdges
+ Highlight edges of surfaces and polysurfaces. Displays the Edge Analysis control.
+ Link to Edge Tools toolbar
+ ShowEdgesOff
+ Turn off edge display.
+ CurvatureGraph
+ Displays graphs to evaluate the curvature of curves, surfaces, and SubDs.
+ CurvatureGraphOff
+ Turn off curvature graph display.
+ ShowDir
+ Open the Direction Analysis control and turn on direction analysis for curves, surfaces, and polysurfaces.
+ ShowDirOff
+ Close the Direction Analysis control, and turn off direction analysis.
+ Flip
+ Reverse the normal direction of a curve, surface, or mesh.
+ EdgeContinuity
+ Uses line hairs to visualize distance, tangency and curvature difference between an edge pair.
+
+## solid_tools_toolbar.htm
+icons: booleanunion, booleandifference, booleanintersection, booleansplit, boolean2objects_rt, createsolid, shell, cap, extractsrf, mergecoplanarface, mergecoplanarface_rt, unjoinedge, filletedge_edit, filletedge, blendedge_filletedge_rt, chamferedge, wirecut, moveface, moveuntrimmedface_rt, moveface_boundary, extrude_face, extrude_face_alongcrv_rt, extrude_facetoboundary, solidpton, moveedge, moveuntrimmededge_rt, splitface, foldface, inset_mesh, roundhole, makehole, placehole_rt, revolvedhole, movehole, copyhole_rt, rotatehole, arrayholepolar, arrayhole, untrimholes, untrimholes_all_rt, unjoinedge, deletefaces, pushpull
+
+BooleanUnion
+ Combine the volumes of one or more objects.
+ BooleanDifference
+ Subtract the volume of one set of objects from another.
+ BooleanIntersection
+ Create a new solid from solids' intersected volumes.
+ BooleanSplit
+ Split and close solids at intersections.
+ Boolean2Objects
+ Cycle through possible Boolean operations between two objects.
+ CreateSolid
+ Create a closed polysurface from surfaces.
+ Shell
+ Remove the selected surfaces from a polysurface, and then offset the remaining surfaces to create a solid with a specified thickness.
+ Cap
+ Fills planar holes in objects with planar faces.
+ ExtractSrf
+ Separates or duplicates polysurface, Extrusion, or SubD faces.
+ MergeCoplanarFace
+ Combines adjacent coplanar faces of a mesh, polysurface, or SubD into a single face.
+ MergeAllCoplanarFaces
+ Combines the faces of each planar region on a mesh, polysurface, or SubD into a single face.
+ UnjoinEdge
+ Split joined polysurface edges.
+ FilletEdge, edit
+ Edit the fillet, blend, or chamfer surfaces created by the FilletEdge, BlendEdge, or ChamferEdge command.
+ FilletEdge
+ Create a tangent surface between polysurface edges.
+ BlendEdge
+ Create a surface between polysurface edges maintaining continuity.
+ ChamferEdge
+ Create a ruled surface at polysurface edges.
+ WireCut
+ Trim a polysurface with a curve similar to cutting foam with a heated wire.
+ MoveFace
+ Move a polysurface face.
+ MoveUntrimmedFace
+ Move an untrimmed polysurface face.
+ MoveFace, ToBoundary
+ Move a polysurface face to a boundary.
+ ExtrudeSrf, face
+ Drive a surface face in a straight line to create a solid.
+ ExtrudeSrf, face AlongCurve
+ Drive surface edges along a path curve to create a solid.
+ ExtrudeSrf, face ToBoundary
+ Drive surface edges in a straight line to a boundary.
+ SolidPtOn
+ Turn on pseudo control points for polysurfaces.
+ MoveEdge
+ Move a polysurface edge.
+ MoveUntrimmedEdge
+ Move the edge of an untrimmed polysurface face.
+ SplitFace
+ Divides the selected surface of a polysurface by drawing a polyline, selected curves, or isocurves.
+ FoldFace
+ Rotate polysurface faces around an axis.
+ Inset
+ Offsets the edges of selected mesh, SubD, or polysurface faces in a certain distance towards the center of each face.
+ RoundHole
+ Create circular holes in surfaces.
+ MakeHole
+ Project a closed curve to a surface to define a hole.
+ PlaceHole
+ Project a closed curve to a surface to define a hole.
+ RevolvedHole
+ Create holes by revolving a profile curve around an axis.
+ MoveHole
+ Move a hole in a planar surface.
+ Copy hole
+ Copies a hole in a planar surface.
+ RotateHole
+ Rotate a hole around an axis.
+ ArrayHolePolar
+ Copy and space holes around a central location.
+ ArrayHole
+ Copy and space holes in rows and columns.
+ UntrimHoles
+ Untrims selected holes (interior trims) that do not touch surface borders.
+ Untrim all holes
+ Untrim all interior holes.
+ UnjoinEdge
+ Split joined polysurface edges.
+ DeleteFaces
+ Remove faces from a mesh, SubD or Polysurface to create a hole.
+ PushPull
+ Extrudes a polysurface face to interactively add or remove volumes on the polysurface. 
+ Link to PushPull toolbar
+
+## curve_drawing_toolbar.htm
+icons: cancel, cancel_all_rt, move, trim, untrim_rt, split, split_isocurve_rt, join, explode, extractsrf_explode_rt, curve, curvethroughpt_rt, interpcrv, handlecurve_rt, handlecurve, sketch, sketch_onsrf_rt, helix, helix_vertical_rt, parabola3pt, parabola, parabola_vertex_rt, conic_tangentatstart, conic_tangentstartend_rt, polyline, lines_rt, line, line_tanfrom, line_perpfromcrv, line_perptocrv_rt, line_vertical, line_vertical_bothsides_rt, line_normal, line_normal_bothsides_rt, circle, circle_ttr, circle_diameter, circle_vertical_radius, arc, arc_sep, arc_spe_rt, arc_sed, arc_sde_rt, arc_tan, arc_ttr_rt, ellipse, ellipse_diameter, rectangle_corner, rectangle_3pt, rectangle_round, rectangle_roundconic_rt, rectangle_vertical, polygon, polygon_square_center, polygon_square_edge, polygon_star
+
+Cancel
+ Cancel the current command and deselects objects.
+ Cancel,All
+ Turns off Points, CurvatureGraph, EMap, Zebra, MoveUVN, CurvatureAnalysis, and deselects objects.
+ Move
+ Move objects from one location to another.
+ Link to Transform toolbar
+ Trim
+ Cut and delete selected portions of an object at the intersection with another object.
+ Untrim
+ Remove trim curves from trimmed surfaces.
+ Split
+ Divide objects using other objects as cutters.
+ Split,Isocurve
+ Divide objects using isocurves as cutters.
+ Join
+ Connect curves, surface edges, or surfaces to form a single object.
+ Link to Join toolbar
+ Explode
+ Break objects down into components.
+ ExtractSrf
+ Separates or duplicates polysurface, Extrusion, or SubD faces.
+ Curve
+ Draw a curve from control point locations.
+ Link to Curve toolbar
+ CurveThroughPt
+ Fit a curve through point objects.
+ InterpCrv
+ Fit a curve through picked locations.
+ HandleCurve
+ Draw chained Bézier curves with editing handles.
+ HandleCurve
+ Draw chained Bézier curves with editing handles.
+ Sketch
+ Drag the mouse to draw a curve.
+ Sketch, on surface
+ Drag the mouse to draw a curve on a selected surface.
+ Helix
+ Draw a helical curve with options for number of turns, pitch, vertical, reverse, and around a curve.
+ Helix, Vertical
+ Draw a vertical helical curve.
+ Parabola3Pt
+ Draw a parabolic curve through three picked points.
+ Parabola
+ Draw a parabolic curve from focus and vertex or endpoint.
+ Parabola
+ Draw a parabolic curve from focus and vertex or endpoint.
+ Conic, Tangent at start
+ Draw a conic curve tangent at the start.
+ Conic, Tangent at start and end
+ Draw a conic curve tangent at the start and end.
+ Polyline
+ Draw a multi-segment polyline with options for line and arc segments, tracking line helpers, and close.
+ Link to Lines toolbar
+ Lines
+ Draw multiple adjoining line segments.
+ Line
+ Draw a single line segment.
+ Line, Tangent
+ Draw a line segment tangent from a curve.
+ Line, Perpendicular, from curve
+ Draw a line segment perpendicular from a curve.
+ Line, Perpendicular, to curve
+ Draw a line segment perpendicular to a curve.
+ Line, Vertical
+ Draw a line segment perpendicular to the construction plane.
+ Line, Vertical, BothSides
+ Draw a line segment perpendicular to the construction plane from its midpoint.
+ Line, Normal
+ Draw a line segment normal to a surface.
+ Line, Normal, BothSides
+ Draw a line segment normal to a surface from its midpoint.
+ Circle
+ Draw a circle from center and radius, diameter, points on the circumference, and circumference length.
+ Link to Circle toolbar
+ Circle, Tangent, Tangent, Radius
+ Draws a circle tangent to two curves and a radius.
+ Circle, Diameter
+ Draws a circle from points on diameter.
+ Circle, Vertical to CPlane: center, radius
+ Draws a circle from a center and radius vertical to construction plane.
+ Arc
+ Draw an arc with options for center, start, angle, and direction.
+ Link to Arc toolbar
+ Arc, Start, End, Point
+ Arc by start, end, point on arc.
+ Arc, Start, Point, End
+ Arc by start, point on arc, end.
+ Arc, Start, End, Direction
+ Arc by start, end, direction at start.
+ Arc, Start, Direction, End
+ Arc by start, direction at start, end.
+ Arc, Tangent
+ Arc tangent to curves.
+ Arc, Tangent, Tangent, Radius
+ Arc tangent, tangent, radius.
+ Ellipse
+ Draw a closed elliptical curve from focus points, center and edges, bounding rectangle, and around a curve.
+ Link to Ellipse toolbar
+ Ellipse, Diameter
+ Draws a closed elliptical curve by diameter.
+ Rectangle
+ Draw a rectangular closed polyline from with options for starting at the center, three points, vertical, and rounded with arc or conic corners.
+ Link to Rectangle toolbar
+ Rectangle, 3Point
+ Draw a rectangle through three points.
+ Rectangle, Rounded
+ Draw a rectangle with rounded corners.
+ Rectangle, Rounded, conic corners
+ Draw a rectangle with conic rounded corners.
+ Rectangle, Vertical
+ Draw a rectangle perpendicular to the construction plane.
+ Polygon
+ Draw a polygon with a specified number of sides with options for inscribed/circumscribed, by edge, star-shaped, around a curve, and vertical.
+ Link to Polygon toolbar
+ Polygon, Square from center and corner
+ Draw a square polygon by center and corner.
+ Polygon, Square, from edge
+ Draw a square polygon by edge.
+ Polygon, Star
+ Draw a polygon star.
+
+## surface_sidebar_toolbar.htm
+icons: cancel, cancel_all_rt, move, trim, untrim_rt, split, split_isocurve_rt, join, join_rt, explode, extractsrf_explode_rt, srfpt, edgesrf, planarsrf, networksrf, loft, patch, plane, plane_3pt, plane_vertical, planethroughpt, cutplane, picture, extrudecrv, extrudecrvalongcrv, extrudecrvalongcrv_subcrv_rt, extrudecrvtapered, extrudecrvtopoint, ribbon, fin, sweep1, sweep2, revolve, railrevolve_rt, drape, heightfield, srfptgrid, srfcontrolptgrid_rt
+
+Cancel
+ Cancel the current command and deselects objects.
+ Cancel,All
+ Turns off Points, CurvatureGraph, EMap, Zebra, MoveUVN, CurvatureAnalysis, and deselects objects.
+ Move
+ Move objects from one location to another.
+ Link to Transform toolbar
+ Trim
+ Cut and delete selected portions of an object at the intersection with another object.
+ Untrim
+ Remove trim curves from trimmed surfaces.
+ Split
+ Divide objects using other objects as cutters.
+ Split,Isocurve
+ Divide objects using isocurves as cutters.
+ Join
+ Connect curves, surface edges, or surfaces to form a single object.
+ Link to Join toolbar
+ JoinCopy
+ Duplicates the selected objects and joins the duplicates. 
+ Explode
+ Break objects down into components.
+ ExtractSrf
+ Separates or duplicates polysurface, Extrusion, or SubD faces.
+ SrfPt
+ Draw a surface from three or four corner points.
+ EdgeSrf
+ Create a surface from two, three, or four curves.
+ PlanarSrf
+ Create a planar surface from planar curves.
+ NetworkSrf
+ Fit a surface through a network of crossing curves.
+ Loft
+ Fit a surface through profile curves that define the surface shape.
+ Patch
+ Fit a surface through curves and point objects.
+ Plane
+ Draw a rectangular planar surface.
+ Link to Plane toolbar
+ Plane,3Point
+ Draw a rectangular planar surface from three points.
+ Plane,Vertical
+ Draw a rectangular planar surface vertical to the construction plane.
+ PlaneThroughPt
+ Fit a rectangular planar surface through points.
+ CutPlane
+ Create planar surfaces through objects at specified locations.
+ Picture
+ Draw a rectangular planar surface with a bitmap texture.
+ ExtrudeCrv
+ Drive closed planar curves in a straight line.
+ Link to Extrude toolbar
+ ExtrudeCrvAlongCrv
+ Drive closed planar curves along a path curve.
+ ExtrudeCrvAlongCrv,SubCurve
+ Drives closed planar curves along a sub curve.
+ ExtrudeCrvTapered
+ Drive closed planar curves in a straight line tapering at an angle.
+ ExtrudeCrvToPoint
+ Drive closed planar curves tapering to a point.
+ Ribbon
+ Offset a curve and create a ruled surface between the curves.
+ Fin
+ Extrude a curve on a surface in the surface normal direction.
+ Sweep1
+ Fit a surface through profile curves and one edge curve.
+ Sweep2
+ Fit a surface through profile curves and two edge curves.
+ Revolve
+ Create a surface or SubD by revolving a profile curve around an axis.
+ RailRevolve
+ Revolve a profile curve around an axis and along a rail curve.
+ Drape
+ Create a surface through the intersections of objects and points projected toward the construction plane.
+ Heightfield
+ Create a surface based on gray-scale color values in an image file.
+ SrfPtGrid
+ Draw a surface from a grid of points that lie on the surface.
+ SrfControlPtGrid
+ Draw a surface from a grid of points that represent surface control points.
+
+## solids_sidebar_toolbar.htm
+icons: cancel, cancel_all_rt, move, trim, untrim_rt, split, split_isocurve_rt, join, join_rt, explode, extractsrf_explode_rt, box, box_diagonal, sphere, sphere_diameter, ellipsoid, paraboloid, paraboloid_vertex_focus_rt, cone, truncatedcone, pyramid, truncatedpyramid, cylinder, tube, torus, pipe, pipe_rt, pipe_roundcaps, extrudecrv, extrudesrf, shell
+
+Cancel
+ Cancel the current command and deselects objects.
+ Cancel,All
+ Turns off Points, CurvatureGraph, EMap, Zebra, MoveUVN, CurvatureAnalysis, and deselects objects.
+ Move
+ Move objects from one location to another.
+ Link to Transform toolbar
+ Trim
+ Cut and delete selected portions of an object at the intersection with another object.
+ Untrim
+ Remove trim curves from trimmed surfaces.
+ Split
+ Divide objects using other objects as cutters.
+ Split,Isocurve
+ Divide objects using isocurves as cutters.
+ Join
+ Connect curves, surface edges, or surfaces to form a single object.
+ Link to Join toolbar
+ JoinCopy
+ Duplicates the selected objects and joins the duplicates. 
+ Explode
+ Break objects down into components.
+ ExtractSrf
+ Separates or duplicates polysurface, Extrusion, or SubD faces.
+ Box
+ Draw a solid box.
+ Link to Box toolbar
+ Box, Diagonal
+ Draws a solid box from diagonal corners.
+ Sphere
+ Draw a solid sphere.
+ Link to Sphere toolbar
+ Sphere, Diameter
+ Draw a solid sphere by two points on diameter.
+ Ellipsoid
+ Draw a solid ellipsoid.
+ Link to Ellipsoid toolbar
+ Paraboloid
+ Draw a parabolic surface or capped solid.
+ Paraboloid, Vertex, Focus
+ Draw a parabolic surface or capped solid from its vertex and focus. 
+ Cone
+ Creates a surface cone.
+ TruncatedCone
+ Draw a NURBS truncated cone.
+ Pyramid
+ Draw a pyramid.
+ TruncatedPyramid
+ Draw a pyramid whose apex is truncated by a plane.
+ Cylinder
+ Draw a polysurface cylinder.
+ Tube
+ Draw a closed cylinder with a concentric cylindrical hole.
+ Torus
+ Draw a NURBS torus (donut shape).
+ Pipe, Cap, Flat
+ Create a surface with a circular profile around a curve with flat caps.
+ Pipe
+ Create a surface with a circular profile around a curve.
+ Pipe, Cap, Round
+ Create a surface with a circular profile around a curve with round caps.
+ ExtrudeCrv
+ Drive closed planar curves in a straight line.
+ ExtrudeSrf
+ Drive surface edges in a straight line to create a solid.
+ Link to Extrude Solid toolbar
+ Shell
+ Remove the selected surfaces from a polysurface, and then offset the remaining surfaces to create a solid with a specified thickness.
+
+## object_snap_toolbar.htm
+icons: showosnap, showosnap_hide_rt, endsnap, osnap_end_persistent_rt, osnap_near, osnap_near_persistent_rt, osnap_point, osnap_point_persistent_rt, osnap_midpoint, osnap_midpoint_persistent_rt, osnap_center, osnap_center_persistent_rt, osnap_intersection, osnap_intersection_persistent_rt, osnap_perpto, osnap_perpto_persistent_rt, osnap_tangentto, osnap_tangentto_persistent_rt, osnap_quadrant, osnap_quadrant_persistent_rt, osnap_knot, osnap_knot_persistent_rt, osnap_multiple, osnap_multiple_persistent_rt, osnap_from, osnap_perpfrom, osnap_tangentfrom, osnap_along, osnap_alongparallel, osnap_between, osnap_oncrv, osnap_oncrv_persistent_rt, osnap_onsrf, osnap_onsrf_persistent_rt, osnap_onpolysrf, osnap_onpolysrf_persistent_rt, osnap_vertex, osnap_vertex_persistent_rt, snaptomeshobject, snaptosubdobject, projectosnap, disableosnap, snaptolocked, osnap_nosnap, osnap_none_rt, ortho, orthoangle_rt, grid_size, snapsize_rt, smarttrack, smarttrackoff_rt, smarttracking options
+
+ShowOsnap
+ Show the Osnap panel.
+ ShowOsnap, Hide
+ Hide the Osnap panel.
+ End object snap
+ Snap to the end of a curve.
+ End object snap, Persistent
+ The End object snap persists until turned off.
+ Near object snap
+ Snap onto a curve at the cursor location.
+ Near object snap, Persistent
+ The Near object snap persists until turned off.
+ Point object snap
+ Snap to apoint object,control point,edit point, andblockortextinsertion point.
+ Point object snap, Persistent
+ The Point object snap persists until turned off.
+ Midpoint object snap
+ Snap to the midpoint of a curve or surface edge.
+ Midpoint object snap, Persistent
+ The Midpoint object snap persists until turned off.
+ Center object snap
+ Snap to the center of a circle, arc, closed polyline, or annotation text bounding box.
+ Center object snap, Persistent
+ The Center object snap persists until turned off.
+ Intersection object snap
+ Snap to the intersections of curves, edges, andisoparametric curveson a surface.
+ Intersection object snap, Persistent
+ The Intersection object snap persists until turned off.
+ Perpendicular (To) object snap
+ Snap perpendicular to a curve.
+ Perpendicular (To) object snap, Persistent
+ The Perpendicular object snap persists until turned off.
+ Tangent (To) object snap
+ Snap tangent to a curve.
+ Tangent (To) object snap, Persistent
+ The Tangent object snap persists until turned off.
+ Quadrant object snap
+ Snap to the point on a curve that is at the maximum x or y point relative to the current construction plane.
+ Quadrant object snap, Persistent
+ The Quadrant object snap persists until turned off.
+ Knot object snap
+ Snap to a knot on a curve or surface.
+ Knot object snap, Persistent
+ The Knot object snap persists until turned off.
+ Multiple object snaps:
+ End, Point, Mid, Cen, Int, Tan, Perp and Quad
+ The multiple object snaps persist until turned off.
+ Multiple object snaps: 
+ End, Point, Mid, Cen, Int, Tan, Perp and Quad, Persistent
+ From object snap
+ Snap from a specified base point.
+ PerpendicularFrom object snap
+ Track along a line perpendicular to a curve.
+ TangentFrom object snap
+ Track along a line tangent to a curve.
+ AlongLine object snap
+ Track along a line.
+ AlongParallel object snap
+ Track along a line parallel to a reference line between two points.
+ Between object snap
+ Snap midway between two specified locations.
+ OnCrv object snap
+ Snap to and track along a selected curve for one pick.
+ OnCrv object snap, Persistent
+ The OnCrv object snap persists until a command completes.
+ OnSurface object snap
+ Snap to and track over a surface for one pick.
+ OnSurface object snap, Persistent
+ The OnSurface object snap persists until a command completes.
+ OnPolysurface object snap
+ Snap to and track over a polysurface for one pick.
+ OnPolysurface object snap, Persistent
+ The OnPolysurface object snap persists until a command completes.
+ Vertex object snap
+ Snap to a meshvertex.
+ Vertex object snap, Persistent
+ The Vertex object snap persists until turned off.
+ SnapToMeshObject
+ Constrains mouse picking on the selected mesh object.
+ SnapToSubDObject
+ Constrains mouse picking on the selected SubD object. 
+ ProjectOsnap
+ Project object snaps to the construction plane.
+ DisableOsnap
+ Manage persistent object snaps.
+ SnapToLocked
+ Allow snaps to work on locked objects and locked layers.
+ NoSnap object snap
+ Turn off persistent object snaps for one pick.
+ Osnap, None
+ Clears all persistent object snaps.
+ Ortho
+ Restrict cursor movement to an angle.
+ OrthoAngle
+ Set the angle for cursor ortho movement.
+ Grid, Size
+ Sets the grid size for the current model.
+ SnapSize
+ Specify the grid snap spacing.
+ SmartTrack
+ Turn on a system of temporary reference lines and points.
+ SmartTrack, Off
+ Turns off SmartTrack.
+ SmartTrack, Options
+ Specify SmartTrack options.
