@@ -4141,11 +4141,6 @@ impl App {
             self.locust.preview_rev.hash(&mut h);
             sel_hash.hash(&mut h);
             (v.display as u8).hash(&mut h);
-            self.doc.settings.show_grid.hash(&mut h);
-            self.doc.settings.show_grid_axes.hash(&mut h);
-            self.doc.settings.grid_line_count.hash(&mut h);
-            self.doc.settings.grid_minor_spacing.to_bits().hash(&mut h);
-            self.doc.settings.grid_major_every.hash(&mut h);
             let cp = v.cplane();
             for val in [cp.z_axis.x, cp.z_axis.y, cp.z_axis.z, cp.x_axis.x, cp.x_axis.y, cp.x_axis.z, cp.origin.x, cp.origin.y, cp.origin.z] {
                 val.to_bits().hash(&mut h);
@@ -4185,9 +4180,6 @@ impl App {
         let v = &self.viewports[vp];
         let mode = v.display;
         let mut b = Batch::default();
-        if (self.doc.settings.show_grid || self.doc.settings.show_grid_axes) && !v.is_page() {
-            self.build_grid(&v.cplane(), mode, &mut b);
-        }
         if let Some(p) = &v.page {
             // the paper: a white sheet with a drop shadow, like Triceratops' layout page
             let sheet = tri_geom::Mesh::cuboid(DVec3::new(0.0, 0.0, -0.02), DVec3::new(p.width, p.height, -0.01));
@@ -4313,42 +4305,147 @@ impl App {
         b
     }
 
-    fn build_grid(&self, cplane: &Plane, mode: DisplayMode, b: &mut Batch) {
+    /// The construction-plane grid, endless: it is rebuilt for the current view every frame,
+    /// covering what the camera sees. Lines too dense to read give way to every `major`-th
+    /// one; in perspective views each coarser level reaches further out and fades away
+    /// before the horizon.
+    fn build_grid(&self, vp: usize, b: &mut Batch) {
+        const MIN_PX: f64 = 7.0;
+        let v = &self.viewports[vp];
+        let cam = &v.camera;
+        let cp = v.cplane();
         let s = &self.doc.settings;
-        let spacing = s.grid_minor_spacing.max(1e-6);
-        let n = s.grid_line_count.max(1);
+        let mode = v.display;
         let every = s.grid_major_every.max(1);
+        let ratio = if every >= 2 { every as f64 } else { 10.0 };
+        let minor_spacing = s.grid_minor_spacing.max(1e-6);
         let (minor, major) = if mode.white_background() { ([225, 225, 225], [200, 200, 200]) } else { (self.colors.minor_grid, self.colors.major_grid) };
-        let minor = lin(minor);
-        let major = lin(major);
-        let ext = spacing * n as f64;
-        if s.show_grid {
-            for i in -n..=n {
-                if i == 0 {
-                    continue;
+        let (minor, major) = (lin(minor), lin(major));
+        let (xcol, ycol) = (lin(self.colors.x_axis), lin(self.colors.y_axis));
+        let wpp = cam.world_per_pixel(v.rect.h);
+        let to_uv = |p: DVec3| {
+            let d = p - cp.origin;
+            DVec2::new(d.dot(cp.x_axis), d.dot(cp.y_axis))
+        };
+        // colour of the grid line `i` steps of `minor_spacing` from the origin
+        let colour = |i: i64| if i.rem_euclid(every as i64) == 0 { major } else { minor };
+        // levels: (spacing, centre, radius) — lines inside a disc around `centre`
+        let mut levels: Vec<(f64, DVec2, f64)> = Vec::new();
+        let fade = if cam.projection == Projection::Perspective {
+            let eye = cam.eye();
+            let height = (eye - cp.origin).dot(cp.z_axis).abs();
+            let foot = to_uv(eye);
+            let reach = cam.distance * 30.0;
+            let mut step = minor_spacing;
+            for _ in 0..40 {
+                // where this spacing is still MIN_PX on screen
+                let r3 = (step * cam.distance / (MIN_PX * wpp)).min(reach);
+                if r3 > height {
+                    levels.push((step, foot, (r3 * r3 - height * height).sqrt()));
                 }
-                let c = if i % every == 0 { major } else { minor };
-                let d = i as f64 * spacing;
-                b.line(cplane.point_at(d, -ext), cplane.point_at(d, ext), c);
-                b.line(cplane.point_at(-ext, d), cplane.point_at(ext, d), c);
+                if r3 >= reach {
+                    break;
+                }
+                step *= ratio;
+            }
+            true
+        } else {
+            // the part of the plane the view covers: where the corner rays meet it
+            let aspect = v.rect.aspect();
+            let (mut lo, mut hi) = (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN));
+            let centre = to_uv(cam.target);
+            let cap = wpp * v.rect.w.hypot(v.rect.h) * 50.0;
+            for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (0.0, 0.0)] {
+                let ray = cam.ray_ndc(DVec2::new(x, y), aspect);
+                let den = ray.dir.dot(cp.z_axis);
+                let q = if den.abs() > 1e-12 {
+                    let t = (cp.origin - ray.origin).dot(cp.z_axis) / den;
+                    to_uv(ray.at(t))
+                } else {
+                    centre + to_uv(cp.origin + ray.dir).normalize_or_zero() * cap
+                };
+                let q = centre + (q - centre).clamp_length_max(cap);
+                lo = lo.min(q);
+                hi = hi.max(q);
+            }
+            let mut step = minor_spacing;
+            while step / wpp < MIN_PX || (hi - lo).max_element() / step > 3000.0 {
+                step *= ratio;
+            }
+            let c = (lo + hi) * 0.5;
+            levels.push((step, c, (hi - lo).length() * 0.5));
+            false
+        };
+        let Some(&(_, outer_c, outer_r)) = levels.last() else { return };
+        // a grid line u = c (or v = c) clipped to the disc, faded towards its rim
+        let line = |along_v: bool, c: f64, centre: DVec2, r: f64, from: f64, to: f64, col: [f32; 4], b: &mut Batch| {
+            let (cc, oc) = if along_v { (centre.x, centre.y) } else { (centre.y, centre.x) };
+            let d = c - cc;
+            if d.abs() >= r {
+                return;
+            }
+            let half = (r * r - d * d).sqrt();
+            let (a, z) = ((oc - half).max(from), (oc + half).min(to));
+            if a >= z {
+                return;
+            }
+            let at = |t: f64| if along_v { cp.point_at(c, t) } else { cp.point_at(t, c) };
+            if !fade {
+                b.line(at(a), at(z), col);
+                return;
+            }
+            let alpha = |t: f64| {
+                let rho = (d * d + (t - oc) * (t - oc)).sqrt() / r;
+                let k = ((rho - 0.55) / 0.45).clamp(0.0, 1.0);
+                1.0 - k * k * (3.0 - 2.0 * k)
+            };
+            let n = 8;
+            for i in 0..n {
+                let t0 = a + (z - a) * i as f64 / n as f64;
+                let t1 = a + (z - a) * (i + 1) as f64 / n as f64;
+                let (c0, c1) = ([col[0], col[1], col[2], col[3] * alpha(t0) as f32], [col[0], col[1], col[2], col[3] * alpha(t1) as f32]);
+                b.lines.push(crate::render::LineVertex { pos: at(t0).as_vec3().to_array(), color: c0 });
+                b.lines.push(crate::render::LineVertex { pos: at(t1).as_vec3().to_array(), color: c1 });
+            }
+        };
+        if s.show_grid {
+            for (k, &(step, centre, r)) in levels.iter().enumerate() {
+                let coarser = levels.get(k + 1).map(|l| l.0);
+                let m = (step / minor_spacing).round().max(1.0) as i64;
+                for along_v in [true, false] {
+                    let cc = if along_v { centre.x } else { centre.y };
+                    let (i0, i1) = (((cc - r) / step).ceil() as i64, ((cc + r) / step).floor() as i64);
+                    for i in i0..=i1 {
+                        if i == 0 {
+                            continue;
+                        }
+                        let c = i as f64 * step;
+                        // drawn by the coarser level, which reaches further
+                        if let Some(cs) = coarser {
+                            if ((c / cs).round() * cs - c).abs() < step * 1e-6 {
+                                continue;
+                            }
+                        }
+                        line(along_v, c, centre, r, f64::MIN, f64::MAX, colour(i * m), b);
+                    }
+                }
             }
         }
-        if s.show_grid_axes {
-            let xcol = lin(self.colors.x_axis);
-            let ycol = lin(self.colors.y_axis);
-            b.line(cplane.point_at(-ext, 0.0), cplane.point_at(0.0, 0.0), major);
-            b.line(cplane.point_at(0.0, 0.0), cplane.point_at(ext, 0.0), xcol);
-            b.line(cplane.point_at(0.0, -ext), cplane.point_at(0.0, 0.0), major);
-            b.line(cplane.point_at(0.0, 0.0), cplane.point_at(0.0, ext), ycol);
-        } else if s.show_grid {
-            b.line(cplane.point_at(-ext, 0.0), cplane.point_at(ext, 0.0), major);
-            b.line(cplane.point_at(0.0, -ext), cplane.point_at(0.0, ext), major);
+        if s.show_grid_axes || s.show_grid {
+            let (xp, yp) = if s.show_grid_axes { (xcol, ycol) } else { (major, major) };
+            line(false, 0.0, outer_c, outer_r, f64::MIN, 0.0, major, b);
+            line(false, 0.0, outer_c, outer_r, 0.0, f64::MAX, xp, b);
+            line(true, 0.0, outer_c, outer_r, f64::MIN, 0.0, major, b);
+            line(true, 0.0, outer_c, outer_r, 0.0, f64::MAX, yp, b);
         }
     }
 
     fn build_overlay_batch(&self, vp: usize, preview: &[Preview]) -> Batch {
         let mut b = Batch::default();
         let v = &self.viewports[vp];
+        if (self.doc.settings.show_grid || self.doc.settings.show_grid_axes) && !v.is_page() {
+            self.build_grid(vp, &mut b);
+        }
         let col = lin(if v.display.white_background() { [0, 0, 0] } else { self.colors.feedback });
         let tol = v.camera.world_per_pixel(v.rect.h) * 0.5;
         for p in preview {
