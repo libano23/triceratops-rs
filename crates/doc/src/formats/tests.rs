@@ -273,3 +273,23 @@ fn registry_and_unsupported() {
     assert!(import_extensions().len() > 20);
     assert!(export_extensions().contains(&"igs"));
 }
+
+#[test]
+fn svg_smooth_curves_reflect_matching_control_point() {
+    use super::vector2d::parse_path;
+    let mid = |d: &str| {
+        let p = parse_path(d);
+        let seg = &p[0];
+        seg[seg.len() - 16 + 7] // t = 0.5 of the last segment
+    };
+    // T reflects the previous quadratic control (10,10) about (20,0) -> (30,-10)
+    let m = mid("M0 0 Q10 10 20 0 T40 0");
+    assert!((m.x - 30.0).abs() < 1e-9 && (m.y + 5.0).abs() < 1e-9, "T midpoint {m:?}");
+    // S after Q does not reflect: first control = current point
+    let m = mid("M0 0 Q10 10 20 0 S30 10 40 0");
+    assert!((m.x - 26.25).abs() < 1e-9 && (m.y - 3.75).abs() < 1e-9, "S midpoint {m:?}");
+    // S after C reflects the cubic second control (15,10) about (20,0) -> (25,-10)
+    let m = mid("M0 0 C5 10 15 10 20 0 S35 10 40 0");
+    let e = DVec3::new(20.0, 0.0, 0.0) * 0.125 + DVec3::new(25.0, -10.0, 0.0) * 0.375 + DVec3::new(35.0, 10.0, 0.0) * 0.375 + DVec3::new(40.0, 0.0, 0.0) * 0.125;
+    assert!((m - e).length() < 1e-9, "S after C midpoint {m:?}");
+}

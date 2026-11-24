@@ -28,6 +28,10 @@ cargo run --release -- --script s.txt  # run command lines from a file at start-
 cargo test --workspace                 # run the test suites
 ```
 
+`./triceratops.sh` does the same as `cargo run --release`: it rebuilds when the sources changed,
+then starts the program with any arguments you pass (`./triceratops.sh model.3dm`,
+`./triceratops.sh --script s.txt`). Pass `--no-build` first to skip the build check.
+
 The first build compiles openNURBS and takes a few minutes. Triceratops has been tested on
 Arch Linux under Wayland (niri) with an AMD GPU.
 

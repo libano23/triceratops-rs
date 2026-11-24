@@ -150,7 +150,9 @@ pub fn parse_path(d: &str) -> Vec<Vec<DVec3>> {
     let mut path: Vec<DVec3> = Vec::new();
     let mut pos = DVec3::ZERO;
     let mut start = DVec3::ZERO;
-    let mut last_ctrl: Option<DVec3> = None;
+    // reflection sources for smooth segments: S/s only after C/S, T/t only after Q/T
+    let mut last_cubic: Option<DVec3> = None;
+    let mut last_quad: Option<DVec3> = None;
     let mut cmd = 'M';
     let mut i = 0;
     let num = |tokens: &[String], i: &mut usize| -> Option<f64> {
@@ -204,31 +206,31 @@ pub fn parse_path(d: &str) -> Vec<Vec<DVec3>> {
             }
             'C' | 'S' | 'Q' | 'T' => {
                 let up = cmd.to_ascii_uppercase();
-                let (p1, p2, p3) = match up {
+                let (p1, p2, p3, quad) = match up {
                     'C' => {
                         let v: Vec<f64> = (0..6).filter_map(|_| num(&tokens, &mut i)).collect();
                         if v.len() < 6 { break }
-                        (base + DVec3::new(v[0], v[1], 0.0), base + DVec3::new(v[2], v[3], 0.0), base + DVec3::new(v[4], v[5], 0.0))
+                        (base + DVec3::new(v[0], v[1], 0.0), base + DVec3::new(v[2], v[3], 0.0), base + DVec3::new(v[4], v[5], 0.0), None)
                     }
                     'S' => {
                         let v: Vec<f64> = (0..4).filter_map(|_| num(&tokens, &mut i)).collect();
                         if v.len() < 4 { break }
-                        let p1 = last_ctrl.map(|c| pos * 2.0 - c).unwrap_or(pos);
-                        (p1, base + DVec3::new(v[0], v[1], 0.0), base + DVec3::new(v[2], v[3], 0.0))
+                        let p1 = last_cubic.map(|c| pos * 2.0 - c).unwrap_or(pos);
+                        (p1, base + DVec3::new(v[0], v[1], 0.0), base + DVec3::new(v[2], v[3], 0.0), None)
                     }
                     'Q' => {
                         let v: Vec<f64> = (0..4).filter_map(|_| num(&tokens, &mut i)).collect();
                         if v.len() < 4 { break }
                         let q = base + DVec3::new(v[0], v[1], 0.0);
                         let p3 = base + DVec3::new(v[2], v[3], 0.0);
-                        (pos + (q - pos) * (2.0 / 3.0), p3 + (q - p3) * (2.0 / 3.0), p3)
+                        (pos + (q - pos) * (2.0 / 3.0), p3 + (q - p3) * (2.0 / 3.0), p3, Some(q))
                     }
                     _ => {
                         let v: Vec<f64> = (0..2).filter_map(|_| num(&tokens, &mut i)).collect();
                         if v.len() < 2 { break }
-                        let q = last_ctrl.map(|c| pos * 2.0 - c).unwrap_or(pos);
+                        let q = last_quad.map(|c| pos * 2.0 - c).unwrap_or(pos);
                         let p3 = base + DVec3::new(v[0], v[1], 0.0);
-                        (pos + (q - pos) * (2.0 / 3.0), p3 + (q - p3) * (2.0 / 3.0), p3)
+                        (pos + (q - pos) * (2.0 / 3.0), p3 + (q - p3) * (2.0 / 3.0), p3, Some(q))
                     }
                 };
                 for k in 1..=16 {
@@ -236,7 +238,8 @@ pub fn parse_path(d: &str) -> Vec<Vec<DVec3>> {
                     let mt = 1.0 - t;
                     path.push(pos * (mt * mt * mt) + p1 * (3.0 * mt * mt * t) + p2 * (3.0 * mt * t * t) + p3 * (t * t * t));
                 }
-                last_ctrl = Some(if up == 'Q' || up == 'T' { p2 } else { p2 });
+                last_cubic = if quad.is_none() { Some(p2) } else { None };
+                last_quad = quad;
                 pos = p3;
                 continue;
             }
@@ -251,7 +254,8 @@ pub fn parse_path(d: &str) -> Vec<Vec<DVec3>> {
                 i += 1;
             }
         }
-        last_ctrl = None;
+        last_cubic = None;
+        last_quad = None;
     }
     if path.len() > 1 {
         out.push(path);

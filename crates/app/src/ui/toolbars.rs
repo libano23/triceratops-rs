@@ -406,7 +406,6 @@ pub fn flyout_items(name: &str) -> &'static [Btn] {
         "Select" => SELECT,
         "Visibility" => VISIBILITY,
         "Viewport Layout" => VIEWPORT_LAYOUT,
-        "Mesh Tools" => MESH_TOOLS,
         "Join" => FLY_JOIN,
         "Undo" => FLY_UNDO,
         "View" => FLY_VIEW,
