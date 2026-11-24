@@ -66,39 +66,43 @@ impl Command for EdgeSrfCmd {
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
         let Input::Objects(ids) = input else { return Step::Cancelled };
-        let mut curves: Vec<NurbsCurve> = ids.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
-        if curves.len() == 2 {
-            // align the second curve's direction with the first (no bow-tie surfaces)
-            let (s0, e0) = (curves[0].start_point(), curves[0].end_point());
-            let (s1, e1) = (curves[1].start_point(), curves[1].end_point());
-            if (s1 - s0).length() + (e1 - e0).length() > (e1 - s0).length() + (s1 - e0).length() {
-                curves[1].reverse();
-            }
-        }
-        let result = match curves.len() {
-            2 => NurbsSurface::loft(&curves, 1).map(Geometry::Surface),
-            3 | 4 => {
-                let chain = order_chain(curves.clone());
-                let c0 = chain[0].clone();
-                let c1 = chain[1].clone();
-                let (c2, c3) = if chain.len() == 4 {
-                    (chain[2].clone(), chain[3].clone())
-                } else {
-                    // three sides: the fourth edge collapses to the shared corner
-                    let apex = chain[2].end_point();
-                    (chain[2].clone(), NurbsCurve::line(apex, apex + DVec3::new(1e-9, 0.0, 0.0)).unwrap())
-                };
-                NurbsSurface::coons(&c0, &c1, &c2, &c3, 12).map(Geometry::Surface)
-            }
-            _ => Err(tri_geom::GeomError::NotEnoughPoints { need: 2, got: curves.len() }),
-        };
-        match result {
+        let curves: Vec<NurbsCurve> = ids.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
+        match edge_surface(curves) {
             Ok(g) => add_selected(ctx, "EdgeSrf", vec![g]),
             Err(e) => {
                 ctx.log(format!("EdgeSrf failed: {e}"));
                 Step::Cancelled
             }
         }
+    }
+}
+
+/// EdgeSrf: a surface from 2, 3 or 4 boundary curves (ruled for two, Coons otherwise).
+pub fn edge_surface(mut curves: Vec<NurbsCurve>) -> Result<Geometry, tri_geom::GeomError> {
+    if curves.len() == 2 {
+        // align the second curve's direction with the first (no bow-tie surfaces)
+        let (s0, e0) = (curves[0].start_point(), curves[0].end_point());
+        let (s1, e1) = (curves[1].start_point(), curves[1].end_point());
+        if (s1 - s0).length() + (e1 - e0).length() > (e1 - s0).length() + (s1 - e0).length() {
+            curves[1].reverse();
+        }
+    }
+    match curves.len() {
+        2 => NurbsSurface::loft(&curves, 1).map(Geometry::Surface),
+        3 | 4 => {
+            let chain = order_chain(curves.clone());
+            let c0 = chain[0].clone();
+            let c1 = chain[1].clone();
+            let (c2, c3) = if chain.len() == 4 {
+                (chain[2].clone(), chain[3].clone())
+            } else {
+                // three sides: the fourth edge collapses to the shared corner
+                let apex = chain[2].end_point();
+                (chain[2].clone(), NurbsCurve::line(apex, apex + DVec3::new(1e-9, 0.0, 0.0)).unwrap())
+            };
+            NurbsSurface::coons(&c0, &c1, &c2, &c3, 12).map(Geometry::Surface)
+        }
+        _ => Err(tri_geom::GeomError::NotEnoughPoints { need: 2, got: curves.len() }),
     }
 }
 
@@ -181,11 +185,8 @@ impl Command for Sweep1Cmd {
                 let Some(rail) = curve_of(ctx.doc, rail_id) else { return Step::Cancelled };
                 let mut out = Vec::new();
                 for pid in profiles {
-                    if let Some(p) = curve_of(ctx.doc, pid) {
-                        let sections = sweep_sections(&p, &rail, 24, false);
-                        if let Ok(s) = NurbsSurface::loft(&sections, 3) {
-                            out.push(Geometry::Surface(s));
-                        }
+                    if let Some(s) = curve_of(ctx.doc, pid).and_then(|p| sweep1_surface(&p, &rail, true)) {
+                        out.push(Geometry::Surface(s));
                     }
                 }
                 add_selected(ctx, self.label(), out)
@@ -194,11 +195,8 @@ impl Command for Sweep1Cmd {
                 let Some(rail) = self.rail.and_then(|r| curve_of(ctx.doc, r)) else { return Step::Cancelled };
                 let mut out = Vec::new();
                 for pid in ids {
-                    if let Some(p) = curve_of(ctx.doc, pid) {
-                        let sections = sweep_sections(&p, &rail, 24, true);
-                        if let Ok(s) = NurbsSurface::loft(&sections, 3) {
-                            out.push(Geometry::Surface(s));
-                        }
+                    if let Some(s) = curve_of(ctx.doc, pid).and_then(|p| sweep1_surface(&p, &rail, false)) {
+                        out.push(Geometry::Surface(s));
                     }
                 }
                 add_selected(ctx, self.label(), out)
@@ -231,32 +229,9 @@ impl Command for Sweep2Cmd {
             }
             Input::Objects(ids) => {
                 let (Some(r1), Some(r2)) = (curve_of(ctx.doc, self.rails[0]), curve_of(ctx.doc, self.rails[1])) else { return Step::Cancelled };
-                let n = 24;
                 let mut out = Vec::new();
                 for pid in ids {
-                    let Some(p) = curve_of(ctx.doc, pid) else { continue };
-                    // profile frame: from rail1 start to rail2 start
-                    let a0 = r1.start_point();
-                    let b0 = r2.start_point();
-                    let base_dir = b0 - a0;
-                    if base_dir.length() < 1e-9 {
-                        continue;
-                    }
-                    let (t0, t1) = r1.domain();
-                    let (s0, s1) = r2.domain();
-                    let sections: Vec<NurbsCurve> = (0..=n)
-                        .map(|i| {
-                            let f = i as f64 / n as f64;
-                            let a = r1.point_at(t0 + (t1 - t0) * f);
-                            let b = r2.point_at(s0 + (s1 - s0) * f);
-                            let d = b - a;
-                            let scale = d.length() / base_dir.length();
-                            let q = DQuat::from_rotation_arc(base_dir.normalize(), d.normalize_or(base_dir.normalize()));
-                            let xf = DAffine3::from_translation(a) * DAffine3::from_quat(q) * DAffine3::from_scale(DVec3::splat(scale.max(1e-9))) * DAffine3::from_translation(-a0);
-                            p.transformed(&xf)
-                        })
-                        .collect();
-                    if let Ok(s) = NurbsSurface::loft(&sections, 3) {
+                    if let Some(s) = curve_of(ctx.doc, pid).and_then(|p| sweep2_surface(&p, &r1, &r2)) {
                         out.push(Geometry::Surface(s));
                     }
                 }
@@ -265,6 +240,40 @@ impl Command for Sweep2Cmd {
             _ => Step::Cancelled,
         }
     }
+}
+
+/// Sweep1 of one profile along a rail (`translate_only`: ExtrudeCrvAlongCrv, no rotation).
+pub fn sweep1_surface(profile: &NurbsCurve, rail: &NurbsCurve, translate_only: bool) -> Option<NurbsSurface> {
+    let sections = sweep_sections(profile, rail, 24, !translate_only);
+    NurbsSurface::loft(&sections, 3).ok()
+}
+
+/// Sweep2 of one profile between two rails: the profile is moved, turned and scaled to span
+/// the rails at every station.
+pub fn sweep2_surface(p: &NurbsCurve, r1: &NurbsCurve, r2: &NurbsCurve) -> Option<NurbsSurface> {
+    let n = 24;
+    // profile frame: from rail1 start to rail2 start
+    let a0 = r1.start_point();
+    let b0 = r2.start_point();
+    let base_dir = b0 - a0;
+    if base_dir.length() < 1e-9 {
+        return None;
+    }
+    let (t0, t1) = r1.domain();
+    let (s0, s1) = r2.domain();
+    let sections: Vec<NurbsCurve> = (0..=n)
+        .map(|i| {
+            let f = i as f64 / n as f64;
+            let a = r1.point_at(t0 + (t1 - t0) * f);
+            let b = r2.point_at(s0 + (s1 - s0) * f);
+            let d = b - a;
+            let scale = d.length() / base_dir.length();
+            let q = DQuat::from_rotation_arc(base_dir.normalize(), d.normalize_or(base_dir.normalize()));
+            let xf = DAffine3::from_translation(a) * DAffine3::from_quat(q) * DAffine3::from_scale(DVec3::splat(scale.max(1e-9))) * DAffine3::from_translation(-a0);
+            p.transformed(&xf)
+        })
+        .collect();
+    NurbsSurface::loft(&sections, 3).ok()
 }
 
 #[derive(Default)]
@@ -543,20 +552,8 @@ impl Command for MeshToNurbCmd {
                 let mut out = Vec::new();
                 for id in ids {
                     let Some(Geometry::Mesh(m)) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { continue };
-                    let mut faces = Vec::new();
-                    for t in 0..m.triangle_count() {
-                        let (a, b, c) = m.triangle(t);
-                        let n = (b - a).cross(c - a);
-                        if n.length_squared() < 1e-24 {
-                            continue;
-                        }
-                        let plane = Plane::from_normal(a, n.normalize());
-                        if let Ok(f) = Face::planar(&plane, vec![vec![a, b, c]]) {
-                            faces.push(f);
-                        }
-                    }
-                    if !faces.is_empty() {
-                        out.push(Geometry::Brep(Brep::new(faces)));
+                    if let Some(b) = mesh_to_brep(&m) {
+                        out.push(Geometry::Brep(b));
                     }
                 }
                 add_selected(ctx, "MeshToNURB", out)
@@ -565,6 +562,26 @@ impl Command for MeshToNurbCmd {
             _ => Step::Cancelled,
         }
     }
+}
+
+/// MeshToNURB: one planar face per triangle.
+pub fn mesh_to_brep(m: &tri_geom::Mesh) -> Option<Brep> {
+    let mut faces = Vec::new();
+    for t in 0..m.triangle_count() {
+        let (a, b, c) = m.triangle(t);
+        let n = (b - a).cross(c - a);
+        if n.length_squared() < 1e-24 {
+            continue;
+        }
+        let plane = Plane::from_normal(a, n.normalize());
+        if let Ok(f) = Face::planar(&plane, vec![vec![a, b, c]]) {
+            faces.push(f);
+        }
+    }
+    if faces.is_empty() {
+        return None;
+    }
+    Some(Brep::new(faces))
 }
 
 // ---- solids ------------------------------------------------------------------------------------

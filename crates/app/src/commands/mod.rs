@@ -264,6 +264,8 @@ pub enum Step {
 /// Requests that commands send to the application (things outside the document).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppRequest {
+    /// Open the Locust node editor.
+    Locust,
     ZoomExtents { all: bool, selected: bool },
     ZoomWindow,
     SetView(String),

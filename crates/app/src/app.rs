@@ -552,6 +552,10 @@ pub struct App {
     pub aids: ModelingAids,
     pub colors: AppearanceColors,
     pub scene: SceneCache,
+    /// The Locust node editor and its viewport preview.
+    pub locust: crate::locust::ui::Editor,
+    locust_displays: Vec<(crate::render::scene::ObjectDisplay, [f32; 4], [f32; 4])>,
+    locust_displays_rev: u64,
     pub cursor: Option<Cursor>,
     pub pick_order: Vec<ObjectId>,
     pub window_drag: Option<WindowDrag>,
@@ -652,6 +656,9 @@ impl App {
             aids: ModelingAids::default(),
             colors: AppearanceColors::default(),
             scene: SceneCache::default(),
+            locust: Default::default(),
+            locust_displays: Vec::new(),
+            locust_displays_rev: 0,
             cursor: None,
             pick_order: Vec::new(),
             window_drag: None,
@@ -2812,7 +2819,9 @@ impl App {
                 AppRequest::FileSaveAs => self.file_save(true),
                 AppRequest::Import => self.file_import(),
                 AppRequest::Export => self.file_export(),
+                AppRequest::Locust => self.locust.show_window(),
                 AppRequest::Quit => {
+                    self.locust.save_autosave();
                     self.save_options();
                     self.quit = true;
                 }
@@ -4098,6 +4107,26 @@ impl App {
     pub fn build_batches(&mut self) -> Vec<bool> {
         self.sync_batch_vectors();
         self.update_scene();
+        if self.locust_displays_rev != self.locust.preview_rev || (self.locust_displays_rev == 0 && !self.locust.preview.is_empty()) {
+            // the Locust preview: red and translucent like Grasshopper's, or its own colour
+            let tier = self.scene.tier.unwrap_or(0);
+            self.locust_displays = self
+                .locust
+                .preview
+                .iter()
+                .map(|(g, col)| {
+                    let (line, fill) = match col {
+                        Some(c) => {
+                            let rgb = [(c[0].clamp(0.0, 1.0) * 255.0) as u8, (c[1].clamp(0.0, 1.0) * 255.0) as u8, (c[2].clamp(0.0, 1.0) * 255.0) as u8];
+                            (lin(rgb), lin_a(rgb, c[3].clamp(0.05, 1.0) as f32))
+                        }
+                        None => (lin([150, 20, 20]), lin_a([205, 50, 50], 0.55)),
+                    };
+                    (crate::render::scene::preview_display(g, tier), line, fill)
+                })
+                .collect();
+            self.locust_displays_rev = self.locust.preview_rev;
+        }
         if !self.points_on.is_empty() && self.grip_drag.is_none() {
             self.rebuild_grips(false);
         }
@@ -4109,6 +4138,7 @@ impl App {
             let mut h = DefaultHasher::new();
             self.doc.revision.hash(&mut h);
             self.scene.tier.hash(&mut h);
+            self.locust.preview_rev.hash(&mut h);
             sel_hash.hash(&mut h);
             (v.display as u8).hash(&mut h);
             self.doc.settings.show_grid.hash(&mut h);
@@ -4263,6 +4293,20 @@ impl App {
                         }
                     };
                     b.mesh(m, fill);
+                }
+            }
+        }
+        for (od, line, fill) in &self.locust_displays {
+            if od.is_curve || mode.isocurves() {
+                b.segments(&od.lines, *line);
+            }
+            b.segments(&od.edges, *line);
+            for p in &od.points {
+                b.point(*p, 5.0, *line);
+            }
+            if mode.shaded() {
+                if let Some(m) = &od.mesh {
+                    b.mesh(m, *fill);
                 }
             }
         }

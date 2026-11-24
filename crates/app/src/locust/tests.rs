@@ -1,0 +1,715 @@
+//! Locust tests, ported from the Python Locust's test suite (tests/test_locust.py), plus
+//! checks for the Rust specifics.
+
+use std::collections::HashMap;
+use std::f64::consts::PI;
+
+use glam::DVec3;
+use serde_json::{json, Map};
+
+use super::components::{num, registry, Ctx, Registry};
+use super::data::{match_trees, DataTree, Value};
+use super::engine::{solve, solve_with};
+use super::graph::Graph;
+
+fn vals(pairs: &[(&str, serde_json::Value)]) -> Map<String, serde_json::Value> {
+    pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+}
+
+fn node(g: &mut Graph, kind: &str, pairs: &[(&str, serde_json::Value)]) -> String {
+    g.add_node_with(kind, 0.0, 0.0, vals(pairs))
+}
+
+fn run(g: &Graph) -> HashMap<String, Vec<DataTree>> {
+    solve(g, &mut Ctx::default())
+}
+
+fn first_num(t: &DataTree) -> f64 {
+    super::data::as_number(t.first().expect("a value"))
+}
+
+fn first_pt(t: &DataTree) -> DVec3 {
+    super::data::as_point(t.first().expect("a value"))
+}
+
+fn nums(t: &DataTree) -> Vec<f64> {
+    t.items().iter().map(super::data::as_number).collect()
+}
+
+fn solve_node(kind: &str, pairs: &[(&str, serde_json::Value)]) -> Vec<DataTree> {
+    let mut g = Graph::new();
+    let n = node(&mut g, kind, pairs);
+    run(&g).remove(&n).unwrap()
+}
+
+fn close(a: f64, b: f64, rel: f64) -> bool {
+    (a - b).abs() <= rel * b.abs().max(1e-12)
+}
+
+// --------------------------------------------------------------- data trees
+
+#[test]
+fn tree_flatten_and_graft() {
+    let t = DataTree::from_branches([(vec![0], vec![Value::Int(1), Value::Int(2)]), (vec![1], vec![Value::Int(3)])]);
+    assert_eq!(nums(&t.flatten()), vec![1.0, 2.0, 3.0]);
+    assert_eq!(t.flatten().paths(), vec![Vec::<i64>::new()]);
+    let gr = t.graft();
+    assert_eq!(gr.branch_count(), 3);
+    assert_eq!(gr.count(), 3);
+}
+
+#[test]
+fn tree_simplify_drops_a_leading_zero() {
+    let t = DataTree::from_branches([(vec![0, 0], vec![Value::Int(1)]), (vec![0, 1], vec![Value::Int(2)])]);
+    assert_eq!(t.simplify().paths(), vec![vec![0], vec![1]]);
+}
+
+#[test]
+fn match_broadcasts_a_single_branch() {
+    let a = DataTree::single(Value::Number(10.0));
+    let b = DataTree::from_list(vec![Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)]);
+    let combos = match_trees(&[a, b]);
+    assert_eq!(combos.len(), 3);
+    assert!(combos.iter().all(|c| super::data::as_number(&c.values[0]) == 10.0));
+    assert_eq!(combos.iter().map(|c| super::data::as_number(&c.values[1])).collect::<Vec<_>>(), vec![1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn match_repeats_the_shorter_list() {
+    let a = DataTree::from_list(vec![Value::Number(1.0), Value::Number(2.0)]);
+    let b = DataTree::from_list(vec![Value::Number(10.0), Value::Number(20.0), Value::Number(30.0)]);
+    let combos = match_trees(&[a, b]);
+    assert_eq!(combos.iter().map(|c| super::data::as_number(&c.values[0])).collect::<Vec<_>>(), vec![1.0, 2.0, 2.0]);
+}
+
+#[test]
+fn match_keeps_paths_apart() {
+    let a = DataTree::from_branches([(vec![0], vec![Value::Number(1.0)]), (vec![1], vec![Value::Number(2.0)])]);
+    let b = DataTree::from_branches([(vec![0], vec![Value::Number(10.0)]), (vec![1], vec![Value::Number(20.0)])]);
+    let combos = match_trees(&[a, b]);
+    let got: HashMap<Vec<i64>, Vec<f64>> = combos.iter().map(|c| (c.path.clone(), c.values.iter().map(super::data::as_number).collect())).collect();
+    assert_eq!(got[&vec![0]], vec![1.0, 10.0]);
+    assert_eq!(got[&vec![1]], vec![2.0, 20.0]);
+}
+
+#[test]
+fn tree_trim_shift_and_partition() {
+    let t = DataTree::from_branches([(vec![0, 0], (1..=4).map(Value::Int).collect())]);
+    assert_eq!(t.trim(1).paths(), vec![vec![0]]);
+    assert_eq!(t.shift_paths(2).paths(), vec![vec![0, 2]]);
+    let parts = t.partition(2, Some(2));
+    assert_eq!(nums(&DataTree::from_list(parts.branch(&[0, 0, 0]))), vec![1.0, 2.0]);
+    assert_eq!(nums(&DataTree::from_list(parts.branch(&[0, 0, 1]))), vec![3.0, 4.0]);
+    assert_eq!(t.graft_by(2).branch_count(), 2);
+}
+
+#[test]
+fn branch_paths_lists_the_paths() {
+    let t = DataTree::from_branches([(vec![0], vec![Value::Int(1)]), (vec![2], vec![Value::Int(3)])]);
+    let reprs: Vec<String> = t.branch_paths().items().iter().map(|v| v.to_text()).collect();
+    assert_eq!(reprs, vec!["[0]", "[2]"]);
+}
+
+// ----------------------------------------------------------------- components
+
+#[test]
+fn every_component_is_well_formed() {
+    let reg = registry();
+    assert!(reg.len() >= 214, "{} components", reg.len());
+    for (name, c) in &reg.components {
+        assert_eq!(c.name, *name);
+        assert!(!c.outputs.is_empty(), "{name}");
+        let mut names: Vec<&str> = c.inputs.iter().map(|i| i.name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), c.inputs.len(), "{name}");
+    }
+}
+
+#[test]
+fn component_library_matches_the_python_one() {
+    // every component of the Python Locust exists here, in the same category
+    let expected: &[(&str, &[&str])] = &[
+        ("Params", &["Number", "Integer", "Boolean", "Text", "Point", "Vector", "Plane", "Geometry", "Colour RGB", "Colour HSV"]),
+        ("Vector", &["Deconstruct Point", "Vector 2Pt", "Amplitude", "Unit Z", "Dot Product", "Cross Product", "Unit Vector", "Vector Length", "Vector Add", "Vector Subtract", "Vector Scale", "Vector Angle", "Vector Rotate", "Point Add", "Point Subtract", "Point Average"]),
+        ("Math", &["Add", "Subtract", "Multiply", "Divide", "Power", "Modulus", "Negate", "Absolute", "Square Root", "Sine", "Cosine", "Tangent", "Minimum", "Maximum", "Average", "Round", "Clamp", "Remap", "Floor", "Ceiling", "Truncate", "Sign", "Exponential", "Logarithm", "Degrees", "Radians", "Arc Sine", "Arc Cosine", "Arc Tangent", "Factorial", "Sum", "Mean", "Weighted Average"]),
+        ("Logic", &["Not", "And", "Or", "Xor", "Larger Than", "Smaller Than", "Equality"]),
+        ("Sets", &["Series", "Range", "Flatten", "Graft", "Simplify", "List Length", "List Item", "Reverse", "Shift", "Cull Pattern", "Merge", "Sort", "Partition", "Graft By", "Trim Tree", "Shift Paths", "Deconstruct Path", "Cull Index", "Replace Items", "Insert Items", "Dispatch", "Weave", "Entwine", "List Union", "List Intersection", "List Difference", "Item Index", "Reverse List", "Sub List", "Fibonacci"]),
+        ("Curve", &["Line", "Line SDL", "Circle", "Circle 2Pt", "Arc 3Pt", "Arc", "Ellipse", "Rectangle", "Polygon", "Polyline", "Interpolate", "Offset Curve", "Divide Curve", "Curve Length", "Curve End", "Curve Midpoint", "Nurbs Curve", "Offset Curve Loose", "Extend Curve", "Curve Closest Point", "Evaluate Curve", "Curve Control Points", "Rebuild Curve", "Reverse Curve", "Curve Seam", "Join Curves", "Explode", "Divide Distance", "Curve Curvature", "Point On Curve", "Perp Frame", "Curve Domain"]),
+        ("Surface", &["Plane Surface", "Box", "Sphere", "Cylinder", "Cone", "Torus", "Extrude", "Loft", "Revolve", "Edge Surface", "Patch", "Cap", "Shell", "Sweep1", "Sweep2", "Extrude Along Curve", "Rail Revolve", "Offset Surface", "Untrim", "Surface from Corners", "Surface from Grid", "Evaluate Surface", "Iso Curve", "Deconstruct Brep", "Join Brep", "Flip Surface", "Pull Curve", "Divide Surface", "Surface Closest Point", "Surface Domain"]),
+        ("Solid", &["Union", "Difference", "Intersection", "Solid Union", "Fillet Edge", "Solid Intersection", "Solid Difference", "Create Solid", "Chamfer Edge", "Split Solid", "Wire Cut", "Split Brep"]),
+        ("Transform", &["Move", "Rotate", "Scale", "Mirror", "Array Linear", "Array Polar", "Orient", "Project", "Scale NU", "Twist"]),
+        ("Analysis", &["Area", "Volume", "Bounding Box", "Centroid", "Distance", "Volume Centroid", "Area Centroid", "Deconstruct Box", "Closest Point", "Surface Area Centroid"]),
+        ("Output", &["Preview", "Bake", "Panel", "Cluster Input", "Cluster Output", "Custom Preview"]),
+        ("Domain", &["Construct Domain", "Deconstruct Domain", "Bounds"]),
+        ("String", &["Concatenate", "Text Join", "Text Split", "Text Length", "Substring", "Replace Text", "Number to Text", "Text to Number"]),
+        ("Intersect", &["Curve-Curve Intersection"]),
+        ("Mesh", &["Mesh Brep", "Mesh to Brep", "Mesh Vertices", "Mesh Box", "Mesh Sphere", "Deconstruct Mesh"]),
+    ];
+    let reg = registry();
+    let mut total = 0;
+    for (cat, names) in expected {
+        for n in *names {
+            let c = reg.get(n).unwrap_or_else(|| panic!("missing component {n}"));
+            assert_eq!(c.category, *cat, "{n}");
+            total += 1;
+        }
+    }
+    assert_eq!(total, 214);
+}
+
+// -------------------------------------------------------------------- engine
+
+#[test]
+fn series_drives_a_list_through_one_number() {
+    let mut g = Graph::new();
+    let series = node(&mut g, "Series", &[("Start", json!(1.0)), ("Step", json!(1.0)), ("Count", json!(3))]);
+    let circle = node(&mut g, "Circle", &[]);
+    let extrude = node(&mut g, "Extrude", &[("Distance", json!(2.0))]);
+    let volume = node(&mut g, "Volume", &[]);
+    g.connect(&series, 0, &circle, 1);
+    g.connect(&circle, 0, &extrude, 0);
+    g.connect(&extrude, 0, &volume, 0);
+    let got = nums(&run(&g)[&volume][0]);
+    let want: Vec<f64> = [1.0f64, 2.0, 3.0].iter().map(|r| PI * r * r * 2.0).collect();
+    assert_eq!(got.len(), 3);
+    for (a, b) in got.iter().zip(&want) {
+        assert!((a - b).abs() < 0.005, "{got:?} vs {want:?}");
+    }
+}
+
+#[test]
+fn boolean_union_volume() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Box", &[("X", json!(10.0)), ("Y", json!(10.0)), ("Z", json!(10.0))]);
+    let b = node(&mut g, "Box", &[("X", json!(10.0)), ("Y", json!(10.0)), ("Z", json!(10.0)), ("Corner", json!([5.0, 0.0, 0.0]))]);
+    let u = node(&mut g, "Union", &[]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&a, 0, &u, 0);
+    g.connect(&b, 0, &u, 1);
+    g.connect(&u, 0, &vol, 0);
+    assert!(close(first_num(&run(&g)[&vol][0]), 1500.0, 1e-6));
+}
+
+#[test]
+fn a_component_that_fails_yields_nothing() {
+    let mut reg: Registry = registry().clone();
+    reg.elem("_RaisesTest", "Test", vec![num("X", 0.0)], &["Y"], |_, _| panic!("boom"));
+    let mut g = Graph::new();
+    let n = node(&mut g, "_RaisesTest", &[]);
+    let out = solve_with(&g, &mut Ctx::default(), &HashMap::new(), &reg);
+    assert!(out[&n][0].is_empty());
+}
+
+#[test]
+fn a_missing_component_yields_nothing() {
+    let mut g = Graph::new();
+    let n = node(&mut g, "NoSuchComponent", &[]);
+    assert!(run(&g)[&n].is_empty());
+}
+
+#[test]
+fn geometry_parameter_reads_the_document() {
+    let mut doc = tri_doc::Document::new();
+    let b = super::components::geo::box_solid(DVec3::ZERO, 2.0, 2.0, 2.0).unwrap();
+    let id = doc.add(b);
+    let mut g = Graph::new();
+    let par = node(&mut g, "Geometry", &[("Objects", json!([id]))]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&par, 0, &vol, 0);
+    let out = solve(&g, &mut Ctx::with_doc(&doc));
+    assert!(close(first_num(&out[&vol][0]), 8.0, 1e-6));
+    // by "#id" text too
+    g.set_value(&par, "Objects", json!(format!("#{id}")));
+    let out = solve(&g, &mut Ctx::with_doc(&doc));
+    assert!(close(first_num(&out[&vol][0]), 8.0, 1e-6));
+}
+
+// --------------------------------------------------------------------- graph
+
+#[test]
+fn graph_rejects_a_cycle() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Number", &[]);
+    let b = node(&mut g, "Add", &[]);
+    assert!(g.connect(&a, 0, &b, 0));
+    assert!(!g.connect(&b, 0, &b, 0));
+    assert!(!g.connect(&b, 0, &a, 0));
+}
+
+#[test]
+fn graph_round_trips_through_json() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Box", &[("X", json!(1.0)), ("Y", json!(2.0)), ("Z", json!(3.0))]);
+    let b = node(&mut g, "Volume", &[]);
+    g.connect(&a, 0, &b, 0);
+    let text = serde_json::to_string(&g.to_json()).unwrap();
+    let back = Graph::from_json(&serde_json::from_str(&text).unwrap());
+    assert_eq!(back.nodes.len(), 2);
+    assert_eq!(back.connections.len(), 1);
+    assert_eq!(back.node(&a).unwrap().values["Y"], json!(2.0));
+    assert_eq!(back, g);
+}
+
+#[test]
+fn reads_a_python_locust_file() {
+    // the JSON the Python Locust writes for its example (uids, tuples as lists)
+    let text = r##"{"nodes": [
+        {"uid": "a1", "type": "Number", "x": 20.0, "y": 40.0, "values": {"Value": 6.0}, "nickname": "Radius", "group": null, "disabled": false},
+        {"uid": "b2", "type": "Circle", "x": 320.0, "y": 40.0, "values": {"Center": [1.0, 2.0, 0.0]}, "nickname": null, "group": null, "disabled": false},
+        {"uid": "c3", "type": "Curve Length", "x": 560.0, "y": 90.0, "values": {}, "nickname": null, "group": null, "disabled": false}],
+      "connections": [{"src": "a1", "src_port": 0, "dst": "b2", "dst_port": 1}, {"src": "b2", "src_port": 0, "dst": "c3", "dst_port": 0}],
+      "groups": [], "comments": [{"uid": "k", "text": "hi", "x": 0, "y": 0, "w": 220, "h": 80, "color": "#2b2c30"}], "clusters": {}}"##;
+    let g = Graph::from_json(&serde_json::from_str(text).unwrap());
+    let out = run(&g);
+    assert!(close(first_num(&out["c3"][0]), 2.0 * PI * 6.0, 1e-6));
+    assert_eq!(g.comments[0].text, "hi");
+}
+
+#[test]
+fn groups_comments_and_duplicate_round_trip() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Number", &[]);
+    let b = node(&mut g, "Add", &[]);
+    g.connect(&a, 0, &b, 0);
+    g.add_group(&[a.clone(), b.clone()], "G");
+    g.add_comment(0.0, 0.0, "note");
+    let copies = g.duplicate(std::slice::from_ref(&a), 100.0, 0.0);
+    assert_eq!(copies.len(), 1);
+    let back = Graph::from_json(&g.to_json());
+    assert_eq!(back.groups.len(), 1);
+    assert_eq!(back.groups[0].name, "G");
+    assert_eq!(back.comments[0].text, "note");
+}
+
+// ------------------------------------------------------------ new components
+
+#[test]
+fn domain_and_bounds() {
+    let d = solve_node("Construct Domain", &[("Start", json!(2.0)), ("End", json!(5.0))]);
+    assert!(matches!(d[0].first(), Some(Value::Pair(a, b)) if *a == 2.0 && *b == 5.0));
+    let mut g = Graph::new();
+    let s = node(&mut g, "Series", &[("Start", json!(3.0)), ("Step", json!(1.0)), ("Count", json!(3))]);
+    let bounds = node(&mut g, "Bounds", &[]);
+    g.connect(&s, 0, &bounds, 0);
+    assert!(matches!(run(&g)[&bounds][0].first(), Some(Value::Pair(a, b)) if *a == 3.0 && *b == 5.0));
+}
+
+#[test]
+fn math_and_string_components() {
+    assert_eq!(first_num(&solve_node("Floor", &[("Value", json!(2.9))])[0]), 2.0);
+    assert_eq!(first_num(&solve_node("Ceiling", &[("Value", json!(2.1))])[0]), 3.0);
+    assert!((first_num(&solve_node("Exponential", &[("Value", json!(0.0))])[0]) - 1.0).abs() < 1e-12);
+    assert_eq!(solve_node("Concatenate", &[("A", json!("a")), ("B", json!("b"))])[0].first().unwrap().to_text(), "ab");
+    assert_eq!(solve_node("Number to Text", &[("Value", json!(1.23456)), ("Decimals", json!(2))])[0].first().unwrap().to_text(), "1.23");
+    assert_eq!(first_num(&solve_node("Round", &[("Value", json!(2.5))])[0]), 2.0, "Python rounds halves to even");
+    assert_eq!(first_num(&solve_node("Sine", &[("Value", json!(90.0))])[0]), 1.0, "trigonometry in degrees");
+}
+
+#[test]
+fn string_split_and_join() {
+    let mut g = Graph::new();
+    let t = node(&mut g, "Text", &[("Value", json!("a,b,c"))]);
+    let split = node(&mut g, "Text Split", &[]);
+    let join = node(&mut g, "Text Join", &[("Separator", json!("-"))]);
+    g.connect(&t, 0, &split, 0);
+    g.connect(&split, 0, &join, 0);
+    let out = run(&g);
+    assert_eq!(out[&split][0].items().iter().map(|v| v.to_text()).collect::<Vec<_>>(), vec!["a", "b", "c"]);
+    assert_eq!(out[&join][0].first().unwrap().to_text(), "a-b-c");
+}
+
+#[test]
+fn list_set_operations() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Series", &[("Start", json!(0.0)), ("Step", json!(1.0)), ("Count", json!(4))]);
+    let b = node(&mut g, "Series", &[("Start", json!(2.0)), ("Step", json!(1.0)), ("Count", json!(4))]);
+    let inter = node(&mut g, "List Intersection", &[]);
+    let diff = node(&mut g, "List Difference", &[]);
+    let uni = node(&mut g, "List Union", &[]);
+    for n in [&inter, &diff, &uni] {
+        g.connect(&a, 0, n, 0);
+        g.connect(&b, 0, n, 1);
+    }
+    let out = run(&g);
+    assert_eq!(nums(&out[&inter][0]), vec![2.0, 3.0]);
+    assert_eq!(nums(&out[&diff][0]), vec![0.0, 1.0]);
+    assert_eq!(nums(&out[&uni][0]), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+}
+
+#[test]
+fn dispatch_weave_and_cull() {
+    let mut g = Graph::new();
+    let s = node(&mut g, "Series", &[("Start", json!(0.0)), ("Step", json!(1.0)), ("Count", json!(4))]);
+    let pat = node(&mut g, "Boolean", &[("Value", json!(true))]);
+    let f = node(&mut g, "Boolean", &[("Value", json!(false))]);
+    let pattern = node(&mut g, "Merge", &[]);
+    g.connect(&pat, 0, &pattern, 0);
+    g.connect(&f, 0, &pattern, 1);
+    let disp = node(&mut g, "Dispatch", &[]);
+    g.connect(&s, 0, &disp, 0);
+    g.connect(&pattern, 0, &disp, 1);
+    let weave = node(&mut g, "Weave", &[]);
+    g.connect(&disp, 0, &weave, 0);
+    g.connect(&disp, 1, &weave, 1);
+    g.connect(&pattern, 0, &weave, 2);
+    let out = run(&g);
+    assert_eq!(out[&disp].len(), 2);
+    assert_eq!(nums(&out[&disp][0]), vec![0.0, 2.0]);
+    assert_eq!(nums(&out[&disp][1]), vec![1.0, 3.0]);
+    assert_eq!(nums(&out[&weave][0]), vec![0.0, 1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn entwine_creates_branches() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Series", &[("Start", json!(0.0)), ("Step", json!(1.0)), ("Count", json!(2))]);
+    let b = node(&mut g, "Series", &[("Start", json!(10.0)), ("Step", json!(1.0)), ("Count", json!(2))]);
+    let e = node(&mut g, "Entwine", &[]);
+    g.connect(&a, 0, &e, 0);
+    g.connect(&b, 0, &e, 1);
+    let out = run(&g);
+    assert_eq!(out[&e][0].branch_count(), 2);
+    assert_eq!(nums(&out[&e][0]), vec![0.0, 1.0, 10.0, 11.0]);
+}
+
+#[test]
+fn list_item_shift_sort_and_sublist() {
+    let mut g = Graph::new();
+    let s = node(&mut g, "Series", &[("Start", json!(0.0)), ("Step", json!(1.0)), ("Count", json!(6))]);
+    let item = node(&mut g, "List Item", &[("Index", json!(-1))]);
+    let shift = node(&mut g, "Shift", &[("Offset", json!(2)), ("Wrap", json!(true))]);
+    let sub = node(&mut g, "Sub List", &[("From", json!(2)), ("Count", json!(3))]);
+    let rev = node(&mut g, "Reverse", &[]);
+    let sort = node(&mut g, "Sort", &[]);
+    for n in [&item, &shift, &sub, &rev] {
+        g.connect(&s, 0, n, 0);
+    }
+    g.connect(&rev, 0, &sort, 0);
+    let out = run(&g);
+    assert_eq!(nums(&out[&item][0]), vec![5.0]);
+    assert_eq!(nums(&out[&shift][0]), vec![2.0, 3.0, 4.0, 5.0, 0.0, 1.0]);
+    assert_eq!(nums(&out[&sub][0]), vec![2.0, 3.0, 4.0]);
+    assert_eq!(nums(&out[&sort][0]), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+}
+
+#[test]
+fn solid_intersection_of_two_boxes() {
+    let mut g = Graph::new();
+    let a = node(&mut g, "Box", &[("X", json!(10.0)), ("Y", json!(10.0)), ("Z", json!(10.0))]);
+    let b = node(&mut g, "Box", &[("X", json!(10.0)), ("Y", json!(10.0)), ("Z", json!(10.0)), ("Corner", json!([5.0, 0.0, 0.0]))]);
+    let ent = node(&mut g, "Entwine", &[]);
+    g.connect(&a, 0, &ent, 0);
+    g.connect(&b, 0, &ent, 1);
+    let inter = node(&mut g, "Solid Intersection", &[]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&ent, 0, &inter, 0);
+    g.connect(&inter, 0, &vol, 0);
+    assert!(close(first_num(&run(&g)[&vol][0]), 500.0, 1e-6));
+}
+
+#[test]
+fn deconstruct_box() {
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[("X", json!(2.0)), ("Y", json!(3.0)), ("Z", json!(4.0))]);
+    let d = node(&mut g, "Deconstruct Box", &[]);
+    g.connect(&b, 0, &d, 0);
+    let out = run(&g);
+    assert!((first_pt(&out[&d][3]) - DVec3::new(2.0, 3.0, 4.0)).length() < 1e-9);
+    assert!((first_pt(&out[&d][2]) - DVec3::new(1.0, 1.5, 2.0)).length() < 1e-9);
+}
+
+#[test]
+fn mesh_round_trip_component() {
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[("X", json!(1.0)), ("Y", json!(1.0)), ("Z", json!(1.0))]);
+    let m = node(&mut g, "Mesh Brep", &[]);
+    let back = node(&mut g, "Mesh to Brep", &[]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&b, 0, &m, 0);
+    g.connect(&m, 0, &back, 0);
+    g.connect(&back, 0, &vol, 0);
+    assert!(close(first_num(&run(&g)[&vol][0]), 1.0, 1e-6));
+}
+
+// ------------------------------------------------------------------- clusters
+
+#[test]
+fn cluster_solves_and_exposes_ports() {
+    let mut g = Graph::new();
+    let n = node(&mut g, "Number", &[("Value", json!(3.0))]);
+    let circle = node(&mut g, "Circle", &[]);
+    let extrude = node(&mut g, "Extrude", &[("Distance", json!(2.0))]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&n, 0, &circle, 1);
+    g.connect(&circle, 0, &extrude, 0);
+    g.connect(&extrude, 0, &vol, 0);
+    let cl = g.make_cluster(&[circle, extrude], "Shaft").unwrap();
+    let cn = g.node(&cl).unwrap().clone();
+    assert!(g.is_cluster(&cn));
+    let (ins, outs) = g.cluster_ports(&cn);
+    assert!(!ins.is_empty());
+    assert_eq!(outs.len(), 1);
+    assert!((first_num(&run(&g)[&vol][0]) - PI * 9.0 * 2.0).abs() < 0.005);
+}
+
+#[test]
+fn cluster_moved_into_another_graph_solves() {
+    let mut inner = Graph::new();
+    let a = node(&mut inner, "Box", &[("X", json!(2.0)), ("Y", json!(2.0)), ("Z", json!(2.0))]);
+    let b = node(&mut inner, "Box", &[("X", json!(2.0)), ("Y", json!(2.0)), ("Z", json!(2.0)), ("Corner", json!([1.0, 0.0, 0.0]))]);
+    let u = node(&mut inner, "Union", &[]);
+    let vol = node(&mut inner, "Volume", &[]);
+    inner.connect(&a, 0, &u, 0);
+    inner.connect(&b, 0, &u, 1);
+    inner.connect(&u, 0, &vol, 0);
+    let sub = inner.make_cluster(&[a, b, u], "Pair").unwrap();
+    // Booleans are exact to the modelling tolerance (0.001), not to round-off
+    assert!(close(first_num(&run(&inner)[&vol][0]), 12.0, 2e-4));
+    let mut outer = Graph::new();
+    outer.clusters = inner.clusters.clone();
+    outer.nodes.push(inner.node(&sub).unwrap().clone());
+    let v2 = node(&mut outer, "Volume", &[]);
+    outer.connect(&sub, 0, &v2, 0);
+    assert!(close(first_num(&run(&outer)[&v2][0]), 12.0, 2e-4));
+}
+
+#[test]
+fn disabled_node_bypasses_its_input() {
+    let mut g = Graph::new();
+    let c = node(&mut g, "Circle", &[("Radius", json!(4.0))]);
+    let e = node(&mut g, "Extrude", &[("Distance", json!(5.0))]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&c, 0, &e, 0);
+    g.connect(&e, 0, &vol, 0);
+    assert!((first_num(&run(&g)[&vol][0]) - PI * 16.0 * 5.0).abs() < 0.01);
+    g.node_mut(&e).unwrap().disabled = true;
+    assert!(first_num(&run(&g)[&vol][0]).abs() < 1e-6);
+}
+
+#[test]
+fn solving_every_component_alone_does_not_crash() {
+    let mut g = Graph::new();
+    let nodes: Vec<(String, &str)> = registry().names().map(|n| (g.add_node(n, 0.0, 0.0), n)).collect();
+    let out = run(&g);
+    for (uid, name) in nodes {
+        assert!(out.contains_key(&uid), "{name}");
+    }
+    serde_json::to_string(&g.to_json()).unwrap();
+}
+
+// ----------------------------------------------------------------- geometry
+
+#[test]
+fn point_on_curve_and_divide_surface() {
+    let mut g = Graph::new();
+    let c = node(&mut g, "Circle", &[("Radius", json!(10.0))]);
+    let mid = node(&mut g, "Point On Curve", &[]);
+    let div = node(&mut g, "Divide Curve", &[("Count", json!(8))]);
+    g.connect(&c, 0, &mid, 0);
+    g.connect(&c, 0, &div, 0);
+    let out = run(&g);
+    assert!((first_pt(&out[&mid][0]).length() - 10.0).abs() < 1e-9);
+    // a closed curve: 8 points, all on the circle
+    assert_eq!(out[&div][0].count(), 7);
+    assert!(out[&div][0].items().iter().all(|v| (super::data::as_point(v).length() - 10.0).abs() < 1e-6));
+
+    let mut g2 = Graph::new();
+    let s = node(&mut g2, "Plane Surface", &[("Width", json!(10.0)), ("Height", json!(10.0))]);
+    let dv = node(&mut g2, "Divide Surface", &[("Count U", json!(3)), ("Count V", json!(3))]);
+    g2.connect(&s, 0, &dv, 0);
+    assert_eq!(run(&g2)[&dv][0].count(), 9);
+}
+
+#[test]
+fn surface_closest_point_and_mesh_volume() {
+    let mut g = Graph::new();
+    let sph = node(&mut g, "Sphere", &[("Radius", json!(5.0))]);
+    let cp = node(&mut g, "Surface Closest Point", &[("Point", json!([10.0, 0.0, 0.0]))]);
+    g.connect(&sph, 0, &cp, 0);
+    assert!((first_pt(&run(&g)[&cp][0]) - DVec3::new(5.0, 0.0, 0.0)).length() < 1e-4);
+
+    let mut mb = Graph::new();
+    let m = node(&mut mb, "Mesh Box", &[("X", json!(2.0)), ("Y", json!(2.0)), ("Z", json!(2.0))]);
+    let vol = node(&mut mb, "Volume", &[]);
+    mb.connect(&m, 0, &vol, 0);
+    assert!(close(first_num(&run(&mb)[&vol][0]), 8.0, 1e-6));
+
+    let mut ms = Graph::new();
+    let m = node(&mut ms, "Mesh Sphere", &[("Radius", json!(1.0))]);
+    let vol = node(&mut ms, "Volume", &[]);
+    ms.connect(&m, 0, &vol, 0);
+    assert!(close(first_num(&run(&ms)[&vol][0]), 4.0 / 3.0 * PI, 1e-2));
+}
+
+#[test]
+fn colour_and_fibonacci() {
+    assert!(matches!(solve_node("Colour RGB", &[("Red", json!(0.5)), ("Green", json!(0.25)), ("Blue", json!(0.0))])[0].first(), Some(Value::Colour(c)) if c[0] == 0.5));
+    assert_eq!(nums(&solve_node("Fibonacci", &[("Count", json!(8))])[0]), vec![0.0, 1.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0]);
+}
+
+#[test]
+fn custom_preview_and_bake_collect_geometry() {
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[]);
+    let col = node(&mut g, "Colour RGB", &[("Red", json!(0.1)), ("Green", json!(0.9)), ("Blue", json!(0.3))]);
+    let pr = node(&mut g, "Custom Preview", &[]);
+    let bake = node(&mut g, "Bake", &[]);
+    g.connect(&b, 0, &pr, 0);
+    g.connect(&col, 0, &pr, 1);
+    g.connect(&b, 0, &bake, 0);
+    let mut ctx = Ctx::default();
+    solve(&g, &mut ctx);
+    assert_eq!(ctx.preview.len(), 1);
+    let c = ctx.preview[0].1.unwrap();
+    assert!((c[0] - 0.1).abs() < 1e-9 && (c[1] - 0.9).abs() < 1e-9 && (c[2] - 0.3).abs() < 1e-9);
+    assert_eq!(ctx.bake.len(), 1);
+}
+
+#[test]
+fn perp_frame_and_domains() {
+    let mut g = Graph::new();
+    let c = node(&mut g, "Circle", &[("Radius", json!(4.0))]);
+    let f = node(&mut g, "Perp Frame", &[]);
+    let cd = node(&mut g, "Curve Domain", &[]);
+    g.connect(&c, 0, &f, 0);
+    g.connect(&c, 0, &cd, 0);
+    let out = run(&g);
+    assert!((first_pt(&out[&f][0]).length() - 4.0).abs() < 1e-9);
+    assert!(matches!(out[&cd][0].first(), Some(Value::Pair(lo, hi)) if hi > lo));
+    let mut g2 = Graph::new();
+    let s = node(&mut g2, "Plane Surface", &[("Width", json!(10.0)), ("Height", json!(10.0))]);
+    let sd = node(&mut g2, "Surface Domain", &[]);
+    g2.connect(&s, 0, &sd, 0);
+    assert!(matches!(run(&g2)[&sd][0].first(), Some(Value::Pair(lo, hi)) if hi > lo));
+}
+
+#[test]
+fn curve_tools() {
+    let mut g = Graph::new();
+    let s = node(&mut g, "Series", &[("Start", json!(0.0)), ("Step", json!(1.0)), ("Count", json!(5))]);
+    let zero = node(&mut g, "Number", &[("Value", json!(0.0))]);
+    let pts = node(&mut g, "Point", &[]);
+    g.connect(&s, 0, &pts, 0);
+    g.connect(&zero, 0, &pts, 1);
+    let pl = node(&mut g, "Polyline", &[]);
+    g.connect(&pts, 0, &pl, 0);
+    let len = node(&mut g, "Curve Length", &[]);
+    g.connect(&pl, 0, &len, 0);
+    let ex = node(&mut g, "Explode", &[]);
+    g.connect(&pl, 0, &ex, 0);
+    let ends = node(&mut g, "Curve End", &[]);
+    g.connect(&pl, 0, &ends, 0);
+    let interp = node(&mut g, "Interpolate", &[("Periodic", json!(true))]);
+    g.connect(&pts, 0, &interp, 0);
+    let out = run(&g);
+    assert!((first_num(&out[&len][0]) - 4.0).abs() < 1e-9);
+    assert_eq!(out[&ex][0].count(), 4);
+    assert!((first_pt(&out[&ends][1]) - DVec3::new(4.0, 0.0, 0.0)).length() < 1e-9);
+    // a closed interpolated curve through collinear points is degenerate, but a square works
+    let sq = [DVec3::ZERO, DVec3::X, DVec3::new(1.0, 1.0, 0.0), DVec3::Y];
+    let c = super::components::geo::interpolate_closed(&sq).unwrap();
+    assert!(c.is_closed());
+    for q in sq {
+        assert!((c.point_at(c.closest_parameter(q)) - q).length() < 1e-6, "passes through {q}");
+    }
+}
+
+#[test]
+fn surfaces_and_solids() {
+    let vol_of = |kind: &str, pairs: &[(&str, serde_json::Value)]| -> f64 {
+        let mut g = Graph::new();
+        let a = node(&mut g, kind, pairs);
+        let v = node(&mut g, "Volume", &[]);
+        g.connect(&a, 0, &v, 0);
+        first_num(&run(&g)[&v][0])
+    };
+    assert!(close(vol_of("Sphere", &[("Radius", json!(2.0))]), 4.0 / 3.0 * PI * 8.0, 1e-4));
+    assert!(close(vol_of("Cylinder", &[("Radius", json!(1.0)), ("Height", json!(3.0))]), PI * 3.0, 1e-4));
+    assert!(close(vol_of("Cone", &[("Radius 1", json!(1.0)), ("Radius 2", json!(0.0)), ("Height", json!(3.0))]), PI, 1e-3));
+    assert!(close(vol_of("Torus", &[("Major Radius", json!(5.0)), ("Minor Radius", json!(1.0))]), 2.0 * PI * PI * 5.0, 1e-3));
+
+    // loft two circles into a tube, revolve a line into a disc-like surface
+    let mut g = Graph::new();
+    let c1 = node(&mut g, "Circle", &[("Radius", json!(2.0))]);
+    let c2 = node(&mut g, "Circle", &[("Radius", json!(2.0)), ("Center", json!([0.0, 0.0, 4.0]))]);
+    let m = node(&mut g, "Merge", &[]);
+    g.connect(&c1, 0, &m, 0);
+    g.connect(&c2, 0, &m, 1);
+    let loft = node(&mut g, "Loft", &[]);
+    g.connect(&m, 0, &loft, 0);
+    let area = node(&mut g, "Area", &[]);
+    g.connect(&loft, 0, &area, 0);
+    let out = run(&g);
+    assert!(close(first_num(&out[&area][0]), 2.0 * PI * 2.0 * 4.0, 1e-4));
+
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[]);
+    let sh = node(&mut g, "Shell", &[("Thickness", json!(1.0))]);
+    let v = node(&mut g, "Volume", &[]);
+    g.connect(&b, 0, &sh, 0);
+    g.connect(&sh, 0, &v, 0);
+    assert!(close(first_num(&run(&g)[&v][0]), 1000.0 - 512.0, 1e-6));
+}
+
+#[test]
+fn transforms_and_arrays() {
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[("X", json!(1.0)), ("Y", json!(1.0)), ("Z", json!(1.0))]);
+    let arr = node(&mut g, "Array Polar", &[("Count", json!(4)), ("Center", json!([5.0, 0.0, 0.0]))]);
+    let cen = node(&mut g, "Centroid", &[]);
+    g.connect(&b, 0, &arr, 0);
+    g.connect(&arr, 0, &cen, 0);
+    let out = run(&g);
+    assert_eq!(out[&arr][0].count(), 4);
+    let pts: Vec<DVec3> = out[&cen][0].items().iter().map(super::data::as_point).collect();
+    assert!((pts[0] - DVec3::new(0.5, 0.5, 0.5)).length() < 1e-6);
+    // the third copy is opposite the centre
+    assert!((pts[2] - DVec3::new(9.5, -0.5, 0.5)).length() < 1e-6, "{:?}", pts[2]);
+
+    let mut g = Graph::new();
+    let p = node(&mut g, "Point", &[("X", json!(1.0))]);
+    let mv = node(&mut g, "Move", &[("Vector", json!([0.0, 2.0, 0.0]))]);
+    let mir = node(&mut g, "Mirror", &[]);
+    g.connect(&p, 0, &mv, 0);
+    g.connect(&mv, 0, &mir, 0);
+    let out = run(&g);
+    assert!((first_pt(&out[&mir][0]) - DVec3::new(-1.0, 2.0, 0.0)).length() < 1e-12);
+}
+
+#[test]
+fn wire_cut_splits_a_box() {
+    let mut g = Graph::new();
+    let b = node(&mut g, "Box", &[]);
+    let l = node(&mut g, "Line", &[("Start", json!([-5.0, 5.0, 0.0])), ("End", json!([15.0, 5.0, 0.0]))]);
+    let cut = node(&mut g, "Wire Cut", &[]);
+    let vol = node(&mut g, "Volume", &[]);
+    g.connect(&b, 0, &cut, 0);
+    g.connect(&l, 0, &cut, 1);
+    g.connect(&cut, 0, &vol, 0);
+    let v = nums(&run(&g)[&vol][0]);
+    assert_eq!(v.len(), 2, "{v:?}");
+    assert!(v.iter().all(|x| close(*x, 500.0, 1e-6)), "{v:?}");
+}
+
+#[test]
+fn example_solves_and_previews() {
+    let g = super::example::build_example();
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    assert_eq!(ctx.preview.len(), 1);
+    assert_eq!(ctx.bake.len(), 1);
+    let panel = g.nodes.iter().find(|n| n.kind == "Panel").unwrap();
+    assert!((first_num(&out[&panel.uid][0]) - PI * 36.0 * 12.0).abs() < 0.05);
+}
+
+
+#[test]
+fn numbers_print_like_python() {
+    use super::data::py_float;
+    assert_eq!(py_float(1357.1508820539107), "1357.1508820539107");
+    assert_eq!(py_float(3.0), "3.0");
+    assert_eq!(py_float(0.1), "0.1");
+    assert_eq!(py_float(1e-5), "1e-05");
+    assert_eq!(py_float(1.5e20), "1.5e+20");
+}

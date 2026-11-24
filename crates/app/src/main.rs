@@ -3,6 +3,7 @@ mod file_dialog;
 mod camera;
 mod commands;
 mod input;
+mod locust;
 mod render;
 mod snap;
 mod theme;

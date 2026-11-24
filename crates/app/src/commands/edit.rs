@@ -721,6 +721,36 @@ impl Command for JoinCmd {
 
 pub struct ExplodeCmd;
 
+/// The segments of a curve: split at knots with full multiplicity (polyline vertices, arc
+/// segments, joined pieces). A smooth curve comes back whole.
+pub fn explode_curve(c: &NurbsCurve) -> Vec<NurbsCurve> {
+    let p = c.degree;
+    let mut interior: Vec<f64> = Vec::new();
+    let ks = &c.knots[p + 1..c.knots.len() - p - 1];
+    let mut i = 0;
+    while i < ks.len() {
+        let k = ks[i];
+        let mut m = 1;
+        while i + m < ks.len() && (ks[i + m] - k).abs() < 1e-12 {
+            m += 1;
+        }
+        if m >= p {
+            interior.push(k);
+        }
+        i += m;
+    }
+    let mut pieces = Vec::new();
+    let mut rest = c.clone();
+    for k in interior {
+        if let Some((l, r)) = rest.split(k) {
+            pieces.push(l);
+            rest = r;
+        }
+    }
+    pieces.push(rest);
+    pieces
+}
+
 impl Command for ExplodeCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
         Prompt::objects("Select objects to explode", ObjFilter::Any, 1).step()
@@ -751,35 +781,10 @@ impl Command for ExplodeCmd {
                     }
                 }
                 Geometry::Curve(c) => {
-                    // split at knots with full multiplicity (polyline vertices, arc segments)
-                    let mut pieces = vec![c.clone()];
-                    let p = c.degree;
-                    let mut interior: Vec<f64> = Vec::new();
-                    let ks = &c.knots[p + 1..c.knots.len() - p - 1];
-                    let mut i = 0;
-                    while i < ks.len() {
-                        let k = ks[i];
-                        let mut m = 1;
-                        while i + m < ks.len() && (ks[i + m] - k).abs() < 1e-12 {
-                            m += 1;
-                        }
-                        if m >= p {
-                            interior.push(k);
-                        }
-                        i += m;
-                    }
-                    if interior.is_empty() {
+                    let pieces = explode_curve(&c);
+                    if pieces.len() < 2 {
                         continue;
                     }
-                    let mut rest = c.clone();
-                    pieces.clear();
-                    for k in interior {
-                        if let Some((l, r)) = rest.split(k) {
-                            pieces.push(l);
-                            rest = r;
-                        }
-                    }
-                    pieces.push(rest);
                     ctx.doc.remove(id);
                     for pc in pieces {
                         let nid = ctx.doc.add_with(Geometry::Curve(pc), o.attributes.clone());

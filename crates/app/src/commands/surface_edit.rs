@@ -260,7 +260,7 @@ impl OffsetSrfCmd {
         ])
     }
 
-    fn offset_face(face: &Face, d: f64) -> Face {
+    pub fn offset_face(face: &Face, d: f64) -> Face {
         let s = &face.surface;
         if s.degree_u == 1 && s.degree_v == 1 && s.count_u == 2 && s.count_v == 2 {
             let mut f = face.clone();

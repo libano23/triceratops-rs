@@ -412,6 +412,40 @@ impl Command for BlendSrfCmd {
 
 // ---- Patch --------------------------------------------------------------------------------------
 
+/// Patch: a surface fitted through sample points (inverse-distance heights over `plane`,
+/// on a `spans` x `spans` grid centred on the samples).
+pub fn patch_surface(samples: &[DVec3], plane: Plane, spans: usize) -> tri_geom::Result<NurbsSurface> {
+    let plane = Plane { origin: centroid(samples), ..plane };
+    let uvw: Vec<(f64, f64, f64)> = samples.iter().map(|p| plane.closest_parameters(*p)).collect();
+    let (mut umin, mut umax, mut vmin, mut vmax) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    for (u, v, _) in &uvw {
+        umin = umin.min(*u);
+        umax = umax.max(*u);
+        vmin = vmin.min(*v);
+        vmax = vmax.max(*v);
+    }
+    let n = spans.max(2);
+    let mut grid = Vec::with_capacity(n + 1);
+    for i in 0..=n {
+        let u = umin + (umax - umin) * i as f64 / n as f64;
+        let mut row = Vec::with_capacity(n + 1);
+        for j in 0..=n {
+            let v = vmin + (vmax - vmin) * j as f64 / n as f64;
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for (su, sv, sw) in &uvw {
+                let d2 = (su - u) * (su - u) + (sv - v) * (sv - v);
+                let w = 1.0 / (d2 + 1e-12);
+                num += w * sw;
+                den += w;
+            }
+            row.push(plane.point_at_3(u, v, num / den));
+        }
+        grid.push(row);
+    }
+    NurbsSurface::interpolate_grid(&grid, 3, 3)
+}
+
 #[derive(Default)]
 pub struct PatchCmd {
     spans: usize,
@@ -452,37 +486,7 @@ impl Command for PatchCmd {
                     ctx.log("Patch needs at least three points.");
                     return Step::Cancelled;
                 }
-                let plane = plane.unwrap_or(ctx.cplane);
-                let plane = Plane { origin: centroid(&samples), ..plane };
-                let uvw: Vec<(f64, f64, f64)> = samples.iter().map(|p| plane.closest_parameters(*p)).collect();
-                let (mut umin, mut umax, mut vmin, mut vmax) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
-                for (u, v, _) in &uvw {
-                    umin = umin.min(*u);
-                    umax = umax.max(*u);
-                    vmin = vmin.min(*v);
-                    vmax = vmax.max(*v);
-                }
-                let n = self.spans.max(2);
-                let mut grid = Vec::with_capacity(n + 1);
-                for i in 0..=n {
-                    let u = umin + (umax - umin) * i as f64 / n as f64;
-                    let mut row = Vec::with_capacity(n + 1);
-                    for j in 0..=n {
-                        let v = vmin + (vmax - vmin) * j as f64 / n as f64;
-                        // inverse-distance weighted height
-                        let mut num = 0.0;
-                        let mut den = 0.0;
-                        for (su, sv, sw) in &uvw {
-                            let d2 = (su - u) * (su - u) + (sv - v) * (sv - v);
-                            let w = 1.0 / (d2 + 1e-12);
-                            num += w * sw;
-                            den += w;
-                        }
-                        row.push(plane.point_at_3(u, v, num / den));
-                    }
-                    grid.push(row);
-                }
-                match NurbsSurface::interpolate_grid(&grid, 3, 3) {
+                match patch_surface(&samples, plane.unwrap_or(ctx.cplane), self.spans) {
                     Ok(s) => {
                         ctx.doc.begin_undo("Patch");
                         ctx.doc.clear_selection();

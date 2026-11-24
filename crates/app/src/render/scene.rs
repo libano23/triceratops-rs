@@ -272,6 +272,12 @@ fn build(doc: &Document, o: &tri_doc::Object, view_tol: f64, old_mesh: Option<Op
     d
 }
 
+/// Display data for geometry that is not in the document (the Locust preview).
+pub fn preview_display(geometry: &Geometry, view_tier: i32) -> ObjectDisplay {
+    let bbox = geometry.bounding_box();
+    build_geometry(geometry, &bbox, 2f64.powi(view_tier), false)
+}
+
 /// Display data of one geometry; `skip_mesh` leaves `mesh` empty (the caller reuses one).
 fn build_geometry(geometry: &Geometry, bbox: &tri_geom::BoundingBox, view_tol: f64, skip_mesh: bool) -> ObjectDisplay {
     let bbox = *bbox;

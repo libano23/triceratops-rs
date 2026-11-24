@@ -531,8 +531,29 @@ impl NurbsCurve {
         }
     }
 
+    /// Arc length: 8-point Gauss-Legendre quadrature of |C'(t)| over every knot span (each
+    /// split in four), accurate to round-off for ordinary curves.
     pub fn length(&self) -> f64 {
-        self.tessellate(16).windows(2).map(|w| (w[1] - w[0]).length()).sum()
+        const GL: [(f64, f64); 4] = [
+            (0.183_434_642_495_65, 0.362_683_783_378_362),
+            (0.525_532_409_916_329, 0.313_706_645_877_887),
+            (0.796_666_477_413_626_7, 0.222_381_034_453_374_5),
+            (0.960_289_856_497_536_3, 0.101_228_536_290_376_3),
+        ];
+        let mut spans: Vec<f64> = self.knots[self.degree..self.knots.len() - self.degree].to_vec();
+        spans.dedup_by(|a, b| (*a - *b).abs() < 1e-14);
+        let mut total = 0.0;
+        for w in spans.windows(2) {
+            for k in 0..4 {
+                let a = w[0] + (w[1] - w[0]) * k as f64 / 4.0;
+                let b = w[0] + (w[1] - w[0]) * (k + 1) as f64 / 4.0;
+                let (m, h) = ((a + b) * 0.5, (b - a) * 0.5);
+                for (x, wt) in GL {
+                    total += wt * h * (self.derivative_at(m - h * x).length() + self.derivative_at(m + h * x).length());
+                }
+            }
+        }
+        total
     }
 
     pub fn bounding_box(&self) -> BoundingBox {

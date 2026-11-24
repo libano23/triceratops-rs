@@ -429,98 +429,15 @@ impl Command for ShellCmd {
                     return Prompt::pick("Select faces to remove. Press Enter when done", ObjFilter::Polysurface).step();
                 }
                 let id = self.picks[0].0;
-                let Some(faces) = super::surface_edit::faces_of(ctx.doc, id) else { return Step::Cancelled };
                 let Some(outer) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { return Step::Cancelled };
-                let t = t.abs().max(1e-6);
-                // inner solid: every planar face moved inward, vertices rebuilt as the
-                // intersections of the three offset planes meeting there
-                let mut planar: Vec<(Plane, Vec<Vec<DVec3>>)> = Vec::with_capacity(faces.len());
-                for f in &faces {
-                    match super::solid_edit::planar_loops(f) {
-                        Some(pl) => planar.push(pl),
-                        None => {
-                            ctx.log("Shell: triceratops shells solids with planar faces only (use OffsetSrf for curved faces).");
-                            return Step::Cancelled;
-                        }
+                let remove: Vec<DVec3> = self.picks.iter().filter(|(pid, _)| *pid == id).map(|(_, p)| *p).collect();
+                let result = match shell_geometry(&outer, t, &remove) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        ctx.log(e);
+                        return Step::Cancelled;
                     }
-                }
-                let diag = outer.bounding_box().diagonal().max(1e-6);
-                let vtol = diag * 1e-6;
-                let offset_plane = |i: usize| -> Plane { let p = &planar[i].0; Plane { origin: p.origin - p.z_axis * t, ..*p } };
-                let mut inner_faces = Vec::with_capacity(faces.len());
-                let mut lid_loops: Vec<Vec<DVec3>> = Vec::with_capacity(faces.len());
-                for i in 0..planar.len() {
-                    let pi = offset_plane(i);
-                    let mut new_loops = Vec::new();
-                    for l in &planar[i].1 {
-                        let mut nl = Vec::with_capacity(l.len());
-                        for v in l {
-                            // other faces sharing this vertex
-                            let mut others: Vec<usize> = Vec::new();
-                            for j in 0..planar.len() {
-                                if j == i {
-                                    continue;
-                                }
-                                if planar[j].1.iter().flatten().any(|w| (*w - *v).length() < vtol) {
-                                    others.push(j);
-                                }
-                            }
-                            let mut solved = None;
-                            'pair: for a in 0..others.len() {
-                                for b in a + 1..others.len() {
-                                    let (pa, pb) = (offset_plane(others[a]), offset_plane(others[b]));
-                                    let mat = glam::DMat3::from_cols(pi.z_axis, pa.z_axis, pb.z_axis).transpose();
-                                    if mat.determinant().abs() < 1e-9 {
-                                        continue;
-                                    }
-                                    let rhs = DVec3::new(pi.z_axis.dot(pi.origin), pa.z_axis.dot(pa.origin), pb.z_axis.dot(pb.origin));
-                                    let x = mat.inverse() * rhs;
-                                    if (x - *v).length() < diag {
-                                        solved = Some(x);
-                                        break 'pair;
-                                    }
-                                }
-                            }
-                            nl.push(solved.unwrap_or(*v - planar[i].0.z_axis * t));
-                        }
-                        new_loops.push(nl);
-                    }
-                    lid_loops.push(new_loops[0].clone());
-                    match Face::planar(&pi, new_loops) {
-                        Ok(f) => inner_faces.push(f),
-                        Err(_) => {
-                            ctx.log("Shell: the thickness is too large for this solid.");
-                            return Step::Cancelled;
-                        }
-                    }
-                }
-                let mut inner = Brep::new(inner_faces);
-                inner.orient_outward();
-                if !inner.closed {
-                    ctx.log("Shell: the inner solid is not closed (thickness too large?).");
-                    return Step::Cancelled;
-                }
-                let Some(mut result) = boolean_geometry(&outer, &Geometry::Brep(inner), BooleanOp::Difference) else {
-                    ctx.log("Shell failed.");
-                    return Step::Cancelled;
                 };
-                // open the picked faces: remove the lids between the outer and inner surfaces
-                for (pid, p) in &self.picks {
-                    if *pid != id {
-                        continue;
-                    }
-                    // the lid: the inner outline of the picked face, between the two surfaces
-                    let fi = super::surface_edit::face_under(&faces, *p);
-                    let plane = &planar[fi].0;
-                    let mut l = lid_loops[fi].clone();
-                    l.push(lid_loops[fi][0]);
-                    let Ok(poly) = NurbsCurve::polyline(l) else { continue };
-                    if let Some(tool) = prism_tool(&poly, plane, t * 1.01) {
-                        if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
-                            result = r;
-                        }
-                    }
-                }
                 ctx.doc.begin_undo("Shell");
                 ctx.doc.replace_geometry(id, result);
                 Step::Done
@@ -528,6 +445,94 @@ impl Command for ShellCmd {
             _ => Step::Cancelled,
         }
     }
+}
+
+/// Shell: hollow a solid with planar faces to wall thickness `t`; faces under the points in
+/// `remove` are opened. Errors explain why it could not be done.
+pub fn shell_geometry(outer: &Geometry, t: f64, remove: &[DVec3]) -> Result<Geometry, String> {
+    let faces: Vec<Face> = match outer { Geometry::Brep(b) => b.faces.clone(), Geometry::Surface(sf) => vec![Face::untrimmed(sf.clone())], _ => return Err("Shell needs a polysurface.".into()) };
+    let t = t.abs().max(1e-6);
+    // inner solid: every planar face moved inward, vertices rebuilt as the
+    // intersections of the three offset planes meeting there
+    let mut planar: Vec<(Plane, Vec<Vec<DVec3>>)> = Vec::with_capacity(faces.len());
+    for f in &faces {
+        match super::solid_edit::planar_loops(f) {
+            Some(pl) => planar.push(pl),
+            None => return Err("Shell: triceratops shells solids with planar faces only (use OffsetSrf for curved faces).".into()),
+        }
+    }
+    let diag = outer.bounding_box().diagonal().max(1e-6);
+    let vtol = diag * 1e-6;
+    let offset_plane = |i: usize| -> Plane { let p = &planar[i].0; Plane { origin: p.origin - p.z_axis * t, ..*p } };
+    let mut inner_faces = Vec::with_capacity(faces.len());
+    let mut lid_loops: Vec<Vec<DVec3>> = Vec::with_capacity(faces.len());
+    for i in 0..planar.len() {
+        let pi = offset_plane(i);
+        let mut new_loops = Vec::new();
+        for l in &planar[i].1 {
+            let mut nl = Vec::with_capacity(l.len());
+            for v in l {
+                // other faces sharing this vertex
+                let mut others: Vec<usize> = Vec::new();
+                for j in 0..planar.len() {
+                    if j == i {
+                        continue;
+                    }
+                    if planar[j].1.iter().flatten().any(|w| (*w - *v).length() < vtol) {
+                        others.push(j);
+                    }
+                }
+                let mut solved = None;
+                'pair: for a in 0..others.len() {
+                    for b in a + 1..others.len() {
+                        let (pa, pb) = (offset_plane(others[a]), offset_plane(others[b]));
+                        let mat = glam::DMat3::from_cols(pi.z_axis, pa.z_axis, pb.z_axis).transpose();
+                        if mat.determinant().abs() < 1e-9 {
+                            continue;
+                        }
+                        let rhs = DVec3::new(pi.z_axis.dot(pi.origin), pa.z_axis.dot(pa.origin), pb.z_axis.dot(pb.origin));
+                        let x = mat.inverse() * rhs;
+                        if (x - *v).length() < diag {
+                            solved = Some(x);
+                            break 'pair;
+                        }
+                    }
+                }
+                nl.push(solved.unwrap_or(*v - planar[i].0.z_axis * t));
+            }
+            new_loops.push(nl);
+        }
+        lid_loops.push(new_loops[0].clone());
+        match Face::planar(&pi, new_loops) {
+            Ok(f) => inner_faces.push(f),
+            Err(_) => {
+                return Err("Shell: the thickness is too large for this solid.".into());
+            }
+        }
+    }
+    let mut inner = Brep::new(inner_faces);
+    inner.orient_outward();
+    if !inner.closed {
+        return Err("Shell: the inner solid is not closed (thickness too large?).".into());
+    }
+    let Some(mut result) = boolean_geometry(outer, &Geometry::Brep(inner), BooleanOp::Difference) else {
+        return Err("Shell failed.".into());
+    };
+    // open the picked faces: remove the lids between the outer and inner surfaces
+    for p in remove {
+        // the lid: the inner outline of the picked face, between the two surfaces
+        let fi = super::surface_edit::face_under(&faces, *p);
+        let plane = &planar[fi].0;
+        let mut l = lid_loops[fi].clone();
+        l.push(lid_loops[fi][0]);
+        let Ok(poly) = NurbsCurve::polyline(l) else { continue };
+        if let Some(tool) = prism_tool(&poly, plane, t * 1.01) {
+            if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
+                result = r;
+            }
+        }
+    }
+    Ok(result)
 }
 
 // ---- deformations: Bend, Stretch, Flow ------------------------------------------------------------------------

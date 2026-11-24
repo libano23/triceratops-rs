@@ -704,33 +704,39 @@ pub fn tween_surfaces() -> SeqCmd {
     })
 }
 
+/// RailRevolve: the profile revolved about the axis (`o`, direction `axis`) following the
+/// rail, scaled to the rail's distance from the axis.
+pub fn rail_revolve_surface(profile: &NurbsCurve, rail: &NurbsCurve, o: DVec3, axis: DVec3) -> Option<NurbsSurface> {
+    let axis = axis.normalize_or(DVec3::Z);
+    let radial = |p: DVec3| { let d = p - o; d - axis * d.dot(axis) };
+    let r0 = radial(rail.start_point()).length().max(1e-9);
+    let x0 = radial(rail.start_point()).normalize_or(DVec3::X);
+    let n = 48;
+    let (t0, t1) = rail.domain();
+    let sections: Vec<NurbsCurve> = (0..=n).map(|i| {
+        let t = t0 + (t1 - t0) * i as f64 / n as f64;
+        let rp = rail.point_at(t);
+        let r = radial(rp);
+        let ang = { let x = r.normalize_or(x0); let s = x0.cross(x).dot(axis); let c = x0.dot(x); s.atan2(c) };
+        let scale = r.length() / r0;
+        let xf = DAffine3::from_translation(o) * DAffine3::from_quat(DQuat::from_axis_angle(axis, ang)) * DAffine3::from_translation(-o);
+        let mut sec = profile.transformed(&xf);
+        for p in sec.control_points.iter_mut() {
+            let d = *p - o;
+            let along = axis * d.dot(axis);
+            let rad = d - along;
+            *p = o + along + rad * scale + axis * ((rp - o).dot(axis) - (rail.start_point() - o).dot(axis));
+        }
+        sec
+    }).collect();
+    NurbsSurface::loft(&sections, 3).ok()
+}
+
 pub fn rail_revolve() -> SeqCmd {
     SeqCmd::new(vec![Ask::Pick("Select profile curve", ObjFilter::Curve), Ask::Pick("Select rail curve", ObjFilter::Curve), Ask::Point("Start of axis"), Ask::Point("End of axis")], |a, ctx| {
         let (Some(profile), Some(rail)) = (curve_of(ctx.doc, a[0].ids()[0]), curve_of(ctx.doc, a[1].ids()[0])) else { return Step::Cancelled };
         let (o, e) = (a[2].point(), a[3].point());
-        let axis = (e - o).normalize_or(DVec3::Z);
-        let radial = |p: DVec3| { let d = p - o; d - axis * d.dot(axis) };
-        let r0 = radial(rail.start_point()).length().max(1e-9);
-        let x0 = radial(rail.start_point()).normalize_or(DVec3::X);
-        let n = 48;
-        let (t0, t1) = rail.domain();
-        let sections: Vec<NurbsCurve> = (0..=n).map(|i| {
-            let t = t0 + (t1 - t0) * i as f64 / n as f64;
-            let rp = rail.point_at(t);
-            let r = radial(rp);
-            let ang = { let x = r.normalize_or(x0); let s = x0.cross(x).dot(axis); let c = x0.dot(x); s.atan2(c) };
-            let scale = r.length() / r0;
-            let xf = DAffine3::from_translation(o) * DAffine3::from_quat(DQuat::from_axis_angle(axis, ang)) * DAffine3::from_translation(-o);
-            let mut sec = profile.transformed(&xf);
-            for p in sec.control_points.iter_mut() {
-                let d = *p - o;
-                let along = axis * d.dot(axis);
-                let rad = d - along;
-                *p = o + along + rad * scale + axis * ((rp - o).dot(axis) - (rail.start_point() - o).dot(axis));
-            }
-            sec
-        }).collect();
-        match NurbsSurface::loft(&sections, 3) {
+        match rail_revolve_surface(&profile, &rail, o, e - o).ok_or("the rail does not go around the axis") {
             Ok(s) => add_all(ctx, "RailRevolve", vec![Geometry::Surface(s)]),
             Err(e) => {
                 ctx.log(format!("RailRevolve failed: {e}"));
@@ -868,111 +874,11 @@ impl WireCutCmd {
         let Some(c) = curve_of(ctx.doc, cid) else { return Step::Cancelled };
         let dir = self.cut_direction(ctx);
         let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
-        let bb_all = self.targets.iter().filter_map(|id| ctx.doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |b, o| b.union(&o.geometry.bounding_box()));
-        let big = bb_all.union(&c.bounding_box()).diagonal().max(1.0) * 4.0;
-        // the cutting curve projected on the plane perpendicular to the direction (an extrusion
-        // along `dir` of the projection is the same wire surface)
-        let centre = bb_all.center();
-        let plane = Plane::from_normal(centre, dir);
-        let proj = |p: DVec3| p - dir * (p - centre).dot(dir);
-        let base = c.transformed(&DAffine3::IDENTITY);
-        let flat_pts: Vec<DVec3> = base.span_samples(8).into_iter().map(proj).collect();
-        // open curves are closed far away on one side (the side of the curve's own bulge)
-        let closed = if c.is_closed() {
-            let mut pts = flat_pts.clone();
-            if (pts[0] - pts[pts.len() - 1]).length() > 1e-9 {
-                pts.push(pts[0]);
-            }
-            NurbsCurve::polyline(pts).ok()
-        } else {
-            let (t0, t1) = c.domain();
-            let d0 = proj(c.tangent_at(t0) + centre) - centre;
-            let d1 = proj(c.tangent_at(t1) + centre) - centre;
-            let d0 = d0.normalize_or(plane.x_axis);
-            let d1 = d1.normalize_or(plane.x_axis);
-            let start_far = flat_pts[0] - d0 * big;
-            let end_far = flat_pts[flat_pts.len() - 1] + d1 * big;
-            let chord = (end_far - start_far).normalize_or(plane.x_axis);
-            let side = dir.cross(chord).normalize_or(plane.y_axis);
-            let mut poly = vec![start_far];
-            poly.extend(flat_pts.iter().copied());
-            poly.push(end_far);
-            poly.push(end_far + side * big);
-            poly.push(start_far + side * big);
-            poly.push(start_far);
-            NurbsCurve::polyline(poly).ok()
-        };
-        let Some(closed) = closed else { return Step::Cancelled };
-        // depth range along the direction (infinite when no points were picked)
-        let range: Option<(f64, f64)> = match self.depth.len() {
-            2 => {
-                let (a, b) = ((self.depth[0] - centre).dot(dir), (self.depth[1] - centre).dot(dir));
-                Some((a.min(b), a.max(b)))
-            }
-            1 => {
-                let a = (self.depth[0] - centre).dot(dir);
-                Some((a.min(-big), a.max(-big)))
-            }
-            _ => None,
-        };
         ctx.doc.begin_undo("WireCut");
         let mut cut_any = false;
         for id in self.targets.clone() {
             let Some(g) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { continue };
-            let solid = g.is_solid() && matches!(g, Geometry::Brep(_) | Geometry::Surface(_));
-            let mut results: Vec<Geometry> = Vec::new();
-            if solid {
-                // closed solids: exact Boolean with the extruded cutter
-                let (lo, hi) = range.unwrap_or((-big, big));
-                let mid = centre + dir * ((lo + hi) * 0.5);
-                let tool_plane = Plane { origin: mid, ..plane };
-                let tool_curve = closed.transformed(&DAffine3::from_translation(mid - centre));
-                let Some(tool) = super::misc4::prism_tool(&tool_curve, &tool_plane, (hi - lo) * 0.5) else { continue };
-                let (inside, outside) = (super::misc4::boolean_geometry(&g, &tool, BooleanOp::Intersection), super::misc4::boolean_geometry(&g, &tool, BooleanOp::Difference));
-                if let Some(i) = inside.filter(super::misc4::geometry_nonempty) {
-                    results.push(i);
-                }
-                if let Some(o) = outside.filter(super::misc4::geometry_nonempty) {
-                    results.push(o);
-                }
-            } else {
-                // open surfaces / polysurfaces: trim every face by the projected cutter and
-                // group the pieces by their side of the wire
-                let Some(faces) = faces_of(ctx.doc, id) else { continue };
-                let mut inside_faces = Vec::new();
-                let mut outside_faces = Vec::new();
-                let inside_wire = |p: DVec3| -> bool {
-                    let q = proj(p);
-                    let h = (p - centre).dot(dir);
-                    let in_depth = range.is_none_or(|(lo, hi)| h >= lo && h <= hi);
-                    in_depth && curve_contains_point(&closed, &plane, q)
-                };
-                for f in faces {
-                    let mut cutters = vec![closed.clone()];
-                    if let Some((lo, hi)) = range {
-                        // depth limits: cut by the two bounding planes too (their sections)
-                        for h in [lo, hi] {
-                            let section = Plane::from_normal(centre + dir * h, dir);
-                            if let Some(c) = plane_section_curve(&f, &section, tol) {
-                                cutters.push(c);
-                            }
-                        }
-                    }
-                    let pieces = f.split_by_curves(&cutters, dir, tol);
-                    for piece in pieces {
-                        let (p, _) = piece.sample();
-                        if inside_wire(p) {
-                            inside_faces.push(piece);
-                        } else {
-                            outside_faces.push(piece);
-                        }
-                    }
-                }
-                if !inside_faces.is_empty() && !outside_faces.is_empty() {
-                    results.push(Geometry::Brep(Brep::new(inside_faces)));
-                    results.push(Geometry::Brep(Brep::new(outside_faces)));
-                }
-            }
+            let results = wire_cut_geometry(&g, &c, dir, &self.depth, tol);
             if results.len() >= 2 {
                 cut_any = true;
                 let attrs = ctx.doc.get(id).map(|o| o.attributes.clone()).unwrap_or_default();
@@ -995,6 +901,117 @@ impl WireCutCmd {
         }
         self.stage = WireStage::KeepPieces;
         Prompt::objects("Select the pieces to delete. Press Enter to keep all", ObjFilter::Any, 0).step()
+    }
+}
+
+/// WireCut of one object: the pieces on both sides of the cutting curve extruded along `dir`
+/// (fewer than two pieces when the curve does not cut it). `depth` holds 0, 1 or 2 points
+/// limiting the cut along the direction.
+pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec3], tol: f64) -> Vec<Geometry> {
+    let dir = dir.normalize_or(DVec3::Z);
+    let bb_all = g.bounding_box();
+    let big = bb_all.union(&c.bounding_box()).diagonal().max(1.0) * 4.0;
+    // the cutting curve projected on the plane perpendicular to the direction (an extrusion
+    // along `dir` of the projection is the same wire surface)
+    let centre = bb_all.center();
+    let plane = Plane::from_normal(centre, dir);
+    let proj = |p: DVec3| p - dir * (p - centre).dot(dir);
+    let base = c.transformed(&DAffine3::IDENTITY);
+    let flat_pts: Vec<DVec3> = base.span_samples(8).into_iter().map(proj).collect();
+    // open curves are closed far away on one side (the side of the curve's own bulge)
+    let closed = if c.is_closed() {
+        let mut pts = flat_pts.clone();
+        if (pts[0] - pts[pts.len() - 1]).length() > 1e-9 {
+            pts.push(pts[0]);
+        }
+        NurbsCurve::polyline(pts).ok()
+    } else {
+        let (t0, t1) = c.domain();
+        let d0 = proj(c.tangent_at(t0) + centre) - centre;
+        let d1 = proj(c.tangent_at(t1) + centre) - centre;
+        let d0 = d0.normalize_or(plane.x_axis);
+        let d1 = d1.normalize_or(plane.x_axis);
+        let start_far = flat_pts[0] - d0 * big;
+        let end_far = flat_pts[flat_pts.len() - 1] + d1 * big;
+        let chord = (end_far - start_far).normalize_or(plane.x_axis);
+        let side = dir.cross(chord).normalize_or(plane.y_axis);
+        let mut poly = vec![start_far];
+        poly.extend(flat_pts.iter().copied());
+        poly.push(end_far);
+        poly.push(end_far + side * big);
+        poly.push(start_far + side * big);
+        poly.push(start_far);
+        NurbsCurve::polyline(poly).ok()
+    };
+    let Some(closed) = closed else { return Vec::new() };
+    // depth range along the direction (infinite when no points were picked)
+    let range: Option<(f64, f64)> = match depth.len() {
+        2 => {
+            let (a, b) = ((depth[0] - centre).dot(dir), (depth[1] - centre).dot(dir));
+            Some((a.min(b), a.max(b)))
+        }
+        1 => {
+            let a = (depth[0] - centre).dot(dir);
+            Some((a.min(-big), a.max(-big)))
+        }
+        _ => None,
+    };
+    {
+        let solid = g.is_solid() && matches!(g, Geometry::Brep(_) | Geometry::Surface(_));
+        let mut results: Vec<Geometry> = Vec::new();
+        if solid {
+            // closed solids: exact Boolean with the extruded cutter
+            let (lo, hi) = range.unwrap_or((-big, big));
+            let mid = centre + dir * ((lo + hi) * 0.5);
+            let tool_plane = Plane { origin: mid, ..plane };
+            let tool_curve = closed.transformed(&DAffine3::from_translation(mid - centre));
+            let Some(tool) = super::misc4::prism_tool(&tool_curve, &tool_plane, (hi - lo) * 0.5) else { return results };
+            let (inside, outside) = (super::misc4::boolean_geometry(g, &tool, BooleanOp::Intersection), super::misc4::boolean_geometry(g, &tool, BooleanOp::Difference));
+            if let Some(i) = inside.filter(super::misc4::geometry_nonempty) {
+                results.push(i);
+            }
+            if let Some(o) = outside.filter(super::misc4::geometry_nonempty) {
+                results.push(o);
+            }
+        } else {
+            // open surfaces / polysurfaces: trim every face by the projected cutter and
+            // group the pieces by their side of the wire
+            let Some(faces) = (match g { Geometry::Surface(s) => Some(vec![Face::untrimmed(s.clone())]), Geometry::Brep(b) => Some(b.faces.clone()), _ => None }) else { return results };
+            let mut inside_faces = Vec::new();
+            let mut outside_faces = Vec::new();
+            let inside_wire = |p: DVec3| -> bool {
+                let q = proj(p);
+                let h = (p - centre).dot(dir);
+                let in_depth = range.is_none_or(|(lo, hi)| h >= lo && h <= hi);
+                in_depth && curve_contains_point(&closed, &plane, q)
+            };
+            for f in faces {
+                let mut cutters = vec![closed.clone()];
+                if let Some((lo, hi)) = range {
+                    // depth limits: cut by the two bounding planes too (their sections)
+                    for h in [lo, hi] {
+                        let section = Plane::from_normal(centre + dir * h, dir);
+                        if let Some(c) = plane_section_curve(&f, &section, tol) {
+                            cutters.push(c);
+                        }
+                    }
+                }
+                let pieces = f.split_by_curves(&cutters, dir, tol);
+                for piece in pieces {
+                    let (p, _) = piece.sample();
+                    if inside_wire(p) {
+                        inside_faces.push(piece);
+                    } else {
+                        outside_faces.push(piece);
+                    }
+                }
+            }
+            if !inside_faces.is_empty() && !outside_faces.is_empty() {
+                results.push(Geometry::Brep(Brep::new(inside_faces)));
+                results.push(Geometry::Brep(Brep::new(outside_faces)));
+            }
+        }
+        results
     }
 }
 

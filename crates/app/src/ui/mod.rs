@@ -41,6 +41,13 @@ pub fn draw(app: &mut App, ctx: &egui::Context) {
     viewports::show(app, ctx);
     dock_ui::draw_floating(app, ctx);
     toolbars::flyouts(app, ctx);
+    app.locust.tick(&app.doc);
+    if crate::locust::ui::window(&mut app.locust, ctx) {
+        let n = app.locust.bake_into(&mut app.doc);
+        if n > 0 {
+            app.log.push(format!("Locust: baked {n} object(s)."));
+        }
+    }
     if !ctx.input(|i| i.pointer.any_down()) {
         app.autosave_options();
     }
@@ -50,6 +57,10 @@ pub fn draw(app: &mut App, ctx: &egui::Context) {
 fn handle_shortcuts(app: &mut App, ctx: &egui::Context) {
     let text_prompt = app.runner.prompt().is_some_and(|p| p.kind == crate::commands::PromptKind::Text);
     let typing = !app.cmd_text.is_empty();
+    if app.locust.hovered {
+        // the pointer is over the Locust editor: its canvas takes the keys
+        return;
+    }
     let modal = app.loft_dialog.is_some() || app.options_page.is_some() || app.docprops_page.is_some() || app.message_box.is_some();
     let mut cmds: Vec<&'static str> = Vec::new();
     ctx.input_mut(|i| {

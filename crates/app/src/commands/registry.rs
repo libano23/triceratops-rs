@@ -200,6 +200,7 @@ cmds! {
     "CommandHistory", [], "Open the command history window";
     "CommandList", ["commands"], "List all commands";
     "Options", [], "Manage global options";
+    "Locust", ["lc"], "Open the Locust node editor (algorithmic modelling, like Grasshopper)";
     "DocumentProperties", ["docprops"], "Manage the settings for the current model";
     "Cancel", [], "Cancel the current command and deselect objects";
     "Dir", [], "Display and edit an object's normal direction";
@@ -425,7 +426,7 @@ pub fn create_command(name: &str) -> Option<Box<dyn Command>> {
         "DigSection" => Box::new(MsgCmd("Digitizing arms are not supported by triceratops.")),
         "DigSketch" => Box::new(MsgCmd("Digitizing arms are not supported by triceratops.")),
         "Digitize" => Box::new(MsgCmd("Digitizing arms are not supported by triceratops.")),
-        "Grasshopper" => Box::new(MsgCmd("Grasshopper is not available in triceratops.")),
+        "Grasshopper" | "Locust" => Box::new(RequestCmd(AppRequest::Locust)),
         "GrasshopperDeveloperSettings" => Box::new(MsgCmd("Grasshopper is not available in triceratops.")),
         "GrasshopperFolders" => Box::new(MsgCmd("Grasshopper is not available in triceratops.")),
         "GrasshopperGetSDKDocumentation" => Box::new(MsgCmd("Grasshopper is not available in triceratops.")),
