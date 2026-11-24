@@ -24,6 +24,11 @@ struct Tagged {
     tags: Vec<u32>,
 }
 
+/// Quantised 3-D point used as a hash key.
+type Key3 = (i64, i64, i64);
+/// Points to insert into a loop after the vertex with the given index.
+type LoopInsert = (usize, Vec<DVec3>);
+
 fn tessellate_brep(b: &Brep) -> Tagged {
     let mut mesh = Mesh::new();
     let mut uv = Vec::new();
@@ -34,7 +39,7 @@ fn tessellate_brep(b: &Brep) -> Tagged {
         let before = mesh.triangle_count();
         mesh.append(&m);
         uv.extend(fuv);
-        tags.extend(std::iter::repeat(fi as u32).take(mesh.triangle_count() - before));
+        tags.extend(std::iter::repeat_n(fi as u32, mesh.triangle_count() - before));
     }
     if mesh.normals.len() != mesh.vertices.len() {
         mesh.compute_normals();
@@ -98,7 +103,7 @@ pub fn brep_boolean_verbose(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Resu
             let loops: Vec<String> = rebuilt.iter().map(|f| f.loops.iter().map(|l| l.len().to_string()).collect::<Vec<_>>().join("+")).collect();
             eprintln!("face {} of {}: {} polygons -> {} faces (loop points {})", fi, if tag & TAG_B != 0 { "B" } else { "A" }, group.len(), rebuilt.len(), loops.join(" | "));
         }
-        from_b.extend(std::iter::repeat(tag & TAG_B != 0).take(rebuilt.len()));
+        from_b.extend(std::iter::repeat_n(tag & TAG_B != 0, rebuilt.len()));
         faces.extend(rebuilt);
     }
     if faces.is_empty() {
@@ -434,7 +439,7 @@ fn rebuild_face(face: &Face, polys: &[&TaggedPolygon], diag: f64, label: &str) -
             }
             if point_in_polygon(probe, &loops_uv[j]) && dist_to_loop(probe, &loops_uv[j]) > 1e-9 {
                 let area = signed_area(&loops_uv[j]).abs();
-                if best.map_or(true, |(_, a)| area < a) {
+                if best.is_none_or(|(_, a)| area < a) {
                     best = Some((j, area));
                 }
             }
@@ -535,7 +540,7 @@ fn closest_triangle(t: &Tagged, p: DVec3) -> Option<(usize, DVec3, f64)> {
         }
         let q = closest_on_triangle(p, a, b, c);
         let d = (q - p).length();
-        if best.map_or(true, |(_, _, bd)| d < bd) {
+        if best.is_none_or(|(_, _, bd)| d < bd) {
             best = Some((k, q, d));
         }
     }
@@ -640,8 +645,8 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
     // pass 1b: the two sides of an intersection carry different split vertices (A's edges cut by
     // B's facets and vice versa); give every loop the union by copying, for each intersection
     // segment, the vertices the partner loop has between the same two endpoints
-    let loop_keys: Vec<Vec<Vec<(i64, i64, i64)>>> = faces.iter().map(|f| f.loops.iter().map(|l| l.iter().map(|uv| rkey(f.surface.point_at(uv.x, uv.y))).collect()).collect()).collect();
-    let mut where_key: HashMap<(i64, i64, i64), Vec<(usize, usize, usize)>> = HashMap::new();
+    let loop_keys: Vec<Vec<Vec<Key3>>> = faces.iter().map(|f| f.loops.iter().map(|l| l.iter().map(|uv| rkey(f.surface.point_at(uv.x, uv.y))).collect()).collect()).collect();
+    let mut where_key: HashMap<Key3, Vec<(usize, usize, usize)>> = HashMap::new();
     for (fi, fl) in loop_keys.iter().enumerate() {
         for (li, l) in fl.iter().enumerate() {
             for (k, key) in l.iter().enumerate() {
@@ -649,7 +654,7 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
             }
         }
     }
-    let mut merge_ins: HashMap<(usize, usize), Vec<(usize, Vec<DVec3>)>> = HashMap::new();
+    let mut merge_ins: HashMap<(usize, usize), Vec<LoopInsert>> = HashMap::new();
     for (fi, fl) in loop_keys.iter().enumerate() {
         for (li, l) in fl.iter().enumerate() {
             let n = l.len();
@@ -692,7 +697,7 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
                             let t = ((*r - p0).dot(d) / d.length_squared().max(1e-24)).clamp(0.0, 1.0);
                             (p0 + d * t - *r).length() <= 0.5 * seg_len + tol
                         });
-                        if ok && best.as_ref().map_or(true, |b| pts.len() < b.len()) {
+                        if ok && best.as_ref().is_none_or(|b| pts.len() < b.len()) {
                             best = Some(pts);
                         }
                     }
@@ -726,7 +731,9 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
     }
     // pass 2: densify intersection segments (both endpoints refined) to the tolerance
     // occurrences of each 3-D edge: (face, loop, index of the first vertex, reversed)
-    let mut edges: HashMap<((i64, i64, i64), (i64, i64, i64)), Vec<(usize, usize, usize, bool)>> = HashMap::new();
+    // (face, loop, index of the first vertex, reversed)
+    type EdgeUse = (usize, usize, usize, bool);
+    let mut edges: HashMap<(Key3, Key3), Vec<EdgeUse>> = HashMap::new();
     for (fi, face) in faces.iter().enumerate() {
         for (li, l) in face.loops.iter().enumerate() {
             for k in 0..l.len() {
@@ -742,7 +749,7 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
         }
     }
     // new points per edge, ordered from the smaller key to the larger
-    let mut inserts_per_edge: HashMap<((i64, i64, i64), (i64, i64, i64)), Vec<DVec3>> = HashMap::new();
+    let mut inserts_per_edge: HashMap<(Key3, Key3), Vec<DVec3>> = HashMap::new();
     for (ek, occ) in &edges {
         let Some(&(fi, li, k, rev)) = occ.first() else { continue };
         let face = &faces[fi];
@@ -761,7 +768,7 @@ fn refine_intersections(faces: &mut [Face], from_b: &[bool], a: &Brep, b: &Brep,
         return;
     }
     // apply insertions to every occurrence
-    let mut per_loop: HashMap<(usize, usize), Vec<(usize, Vec<DVec3>)>> = HashMap::new();
+    let mut per_loop: HashMap<(usize, usize), Vec<LoopInsert>> = HashMap::new();
     for (ek, occ) in &edges {
         let Some(pts) = inserts_per_edge.get(ek) else { continue };
         for &(fi, li, k, rev) in occ {

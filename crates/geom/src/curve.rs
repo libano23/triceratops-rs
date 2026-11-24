@@ -263,12 +263,8 @@ impl NurbsCurve {
         }
         new_knots.extend_from_slice(&self.knots[k + 1..]);
         let mut q = vec![DVec4::ZERO; n + r + 1];
-        for i in 0..=k - p {
-            q[i] = hom[i];
-        }
-        for i in k - s..=n {
-            q[i + r] = hom[i];
-        }
+        q[..=k - p].copy_from_slice(&hom[..=k - p]);
+        q[k - s + r..=n + r].copy_from_slice(&hom[k - s..=n]);
         let mut rw: Vec<DVec4> = (0..=p - s).map(|i| hom[k - p + i]).collect();
         let mut l = 0;
         for j in 1..=r {
@@ -280,8 +276,8 @@ impl NurbsCurve {
             q[l] = rw[0];
             q[k + r - j - s] = rw[p - j - s];
         }
-        for i in l + 1..k - s {
-            q[i] = rw[i - l];
+        if l + 1 < k - s {
+            q[l + 1..k - s].copy_from_slice(&rw[1..k - s - l]);
         }
         self.control_points = q.iter().map(|h| h.truncate() / h.w).collect();
         self.weights = q.iter().map(|h| h.w).collect();
@@ -303,7 +299,7 @@ impl NurbsCurve {
         let left_cp = c.control_points[..first].to_vec();
         let left_w = c.weights[..first].to_vec();
         let mut left_k = c.knots[..first].to_vec();
-        left_k.extend(std::iter::repeat(t).take(p + 1));
+        left_k.extend(std::iter::repeat_n(t, p + 1));
         let right_cp = c.control_points[first - 1..].to_vec();
         let right_w = c.weights[first - 1..].to_vec();
         let mut right_k = vec![t; p + 1];
@@ -381,7 +377,7 @@ impl NurbsCurve {
         let mut knots = Vec::new();
         for (i, k) in distinct.iter().enumerate() {
             let m = if i == 0 || i == distinct.len() - 1 { p + 2 } else { p + 1 };
-            knots.extend(std::iter::repeat(*k).take(m));
+            knots.extend(std::iter::repeat_n(*k, m));
         }
         let cps: Vec<DVec3> = out.iter().map(|h| h.truncate() / h.w).collect();
         let ws: Vec<f64> = out.iter().map(|h| h.w).collect();

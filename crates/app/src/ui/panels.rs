@@ -339,7 +339,7 @@ fn layers(app: &mut App, ui: &mut egui::Ui) {
     if let Some((i, name)) = rename {
         app.panels.layer_editing = None;
         let name = name.trim().to_string();
-        if !name.is_empty() && app.doc.find_layer(&name).map_or(true, |j| j == i) {
+        if !name.is_empty() && app.doc.find_layer(&name).is_none_or(|j| j == i) {
             app.doc.begin_undo("Rename layer");
             if let Some(l) = app.doc.layer_mut(i) {
                 l.name = name;

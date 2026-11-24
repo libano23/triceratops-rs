@@ -77,7 +77,7 @@ pub fn extension_of(path: &Path) -> Option<String> {
 
 pub fn type_for_extension(types: &[FileType], ext: &str) -> Option<usize> {
     let ext = ext.to_ascii_lowercase();
-    types.iter().position(|t| t.extensions.iter().any(|e| *e == ext))
+    types.iter().position(|t| t.extensions.contains(&ext))
 }
 
 /// Give `path` an extension of `t`: kept when it already is one of them, replaced when it is

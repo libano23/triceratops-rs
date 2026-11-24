@@ -48,7 +48,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             Layout::Grid => {
                 let n = app.viewports.iter().filter(|v| !v.is_detail()).count().max(1);
                 let cols = (n as f32).sqrt().ceil().max(1.0) as usize;
-                let rows = (n + cols - 1) / cols;
+                let rows = n.div_ceil(cols);
                 let w = (area.width() - gap * (cols as f32 - 1.0)) / cols as f32;
                 let h = (area.height() - gap * (rows as f32 - 1.0)) / rows as f32;
                 app.viewport_tab_order.iter().copied().filter(|i| *i < app.viewports.len() && !app.viewports[*i].is_detail()).enumerate().map(|(k, vp)| {
@@ -90,7 +90,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if scroll.abs() > 0.0 {
                         app.zoom(vp, to_d(pos), scroll as f64);
                     }
-                } else if app.cursor.map_or(false, |c| c.viewport == vp) && app.window_drag.is_none() && app.drag_move.is_none() {
+                } else if app.cursor.is_some_and(|c| c.viewport == vp) && app.window_drag.is_none() && app.drag_move.is_none() {
                     app.clear_cursor();
                 }
                 if resp.clicked_by(PointerButton::Primary) {
@@ -384,7 +384,7 @@ fn title_menu(app: &mut App, ctx: &egui::Context) {
             }
         });
     });
-    let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().map_or(false, |p| area.response.rect.expand(4.0).contains(p)));
+    let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| area.response.rect.expand(4.0).contains(p)));
     if close || outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         ctx.data_mut(|d| d.remove::<TitleMenu>(title_menu_id()));
     }
@@ -423,7 +423,7 @@ fn selection_menu(app: &mut App, ctx: &egui::Context) {
             m.hovered = Some(h);
         }
     }
-    let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().map_or(false, |p| area.response.rect.expand(4.0).contains(p)));
+    let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| area.response.rect.expand(4.0).contains(p)));
     match pick {
         Some(p) => app.selection_menu_pick(p),
         None if outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) => app.selection_menu = None,

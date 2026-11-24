@@ -436,7 +436,7 @@ pub fn toolbar_button(ui: &mut egui::Ui, app: &mut App, btn: &Btn) {
             app.status_hint = format!("{}: {}", btn.tip, info.description);
         }
     }
-    let on_triangle = resp.hover_pos().map_or(false, |p| p.x > resp.rect.right() - 8.0 && p.y > resp.rect.bottom() - 8.0);
+    let on_triangle = resp.hover_pos().is_some_and(|p| p.x > resp.rect.right() - 8.0 && p.y > resp.rect.bottom() - 8.0);
     if !btn.flyout.is_empty() && (resp.drag_started() || (resp.clicked() && on_triangle)) {
         open_flyout(ui.ctx(), btn.flyout, resp.rect.left_bottom());
         return;
@@ -541,7 +541,7 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
             app.options_dirty = true;
             close = true;
         }
-        let clicked_outside = !ctx.input(|i| i.pointer.any_down() && area.response.rect.expand(4.0).contains(i.pointer.press_origin().unwrap_or_default())) && ctx.input(|i| i.pointer.any_pressed()) && !area.response.hovered() && !ctx.input(|i| i.pointer.interact_pos().map_or(false, |p| area.response.rect.expand(4.0).contains(p)));
+        let clicked_outside = !ctx.input(|i| i.pointer.any_down() && area.response.rect.expand(4.0).contains(i.pointer.press_origin().unwrap_or_default())) && ctx.input(|i| i.pointer.any_pressed()) && !area.response.hovered() && !ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| area.response.rect.expand(4.0).contains(p)));
         if close || clicked_outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             ctx.data_mut(|d| d.remove::<FlyoutState>(flyout_id()));
         }
@@ -579,7 +579,7 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
                 });
             });
         });
-        let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().map_or(false, |p| area.response.rect.expand(4.0).contains(p)));
+        let outside = ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| area.response.rect.expand(4.0).contains(p)));
         if close || outside {
             app.popup_toolbar = None;
         }

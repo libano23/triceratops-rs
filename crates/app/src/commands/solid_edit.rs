@@ -55,7 +55,7 @@ fn find_edge(faces: &[Face], pick: DVec3, tol: f64) -> Option<EdgeInfo> {
                 let a = poly[i];
                 let b = poly[(i + 1) % poly.len()];
                 let d = seg_distance(pick, a, b);
-                if best.map_or(true, |bst| d < bst.0) {
+                if best.is_none_or(|bst| d < bst.0) {
                     best = Some((d, a, b, fi));
                 }
             }

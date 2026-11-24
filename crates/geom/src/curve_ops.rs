@@ -23,13 +23,12 @@ fn segment_closest(a0: DVec3, a1: DVec3, b0: DVec3, b1: DVec3) -> (f64, f64, f64
     let d = u.dot(w);
     let e = v.dot(w);
     let den = a * c - b * b;
-    let (mut s, mut t);
+    let (mut s, t);
     if den.abs() < 1e-14 {
         s = 0.0;
         t = if c > 1e-18 { (e / c).clamp(0.0, 1.0) } else { 0.0 };
     } else {
         s = ((b * e - c * d) / den).clamp(0.0, 1.0);
-        t = ((a * e - b * d) / den).clamp(0.0, 1.0);
         // re-clamp partner
         let pa = a0 + u * s;
         t = if c > 1e-18 { ((pa - b0).dot(v) / c).clamp(0.0, 1.0) } else { 0.0 };
@@ -150,12 +149,9 @@ impl NurbsCurve {
         let mut pieces = Vec::new();
         let mut rest = self.clone();
         for t in ps {
-            match rest.split(t) {
-                Some((l, r)) => {
-                    pieces.push(l);
-                    rest = r;
-                }
-                None => {}
+            if let Some((l, r)) = rest.split(t) {
+                pieces.push(l);
+                rest = r;
             }
         }
         pieces.push(rest);
@@ -462,7 +458,7 @@ pub fn fillet_curves(a: &NurbsCurve, b: &NurbsCurve, radius: f64, pa: DVec3, pb:
                 }
                 // Triceratops keeps the sides of the curves that were picked
                 let score = (center - pa).length() + (center - pb).length();
-                if best.as_ref().map_or(true, |b| score < b.0) {
+                if best.as_ref().is_none_or(|b| score < b.0) {
                     best = Some((score, center, ta, tb));
                 }
             }

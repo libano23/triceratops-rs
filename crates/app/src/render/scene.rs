@@ -2,7 +2,7 @@
 
 use glam::{DVec2, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{BoundingBox, Mesh, NurbsCurve, NurbsSurface, Ray};
+use tri_geom::{BoundingBox, Mesh, MeshDensity, NurbsCurve, NurbsSurface, Ray};
 
 use crate::camera::{Camera, ViewRect};
 use crate::snap::SnapKind;
@@ -24,6 +24,8 @@ pub struct ObjectDisplay {
 #[derive(Default)]
 pub struct SceneCache {
     revision: Option<u64>,
+    /// View tolerance tier the lines were tessellated for (see `view_tolerance_tier`).
+    pub tier: Option<i32>,
     pub objects: Vec<ObjectDisplay>,
 }
 
@@ -73,7 +75,7 @@ pub fn face_lines(f: &tri_geom::Face, tol: f64, edges: &mut Vec<DVec3>, isos: &m
         surface_lines(&f.surface, tol, edges, isos);
         return;
     }
-    for poly in f.edge_polylines(tol) {
+    for poly in f.display_edges(tol) {
         polyline_to_segments(&poly, edges);
     }
     // isocurves clipped to the trim region (planar faces have none, like Triceratops)
@@ -105,14 +107,13 @@ pub fn face_lines(f: &tri_geom::Face, tol: f64, edges: &mut Vec<DVec3>, isos: &m
             out.sort_by(|a, b| a.partial_cmp(b).unwrap());
             out
         };
-        let n = 24;
         for u in params(&s.knots_u, s.degree_u, u0, u1) {
             let vs = crossings(u, true);
             for pair in vs.chunks(2) {
                 if pair.len() < 2 {
                     break;
                 }
-                let pts: Vec<glam::DVec3> = (0..=n).map(|i| s.point_at(u, pair[0] + (pair[1] - pair[0]) * i as f64 / n as f64)).collect();
+                let pts = tri_geom::display_mesh::uv_polyline(s, DVec2::new(u, pair[0]), DVec2::new(u, pair[1]), tol);
                 polyline_to_segments(&pts, isos);
             }
         }
@@ -122,7 +123,7 @@ pub fn face_lines(f: &tri_geom::Face, tol: f64, edges: &mut Vec<DVec3>, isos: &m
                 if pair.len() < 2 {
                     break;
                 }
-                let pts: Vec<glam::DVec3> = (0..=n).map(|i| s.point_at(pair[0] + (pair[1] - pair[0]) * i as f64 / n as f64, v)).collect();
+                let pts = tri_geom::display_mesh::uv_polyline(s, DVec2::new(pair[0], v), DVec2::new(pair[1], v), tol);
                 polyline_to_segments(&pts, isos);
             }
         }
@@ -131,6 +132,20 @@ pub fn face_lines(f: &tri_geom::Face, tol: f64, edges: &mut Vec<DVec3>, isos: &m
 
 pub fn display_tolerance(bb: &BoundingBox) -> f64 {
     (bb.diagonal() * 0.0015).max(1e-4)
+}
+
+/// Tolerance for curves, edges and isocurves of an object: the view tolerance (a fraction
+/// of a pixel at the current zoom), never coarser than the zoomed-out default and never
+/// finer than the object can need.
+pub fn line_tolerance(bb: &BoundingBox, view_tol: f64) -> f64 {
+    let coarse = display_tolerance(bb);
+    let fine = (bb.diagonal() * 1e-6).max(1e-7);
+    view_tol.clamp(fine, coarse.max(fine))
+}
+
+/// View tolerance quantised to powers of two, so zooming re-tessellates only at each step.
+pub fn view_tolerance_tier(world_per_pixel: f64) -> i32 {
+    (world_per_pixel.max(1e-12) * 0.35).log2().floor() as i32
 }
 
 fn curve_snaps(c: &NurbsCurve, out: &mut Vec<(DVec3, SnapKind)>) {
@@ -225,12 +240,15 @@ pub fn circle_center(c: &NurbsCurve) -> Option<DVec3> {
     Some(center)
 }
 
-fn build(doc: &Document, o: &tri_doc::Object) -> ObjectDisplay {
+/// Display data of an object. `old_mesh` (when the geometry is unchanged and only the view
+/// tolerance moved) is reused instead of tessellating the shading mesh again.
+fn build(doc: &Document, o: &tri_doc::Object, view_tol: f64, old_mesh: Option<Option<Mesh>>) -> ObjectDisplay {
     let bbox = doc.object_bbox(o);
-    let mut d = build_geometry(&o.geometry, &bbox);
+    let skip_mesh = old_mesh.is_some();
+    let mut d = build_geometry(&o.geometry, &bbox, view_tol, skip_mesh);
     if let Geometry::Instance { .. } = &o.geometry {
         for (g, _) in doc.instance_geometry(&o.geometry) {
-            let part = build_geometry(&g, &bbox);
+            let part = build_geometry(&g, &bbox, view_tol, skip_mesh);
             d.lines.extend(part.lines);
             d.edges.extend(part.edges);
             d.points.extend(part.points);
@@ -242,6 +260,11 @@ fn build(doc: &Document, o: &tri_doc::Object) -> ObjectDisplay {
                 }
             }
         }
+    }
+    if let Some(m) = old_mesh {
+        d.mesh = m;
+    }
+    if let Geometry::Instance { .. } = &o.geometry {
         d.is_curve = d.mesh.is_none();
     }
     d.id = o.id;
@@ -249,9 +272,11 @@ fn build(doc: &Document, o: &tri_doc::Object) -> ObjectDisplay {
     d
 }
 
-fn build_geometry(geometry: &Geometry, bbox: &tri_geom::BoundingBox) -> ObjectDisplay {
+/// Display data of one geometry; `skip_mesh` leaves `mesh` empty (the caller reuses one).
+fn build_geometry(geometry: &Geometry, bbox: &tri_geom::BoundingBox, view_tol: f64, skip_mesh: bool) -> ObjectDisplay {
     let bbox = *bbox;
-    let tol = display_tolerance(&bbox);
+    let tol = line_tolerance(&bbox, view_tol);
+    let density = MeshDensity::for_size(bbox.diagonal());
     let mut lines = Vec::new();
     let mut edges = Vec::new();
     let mut mesh = None;
@@ -271,7 +296,9 @@ fn build_geometry(geometry: &Geometry, bbox: &tri_geom::BoundingBox) -> ObjectDi
         }
         Geometry::Surface(s) => {
             surface_lines(s, tol, &mut edges, &mut lines);
-            mesh = Some(s.tessellate(8, 8));
+            if !skip_mesh {
+                mesh = Some(s.display_mesh(&density));
+            }
             for c in s.boundary_curves() {
                 curve_snaps(&c, &mut snaps);
             }
@@ -291,7 +318,9 @@ fn build_geometry(geometry: &Geometry, bbox: &tri_geom::BoundingBox) -> ObjectDi
                     snaps.push((p, SnapKind::Cen));
                 }
             }
-            mesh = Some(b.tessellate(8, 8));
+            if !skip_mesh {
+                mesh = Some(b.display_mesh(&density));
+            }
         }
         Geometry::Mesh(m) => {
             for (a, b) in m.edges() {
@@ -319,12 +348,22 @@ pub struct PickHit {
 }
 
 impl SceneCache {
-    pub fn update(&mut self, doc: &Document) {
-        if self.revision == Some(doc.revision) {
+    /// Rebuild after a document change, or only the lines when the zoom moved to another
+    /// tolerance tier (shading meshes do not depend on the view and are kept).
+    pub fn update(&mut self, doc: &Document, tier: i32) {
+        let same_doc = self.revision == Some(doc.revision);
+        if same_doc && self.tier == Some(tier) {
             return;
         }
-        self.objects = doc.objects().map(|o| build(doc, o)).collect();
+        let view_tol = 2f64.powi(tier);
+        if same_doc {
+            let old = std::mem::take(&mut self.objects);
+            self.objects = doc.objects().zip(old).map(|(o, prev)| build(doc, o, view_tol, Some(prev.mesh))).collect();
+        } else {
+            self.objects = doc.objects().map(|o| build(doc, o, view_tol, None)).collect();
+        }
         self.revision = Some(doc.revision);
+        self.tier = Some(tier);
     }
 
     pub fn get(&self, id: ObjectId) -> Option<&ObjectDisplay> {
@@ -342,8 +381,8 @@ impl SceneCache {
                 continue;
             }
             let mut best: Option<(f64, DVec3)> = None;
-            let mut consider = |z: f64, p: DVec3, best: &mut Option<(f64, DVec3)>| {
-                if best.map_or(true, |b| z < b.0) {
+            let consider = |z: f64, p: DVec3, best: &mut Option<(f64, DVec3)>| {
+                if best.is_none_or(|b| z < b.0) {
                     *best = Some((z, p));
                 }
             };
@@ -418,9 +457,7 @@ impl SceneCache {
                     break;
                 }
             }
-            if !crossing && all && !pts.is_empty() {
-                out.push(od.id);
-            } else if crossing && any {
+            if (!crossing && all && !pts.is_empty()) || (crossing && any) {
                 out.push(od.id);
             } else if crossing {
                 let crosses = od.lines.chunks(2).chain(od.edges.chunks(2)).any(|seg| match (cam.project(rect, seg[0]), cam.project(rect, seg[1])) {

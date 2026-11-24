@@ -1,3 +1,6 @@
+#include <functional>
+#include <cstdlib>
+#include <cstdio>
 // C shim over openNURBS for the on3dm crate.
 #include "opennurbs_public.h"
 #include <vector>
@@ -134,6 +137,8 @@ static void fill_nurbs_curve(const ON_NurbsCurve& nc, On3dmObject& o) {
 static void fill_brep(const ON_Brep& brep, On3dmObject& o) {
     o.kind = 4;
     o.solid = brep.IsSolid() ? 1 : 0;
+    // loop sampling accuracy: well inside the 2e-3 * diagonal used to match edges
+    double chord_tol = ON_Max(1e-6, brep.BoundingBox().Diagonal().Length() * 1e-4);
     for (int fi = 0; fi < brep.m_F.Count(); fi++) {
         const ON_BrepFace& face = brep.m_F[fi];
         const ON_Surface* srf = face.SurfaceOf();
@@ -143,7 +148,8 @@ static void fill_brep(const ON_Brep& brep, On3dmObject& o) {
         if (rc == 0) continue;
         On3dmObject::Face f;
         fill_nurbs_surface(ns, f.rational, f.order_u, f.order_v, f.cvc_u, f.cvc_v, f.knots_u, f.knots_v, f.cv);
-        // trim loops sampled in parameter space (skip when the nurb form reparameterised)
+        // trim loops sampled in parameter space; when the NURBS form has a different
+        // parameterisation (rc == 2, e.g. ON_RevSurface) the samples are mapped onto it
         bool untrimmed_rect = (face.LoopCount() == 1);
         for (int li = 0; li < face.LoopCount(); li++) {
             const ON_BrepLoop* loop = face.Loop(li);
@@ -158,18 +164,66 @@ static void fill_brep(const ON_Brep& brep, On3dmObject& o) {
                 if (c2 && !c2->IsLinear()) {
                     n = ON_Max(8, trim->SpanCount() * 8);
                 }
+                // Triceratops loops are polylines whose vertices are joined by straight UV
+                // segments: subdivide until each segment stays within chord_tol of the true
+                // edge in 3-D (a straight trim along a cylinder is still a curved edge)
+                auto push_uv = [&](const ON_3dPoint& p) {
+                    double nu = p.x, nv = p.y;
+                    if (rc == 2 && !srf->GetNurbFormParameterFromSurfaceParameter(p.x, p.y, &nu, &nv)) { nu = p.x; nv = p.y; }
+                    pts.push_back(nu);
+                    pts.push_back(nv);
+                };
+                auto at3d = [&](double t) { ON_3dPoint uv = trim->PointAt(t); return srf->PointAt(uv.x, uv.y); };
+                std::function<void(double, double, const ON_3dPoint&, const ON_3dPoint&, int)> refine =
+                    [&](double t0, double t1, const ON_3dPoint& p0, const ON_3dPoint& p1, int depth) {
+                        // emits the samples strictly between t0 and t1
+                        if (depth >= 14) return;
+                        ON_Line chord(p0, p1);
+                        double worst = 0.0;
+                        for (double f : {0.25, 0.5, 0.75}) {
+                            ON_3dPoint q = at3d(t0 + (t1 - t0) * f);
+                            double ct;
+                            double d = chord.ClosestPointTo(q, &ct) ? q.DistanceTo(chord.PointAt(ON_Max(0.0, ON_Min(1.0, ct)))) : q.DistanceTo(p0);
+                            worst = ON_Max(worst, d);
+                        }
+                        if (worst <= chord_tol) return;
+                        double tm = 0.5 * (t0 + t1);
+                        ON_3dPoint pm = at3d(tm);
+                        refine(t0, tm, p0, pm, depth + 1);
+                        push_uv(trim->PointAt(tm));
+                        refine(tm, t1, pm, p1, depth + 1);
+                    };
                 for (int k = 0; k < n; k++) {
-                    double t = dom.ParameterAt((double)k / (double)n);
-                    ON_3dPoint p = trim->PointAt(t);
-                    pts.push_back(p.x);
-                    pts.push_back(p.y);
+                    double t0 = dom.ParameterAt((double)k / (double)n);
+                    double t1 = dom.ParameterAt((double)(k + 1) / (double)n);
+                    push_uv(trim->PointAt(t0));
+                    refine(t0, t1, at3d(t0), at3d(t1), 0);
                 }
             }
             if (loop->m_type != ON_BrepLoop::outer) untrimmed_rect = false;
+            if (getenv("TRICERATOPS_3DM_DEBUG") && atoi(getenv("TRICERATOPS_3DM_DEBUG")) >= 2 && pts.size() >= 6) {
+                // compare the trim (through the surface) with the 3-D edge it belongs to
+                double worst = 0.0;
+                for (int ti = 0; ti < loop->TrimCount(); ti++) {
+                    const ON_BrepTrim* trim = loop->Trim(ti);
+                    const ON_BrepEdge* edge = trim ? trim->Edge() : nullptr;
+                    if (!edge) continue;
+                    for (int k = 0; k <= 4; k++) {
+                        ON_3dPoint uv = trim->PointAt(trim->Domain().ParameterAt(k / 4.0));
+                        ON_3dPoint p3 = srf->PointAt(uv.x, uv.y);
+                        double best = 1e300;
+                        ON_Interval ed = edge->Domain();
+                        for (int m = 0; m <= 256; m++) best = ON_Min(best, p3.DistanceTo(edge->PointAt(ed.ParameterAt(m / 256.0))));
+                        worst = ON_Max(worst, best);
+                    }
+                }
+                ON_3dPoint q = ns.PointAt(pts[0], pts[1]);
+                fprintf(stderr, "  face %d loop %d: first uv (%.4f,%.4f) -> (%.4f,%.4f,%.4f), trim-to-edge max %.5f, srf %s, nurb rc %d\n", fi, li, pts[0], pts[1], q.x, q.y, q.z, worst, srf->ClassId()->ClassName(), rc);
+            }
             f.loops.push_back(pts);
             f.loop_outer.push_back(loop->m_type == ON_BrepLoop::outer ? 1 : 0);
         }
-        if (untrimmed_rect && rc == 1) {
+        if (untrimmed_rect) {
             // an outer loop that is the surface boundary rectangle: treat as untrimmed
             ON_BoundingBox bb;
             const std::vector<double>& pts = f.loops[0];
@@ -183,7 +237,6 @@ static void fill_brep(const ON_Brep& brep, On3dmObject& o) {
             }
             if (on_border) { f.loops.clear(); f.loop_outer.clear(); }
         }
-        if (rc == 2) { f.loops.clear(); f.loop_outer.clear(); }
         if (face.m_bRev) {
             // reversed face: swap u and v so the normal flips (loops are swapped too)
             On3dmObject::Face g = f;
@@ -223,6 +276,13 @@ static void fill_mesh(const ON_Mesh& m, On3dmObject& o) {
 
 static void convert_geometry(const ON_Geometry* g, On3dmObject& o) {
     if (!g) return;
+    if (getenv("TRICERATOPS_3DM_DEBUG")) {
+        const ON_ClassId* id = g->ClassId();
+        const ON_Brep* db = ON_Brep::Cast(g);
+        const ON_Extrusion* de = ON_Extrusion::Cast(g);
+        fprintf(stderr, "3dm object: %s%s%s\n", id ? id->ClassName() : "?", db ? (db->IsSolid() ? " (solid)" : " (open)") : "",
+                de ? (de->IsSolid() ? " (capped solid)" : de->IsCapped() ? " (capped)" : " (uncapped)") : "");
+    }
     if (const ON_Point* p = ON_Point::Cast(g)) {
         o.kind = 1; o.point[0] = p->point.x; o.point[1] = p->point.y; o.point[2] = p->point.z; return;
     }
@@ -231,17 +291,19 @@ static void convert_geometry(const ON_Geometry* g, On3dmObject& o) {
         if (nc) { o.kind = 2; fill_nurbs_curve(*nc, o); delete nc; }
         return;
     }
+    // ON_Extrusion derives from ON_Surface: test it first, or a capped extrusion (solid)
+    // would be read as its bare side wall
+    if (const ON_Extrusion* e = ON_Extrusion::Cast(g)) {
+        ON_Brep* b = e->BrepForm(nullptr);
+        if (b) { fill_brep(*b, o); delete b; }
+        return;
+    }
     if (const ON_Surface* s = ON_Surface::Cast(g)) {
         ON_NurbsSurface* ns = s->NurbsSurface();
         if (ns) { o.kind = 3; fill_nurbs_surface(*ns, o.rational, o.order_u, o.order_v, o.cvc_u, o.cvc_v, o.knots_u, o.knots_v, o.cv); delete ns; }
         return;
     }
     if (const ON_Brep* b = ON_Brep::Cast(g)) { fill_brep(*b, o); return; }
-    if (const ON_Extrusion* e = ON_Extrusion::Cast(g)) {
-        ON_Brep* b = e->BrepForm(nullptr);
-        if (b) { fill_brep(*b, o); delete b; }
-        return;
-    }
     if (const ON_Mesh* m = ON_Mesh::Cast(g)) { fill_mesh(*m, o); return; }
     if (const ON_InstanceRef* r = ON_InstanceRef::Cast(g)) {
         o.kind = 6;
@@ -692,3 +754,12 @@ int on3dm_add_mesh(On3dm* h, int vcount, const double* verts, int tcount, const 
 }
 
 } // extern "C"
+
+// Test helper: add a capped cylinder stored as an ON_Extrusion (what ExtrudeCrv / Cylinder save).
+extern "C" int on3dm_add_test_extrusion(On3dm* h, double radius, double height) {
+    ON_Cylinder cyl(ON_Circle(ON_Plane::World_xy, radius), height);
+    ON_Extrusion* e = ON_Extrusion::Cylinder(cyl, true, true, nullptr);
+    if (!e) return 0;
+    track(h, h->model.AddManagedModelGeometryComponent(e, make_attrs(0, "", 0, 0, 0, 0)));
+    return 1;
+}

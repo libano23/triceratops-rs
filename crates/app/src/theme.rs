@@ -172,8 +172,6 @@ impl Default for Theme {
     }
 }
 
-pub const BUILTIN_THEMES: [&str; 3] = ["Triceratops Light", "Triceratops Dark", "Blender"];
-
 impl Theme {
     pub fn default_light() -> Self {
         Self {
@@ -321,7 +319,7 @@ impl Theme {
         let mut out = vec![Self::default_light(), Self::default_dark(), Self::blender()];
         if let Some(dir) = Self::user_dir() {
             if let Ok(rd) = std::fs::read_dir(dir) {
-                let mut files: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().map_or(false, |e| e == "json")).collect();
+                let mut files: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "json")).collect();
                 files.sort();
                 for f in files {
                     if let Ok(t) = Self::load(&f) {
@@ -452,11 +450,6 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme) {
     ctx.set_style(style);
 }
 
-/// Triceratops 8 offers Light and Dark colour schemes (Options > Appearance > Colors).
-pub fn apply(ctx: &egui::Context, dark: bool) {
-    apply_theme(ctx, &if dark { Theme::default_dark() } else { Theme::default_light() });
-}
-
 /// Paint the four corner masks that make a rectangular region look rounded (Blender editors).
 pub fn round_region_corners(painter: &egui::Painter, rect: egui::Rect, radius: f32, gap_color: Color32) {
     if radius < 0.5 {
@@ -483,7 +476,7 @@ mod tests {
 
     #[test]
     fn builtin_themes_roundtrip_json() {
-        for name in BUILTIN_THEMES {
+        for name in ["Triceratops Light", "Triceratops Dark", "Blender"] {
             let t = Theme::by_name(name).expect(name);
             let text = serde_json::to_string(&t).unwrap();
             let back: Theme = serde_json::from_str(&text).unwrap();

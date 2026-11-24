@@ -250,7 +250,7 @@ impl Command for CurveUtilCmd {
                         let ks = &c.knots[p + 1..c.knots.len() - p - 1];
                         let mut out = Vec::new();
                         for k in ks {
-                            if out.last().map_or(true, |l: &f64| (l - k).abs() > 1e-12) {
+                            if out.last().is_none_or(|l: &f64| (l - k).abs() > 1e-12) {
                                 out.push(*k);
                             }
                         }
@@ -277,7 +277,7 @@ impl Command for CurveUtilCmd {
                     for i in 1..spans {
                         knots.push(i as f64 / spans as f64);
                     }
-                    knots.extend(std::iter::repeat(1.0).take(p + 1));
+                    knots.extend(std::iter::repeat_n(1.0, p + 1));
                     if knots.len() == c.knots.len() {
                         c.knots = knots;
                         ctx.doc.replace_geometry(id, Geometry::Curve(c));
@@ -414,7 +414,7 @@ impl Command for CurveUtilCmd {
                         Geometry::Mesh(m) => *m.vertices.iter().min_by(|a, b| (**a - p).length().partial_cmp(&(**b - p).length()).unwrap()).unwrap_or(&p),
                         _ => continue,
                     };
-                    if best.map_or(true, |b| (q - p).length() < (b - p).length()) {
+                    if best.is_none_or(|b| (q - p).length() < (b - p).length()) {
                         best = Some(q);
                     }
                 }
@@ -955,17 +955,13 @@ fn deform_geometry(g: &mut Geometry, f: &dyn Fn(DVec3) -> DVec3) {
     }
 }
 
+#[derive(Default)]
 pub struct ScaleNUCmd {
     ids: Vec<ObjectId>,
     origin: Option<DVec3>,
     factors: Vec<f64>,
 }
 
-impl Default for ScaleNUCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new(), origin: None, factors: Vec::new() }
-    }
-}
 
 impl Command for ScaleNUCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {

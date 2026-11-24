@@ -113,17 +113,15 @@ impl Runner {
         let mut rects = Vec::new();
         for vp in visible {
             let bg = theme::lin(self.app.background_color(vp));
-            let v = &self.app.viewports[vp];
             let scene = if changed[vp] { Some(self.app.scene_batch(vp)) } else { None };
             let clip = self.app.clip_for(vp);
-            let v = &self.app.viewports[vp];
             let lights = self.app.light_uniforms(vp);
             let gradient = self.app.gradient_for(vp);
             let v = &self.app.viewports[vp];
             renderer.upload(vp, scene, &self.app.overlay_batches[vp], &v.camera, &v.rect, ppp, bg, clip, self.app.sun, v.display.analysis(), gradient, &lights);
             rects.push((vp, v.rect));
         }
-        let repaint = full_output.viewport_output.get(&egui::ViewportId::ROOT).map_or(false, |v| v.repaint_delay.is_zero());
+        let repaint = full_output.viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.repaint_delay.is_zero());
         match renderer.render(&rects, ppp, &self.egui_ctx, full_output) {
             Ok(()) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

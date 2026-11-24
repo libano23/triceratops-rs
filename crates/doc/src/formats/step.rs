@@ -355,15 +355,15 @@ impl Reader {
                 None
             };
             let (t0, t1) = (t(a.get(2)?)?, t(a.get(3)?)?);
-            let sense = a.get(4).map_or(true, |s| s.flag());
-            return sub_curve(&basis, t0, t1, sense, self.get(id).map_or(false, |e| e.has("CIRCLE")));
+            let sense = a.get(4).is_none_or(|s| s.flag());
+            return sub_curve(&basis, t0, t1, sense, self.get(id).is_some_and(|e| e.has("CIRCLE")));
         }
         if let Some(a) = e.part("COMPOSITE_CURVE") {
             let mut pts: Vec<DVec3> = Vec::new();
             for seg in a.get(1)?.list() {
                 let se = self.get(seg.r()?)?;
                 let sa = se.part("COMPOSITE_CURVE_SEGMENT")?;
-                let same = sa.get(1).map_or(true, |s| s.flag());
+                let same = sa.get(1).is_none_or(|s| s.flag());
                 let c = self.curve(sa.get(2)?.r()?)?;
                 let mut poly = c.tessellate_adaptive(c.bounding_box().diagonal().max(1e-6) * 1e-3);
                 if !same {
@@ -383,9 +383,9 @@ impl Reader {
         let v1 = self.point(a.get(1)?.r()?)?;
         let v2 = self.point(a.get(2)?.r()?)?;
         let c = self.curve(a.get(3)?.r()?)?;
-        let same = a.get(4).map_or(true, |s| s.flag());
+        let same = a.get(4).is_none_or(|s| s.flag());
         // trim the curve between the vertices (lines/circles are unbounded in STEP)
-        let is_line = self.get(a.get(3)?.r()?).map_or(false, |ce| ce.has("LINE"));
+        let is_line = self.get(a.get(3)?.r()?).is_some_and(|ce| ce.has("LINE"));
         let pts = if is_line {
             vec![v1, v2]
         } else {
@@ -414,7 +414,7 @@ impl Reader {
         let mut out: Vec<DVec3> = Vec::new();
         for oe in edges {
             let oe_e = self.get(oe.r()?)?;
-            let (edge_id, orient) = if let Some(a) = oe_e.part("ORIENTED_EDGE") { (a.get(3)?.r()?, a.get(4).map_or(true, |s| s.flag())) } else { (oe.r()?, true) };
+            let (edge_id, orient) = if let Some(a) = oe_e.part("ORIENTED_EDGE") { (a.get(3)?.r()?, a.get(4).is_none_or(|s| s.flag())) } else { (oe.r()?, true) };
             let mut pts = self.edge_points(edge_id, tol)?;
             if !orient {
                 pts.reverse();
@@ -589,7 +589,7 @@ impl Reader {
                 u = r.0;
                 v = r.1;
                 let q = DVec2::new(u, v);
-                if uv.last().map_or(true, |l: &DVec2| (*l - q).length() > 1e-9) {
+                if uv.last().is_none_or(|l: &DVec2| (*l - q).length() > 1e-9) {
                     uv.push(q);
                 }
             }
@@ -616,7 +616,7 @@ impl Reader {
             loops_uv.swap(0, imax);
         }
         let mut f = Face { surface: srf, loops: loops_uv };
-        let sense = a.get(3).map_or(true, |s| s.flag());
+        let sense = a.get(3).is_none_or(|s| s.flag());
         if !sense {
             // keep the surface orientation consistent with the face normal
             let _ = &mut f;

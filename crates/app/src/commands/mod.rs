@@ -49,7 +49,7 @@ use glam::DVec3;
 use tri_doc::{Document, ObjectId};
 use tri_geom::{Brep, NurbsCurve, NurbsSurface, Plane};
 
-pub use registry::{command_info, find_command, lookup, COMMANDS};
+pub use registry::{command_info, find_command, lookup};
 #[allow(unused_imports)]
 pub use registry::CommandInfo;
 
@@ -270,8 +270,6 @@ pub enum AppRequest {
     Layout(String),
     MaxViewport,
     SetDisplayMode(String),
-    ToggleGrid,
-    ToggleGridAxes,
     ToggleSnap(String),
     FileNew,
     FileOpen,
@@ -430,8 +428,6 @@ pub enum Preview {
     Surface(NurbsSurface),
     Brep(Brep),
     Point(DVec3),
-    /// Dashed tracking line (elevator mode, axis helpers).
-    Tracking(DVec3, DVec3),
 }
 
 pub trait Command {
@@ -478,13 +474,6 @@ impl CommandRunner {
         }
     }
 
-    pub fn prompt_text(&self) -> String {
-        match self.prompt() {
-            Some(p) => p.display(),
-            None => "Command".to_string(),
-        }
-    }
-
     pub fn base_point(&self) -> Option<DVec3> {
         self.active.as_ref().and_then(|(_, c)| c.base_point())
     }
@@ -521,7 +510,7 @@ impl CommandRunner {
             let sel: Vec<ObjectId> = preselected
                 .iter()
                 .copied()
-                .filter(|id| ctx.doc.get(*id).map_or(false, |o| filter.accepts(&o.geometry)))
+                .filter(|id| ctx.doc.get(*id).is_some_and(|o| filter.accepts(&o.geometry)))
                 .collect();
             if !sel.is_empty() && sel.len() >= min {
                 self.feed(Input::Objects(sel), ctx);

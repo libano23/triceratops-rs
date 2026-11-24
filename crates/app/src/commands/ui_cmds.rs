@@ -1,7 +1,7 @@
 //! View, viewport, animation, analysis-overlay, gumball, guide, block-editing, layer-state,
 //! worksession and selection commands that act through the application state.
 
-use glam::{DAffine3, DMat3, DVec3};
+use glam::{DAffine3, DVec3};
 use tri_doc::{Document, Geometry, Object, ObjectId};
 use tri_geom::{Mesh, NurbsCurve, Plane};
 
@@ -182,16 +182,6 @@ pub fn read_viewports() -> SeqCmd {
     })
 }
 
-pub fn save_viewports() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Text("File to save the viewports to")], |a, ctx| {
-        let p = a[0].text();
-        if p.is_empty() {
-            return Step::Cancelled;
-        }
-        req(ctx, AppRequest::ViewportsFile { path: p, save: true })
-    })
-}
-
 pub fn zoom_border() -> SeqCmd {
     SeqCmd::new(vec![Ask::Number("Zoom extents border (percent of the object size)", 5.0)], |a, ctx| req(ctx, AppRequest::SetOption { key: "zoom_border".into(), value: fmt_num(a[0].number()) }))
 }
@@ -297,7 +287,7 @@ pub fn clear_object_display_modes() -> SeqCmd {
 
 pub fn render_mesh_visibility(mode: &'static str) -> SeqCmd {
     SeqCmd::new(vec![], move |_, ctx| {
-        let cur = ctx.memory.get("RenderMesh.Hidden").map_or(false, |v| v == "Yes");
+        let cur = ctx.memory.get("RenderMesh.Hidden").is_some_and(|v| v == "Yes");
         let hide = match mode { "hide" => true, "show" => false, _ => !cur };
         ctx.mem_set("RenderMesh.Hidden", if hide { "Yes" } else { "No" });
         req(ctx, AppRequest::SetOption { key: "render_mesh_hidden".into(), value: if hide { "On".into() } else { "Off".into() } })
@@ -459,7 +449,7 @@ pub fn add_objects_to_block() -> SeqCmd {
         ctx.doc.begin_undo("AddObjectsToBlock");
         let mut n = 0;
         for id in a[0].ids() {
-            if instance_of(ctx.doc, id).map_or(false, |(b, _)| b == bi) {
+            if instance_of(ctx.doc, id).is_some_and(|(b, _)| b == bi) {
                 continue;
             }
             let Some(o) = ctx.doc.get(id) else { continue };
@@ -1012,7 +1002,7 @@ pub fn dim_recenter_text() -> SeqCmd {
             let Some(o) = ctx.doc.get(id) else { continue };
             let Some(group) = o.attributes.groups.iter().find(|g| g.starts_with("Dim")).cloned() else { continue };
             let members: Vec<ObjectId> = ctx.doc.objects().filter(|x| x.attributes.groups.contains(&group)).map(|x| x.id).collect();
-            let (text, lines): (Vec<ObjectId>, Vec<ObjectId>) = members.iter().partition(|m| ctx.doc.get(**m).map_or(false, |x| x.attributes.name.is_some()));
+            let (text, lines): (Vec<ObjectId>, Vec<ObjectId>) = members.iter().partition(|m| ctx.doc.get(**m).is_some_and(|x| x.attributes.name.is_some()));
             if text.is_empty() || lines.is_empty() {
                 continue;
             }
@@ -1268,7 +1258,7 @@ pub fn hatch_scale() -> SeqCmd {
             // keep the boundary (closed curves), rescale the pattern lines about the boundary centre
             let bb = members.iter().filter_map(|m| ctx.doc.get(*m)).fold(tri_geom::BoundingBox::EMPTY, |b, x| b.union(&x.geometry.bounding_box()));
             let c = bb.center();
-            let lines: Vec<ObjectId> = members.iter().copied().filter(|m| ctx.doc.get(*m).and_then(|x| x.geometry.as_curve()).map_or(false, |cv| !cv.is_closed())).collect();
+            let lines: Vec<ObjectId> = members.iter().copied().filter(|m| ctx.doc.get(*m).and_then(|x| x.geometry.as_curve()).is_some_and(|cv| !cv.is_closed())).collect();
             ctx.doc.transform_objects(&lines, &(DAffine3::from_translation(c) * DAffine3::from_scale(DVec3::splat(s)) * DAffine3::from_translation(-c)));
             n += 1;
         }
@@ -1295,7 +1285,7 @@ pub fn selection_filter_sub(kind: &'static str) -> SeqCmd {
 
 pub fn selection_filter_toggle() -> SeqCmd {
     SeqCmd::new(vec![], |_, ctx| {
-        let on = ctx.memory.get("SelectionFilter.Enabled").map_or(true, |v| v == "Yes");
+        let on = ctx.memory.get("SelectionFilter.Enabled").is_none_or(|v| v == "Yes");
         ctx.mem_set("SelectionFilter.Enabled", if on { "No" } else { "Yes" });
         req(ctx, AppRequest::SelectionFilter(if on { Some("All".into()) } else { None }))
     })
@@ -1454,7 +1444,7 @@ pub fn sel_dim_override(text_only: bool) -> super::simple::FnCmd {
 
 pub fn sel_picture() -> super::simple::FnCmd {
     super::simple::FnCmd(|ctx| {
-        let ids: Vec<ObjectId> = ctx.doc.objects().filter(|o| ctx.doc.is_selectable(o) && (has_user_text(o, "Picture") || o.attributes.material.as_deref().map_or(false, |m| m.starts_with("Picture")))).map(|o| o.id).collect();
+        let ids: Vec<ObjectId> = ctx.doc.objects().filter(|o| ctx.doc.is_selectable(o) && (has_user_text(o, "Picture") || o.attributes.material.as_deref().is_some_and(|m| m.starts_with("Picture")))).map(|o| o.id).collect();
         for id in &ids {
             ctx.doc.select(*id, true);
         }
@@ -1514,7 +1504,7 @@ pub fn compute_vertex_colors(label: &'static str) -> SeqCmd {
         for id in a[0].ids() {
             let Some(o) = ctx.doc.get(id) else { continue };
             let col = ctx.doc.display_color(o);
-            let mat = { let m = ctx.doc.material_of(o).color; if o.attributes.material.is_some() || ctx.doc.layers().get(o.attributes.layer).map_or(false, |l| l.material.is_some()) { m } else { [col[0], col[1], col[2], 255] } };
+            let mat = { let m = ctx.doc.material_of(o).color; if o.attributes.material.is_some() || ctx.doc.layers().get(o.attributes.layer).is_some_and(|l| l.material.is_some()) { m } else { [col[0], col[1], col[2], 255] } };
             if let Some(o) = ctx.doc.get_mut(id) {
                 o.attributes.color = Some(mat);
                 o.attributes.user_text.retain(|(k, _)| k != "VertexColors");
@@ -1567,10 +1557,6 @@ pub fn download_library_textures() -> SeqCmd {
 
 fn dirs_fallback() -> std::path::PathBuf {
     std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default().join(".local/share/triceratops/textures")
-}
-
-pub fn mat3_from_plane(p: &Plane) -> DMat3 {
-    DMat3::from_cols(p.x_axis, p.y_axis, p.z_axis)
 }
 
 

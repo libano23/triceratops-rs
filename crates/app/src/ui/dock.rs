@@ -196,7 +196,7 @@ impl DockLayout {
     /// name is shown instead; when it sits alone in a container that container is floated.
     pub fn float_group(&mut self, kind: ContainerKind, tab: &str, x: f32, y: f32) -> u32 {
         if let Some((cid, idx)) = self.find_tab(kind, tab) {
-            let alone = self.container(cid).map_or(false, |c| c.tabs.len() == 1);
+            let alone = self.container(cid).is_some_and(|c| c.tabs.len() == 1);
             if alone {
                 if let Some(c) = self.container_mut(cid) {
                     c.active = idx;

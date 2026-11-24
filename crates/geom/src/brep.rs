@@ -139,6 +139,16 @@ impl Face {
     /// adjacent faces share their rim vertices.
     fn curved_trimmed_triangulation(&self, segs_u: usize, segs_v: usize) -> (Vec<DVec2>, Vec<[usize; 3]>) {
         let s = &self.surface;
+        let loops: Vec<Vec<DVec2>> = self.loops.iter().map(|l| self.subdivided_loop(l)).collect();
+        let us = NurbsSurface::samples(&s.knots_u, s.degree_u, segs_u.max(1));
+        let vs = NurbsSurface::samples(&s.knots_v, s.degree_v, segs_v.max(1));
+        self.trimmed_triangulation(&loops, &us, &vs)
+    }
+
+    /// Triangulation of a trimmed curved face from already subdivided loops and the
+    /// parameter values of the interior grid.
+    pub(crate) fn trimmed_triangulation(&self, loops: &[Vec<DVec2>], us: &[f64], vs: &[f64]) -> (Vec<DVec2>, Vec<[usize; 3]>) {
+        let s = &self.surface;
         let (u0, u1) = s.domain_u();
         let (v0, v1) = s.domain_v();
         let du = (u1 - u0).max(1e-12);
@@ -148,20 +158,17 @@ impl Face {
         let lu = len_of(&s.isocurve_v((v0 + v1) * 0.5));
         let lv = len_of(&s.isocurve_u((u0 + u1) * 0.5));
         let metric = |p: DVec2| DVec2::new((p.x - u0) / du * lu, (p.y - v0) / dv * lv);
-        let loops: Vec<Vec<DVec2>> = self.loops.iter().map(|l| self.subdivided_loop(l)).collect();
         let loops_m: Vec<Vec<DVec2>> = loops.iter().map(|l| l.iter().map(|p| metric(*p)).collect()).collect();
         let mut pts: Vec<DVec2> = loops.iter().flatten().copied().collect();
-        let inside = |p: DVec2| loops_m.first().map_or(false, |o| point_in_polygon(p, o)) && !loops_m.iter().skip(1).any(|h| point_in_polygon(p, h));
+        let inside = |p: DVec2| loops_m.first().is_some_and(|o| point_in_polygon(p, o)) && !loops_m.iter().skip(1).any(|h| point_in_polygon(p, h));
         // interior grid samples, kept away from the outline so the outline edges stay Delaunay
-        let us = NurbsSurface::samples(&s.knots_u, s.degree_u, segs_u.max(1));
-        let vs = NurbsSurface::samples(&s.knots_v, s.degree_v, segs_v.max(1));
         let grid_step = {
             let gu = if us.len() > 1 { lu / (us.len() - 1) as f64 } else { lu };
             let gv = if vs.len() > 1 { lv / (vs.len() - 1) as f64 } else { lv };
             gu.min(gv)
         };
-        for &u in &us {
-            for &v in &vs {
+        for &u in us {
+            for &v in vs {
                 let p = metric(DVec2::new(u, v));
                 if !inside(p) {
                     continue;
@@ -354,8 +361,14 @@ impl Face {
         } else {
             self.curved_trimmed_triangulation(segs_u, segs_v)
         };
+        let mesh = self.mesh_from_uv(&uv, &tris);
+        (mesh, uv)
+    }
+
+    /// Mesh with surface points and normals at the given parameters.
+    pub(crate) fn mesh_from_uv(&self, uv: &[DVec2], tris: &[[usize; 3]]) -> Mesh {
         let mut mesh = Mesh::new();
-        for p in &uv {
+        for p in uv {
             let (pt, su, sv) = self.surface.evaluate(p.x, p.y);
             let n = su.cross(sv);
             mesh.vertices.push(pt);
@@ -364,7 +377,7 @@ impl Face {
         for t in tris {
             mesh.indices.extend_from_slice(&[t[0] as u32, t[1] as u32, t[2] as u32]);
         }
-        (mesh, uv)
+        mesh
     }
 
     pub fn bounding_box(&self) -> BoundingBox {
@@ -541,72 +554,6 @@ pub fn split_loop_by_path(poly: &[DVec2], path: &[DVec2]) -> Option<(Vec<DVec2>,
         return None;
     }
     Some((l1, l2))
-}
-
-/// Subdivide triangles until every edge is shorter than `step` (in UV units).
-fn refine(uv: &mut Vec<DVec2>, tris: &mut Vec<[usize; 3]>, step: DVec2, max_rounds: usize) {
-    use std::collections::HashMap;
-    // conforming refinement: every too-long edge is split once per round and both triangles
-    // sharing it see the same midpoint, so the mesh stays watertight (no T-junctions)
-    for _ in 0..max_rounds {
-        let too_long = |a: DVec2, b: DVec2| ((a.x - b.x) / step.x).abs() > 1.0 || ((a.y - b.y) / step.y).abs() > 1.0;
-        let mut midpoints: HashMap<(usize, usize), usize> = HashMap::new();
-        for t in tris.iter() {
-            for k in 0..3 {
-                let (a, b) = (t[k], t[(k + 1) % 3]);
-                let key = (a.min(b), a.max(b));
-                if !midpoints.contains_key(&key) && too_long(uv[a], uv[b]) {
-                    uv.push((uv[a] + uv[b]) * 0.5);
-                    midpoints.insert(key, uv.len() - 1);
-                }
-            }
-        }
-        if midpoints.is_empty() {
-            break;
-        }
-        let mid = |a: usize, b: usize| midpoints.get(&(a.min(b), a.max(b))).copied();
-        let mut out: Vec<[usize; 3]> = Vec::with_capacity(tris.len() * 2);
-        for t in tris.iter() {
-            let [a, b, c] = *t;
-            match (mid(a, b), mid(b, c), mid(c, a)) {
-                (None, None, None) => out.push(*t),
-                (Some(ab), Some(bc), Some(ca)) => {
-                    out.push([a, ab, ca]);
-                    out.push([ab, b, bc]);
-                    out.push([ca, bc, c]);
-                    out.push([ab, bc, ca]);
-                }
-                (Some(ab), None, None) => {
-                    out.push([a, ab, c]);
-                    out.push([ab, b, c]);
-                }
-                (None, Some(bc), None) => {
-                    out.push([a, b, bc]);
-                    out.push([a, bc, c]);
-                }
-                (None, None, Some(ca)) => {
-                    out.push([a, b, ca]);
-                    out.push([ca, b, c]);
-                }
-                (Some(ab), Some(bc), None) => {
-                    out.push([ab, b, bc]);
-                    out.push([a, ab, bc]);
-                    out.push([a, bc, c]);
-                }
-                (None, Some(bc), Some(ca)) => {
-                    out.push([ca, bc, c]);
-                    out.push([a, b, bc]);
-                    out.push([a, bc, ca]);
-                }
-                (Some(ab), None, Some(ca)) => {
-                    out.push([a, ab, ca]);
-                    out.push([ab, b, c]);
-                    out.push([ab, c, ca]);
-                }
-            }
-        }
-        *tris = out;
-    }
 }
 
 /// Best-fit plane of a closed (or any) curve using Newell's method; `None` when not planar.
@@ -886,6 +833,23 @@ fn distance_to_polyline(p: DVec3, poly: &[DVec3]) -> f64 {
     best
 }
 
+
+pub fn sample_polyline_pub(e: &[DVec3], n: usize) -> Vec<DVec3> {
+    sample_polyline(e, n)
+}
+
+pub fn distance_to_polyline_pub(p: DVec3, e: &[DVec3]) -> f64 {
+    distance_to_polyline(p, e)
+}
+
+pub fn sample_polyline_indexed_pub(p: &[DVec3], n: usize) -> Vec<(DVec3, usize)> {
+    sample_polyline_indexed(p, n)
+}
+
+pub fn distance_to_polyline_skipping_pub(p: DVec3, poly: &[DVec3], skip: usize, margin: usize) -> f64 {
+    distance_to_polyline_skipping(p, poly, skip, margin)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -936,7 +900,7 @@ mod tests {
     fn extrusion_with_caps_is_closed() {
         let circle = NurbsCurve::circle(&Plane::world_xy(), 1.0).unwrap();
         let side = NurbsSurface::extrude(&circle, DVec3::Z * 2.0).unwrap();
-        let bottom = Face::from_planar_curves(&[circle.clone()], 1e-3).unwrap();
+        let bottom = Face::from_planar_curves(std::slice::from_ref(&circle), 1e-3).unwrap();
         let mut top_c = circle.clone();
         top_c.transform(&DAffine3::from_translation(DVec3::Z * 2.0));
         let top = Face::from_planar_curves(&[top_c], 1e-3).unwrap();
@@ -946,20 +910,4 @@ mod tests {
         assert!(!open.closed);
         assert_eq!(open.naked_planar_loops().len(), 2);
     }
-}
-
-pub fn sample_polyline_pub(e: &[DVec3], n: usize) -> Vec<DVec3> {
-    sample_polyline(e, n)
-}
-
-pub fn distance_to_polyline_pub(p: DVec3, e: &[DVec3]) -> f64 {
-    distance_to_polyline(p, e)
-}
-
-pub fn sample_polyline_indexed_pub(p: &[DVec3], n: usize) -> Vec<(DVec3, usize)> {
-    sample_polyline_indexed(p, n)
-}
-
-pub fn distance_to_polyline_skipping_pub(p: DVec3, poly: &[DVec3], skip: usize, margin: usize) -> f64 {
-    distance_to_polyline_skipping(p, poly, skip, margin)
 }

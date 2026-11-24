@@ -146,24 +146,6 @@ impl Batch {
         self.xray_lines.push(LineVertex { pos: b.as_vec3().to_array(), color });
     }
 
-    pub fn append(&mut self, other: &Batch) {
-        self.lines.extend_from_slice(&other.lines);
-        self.xray_lines.extend_from_slice(&other.xray_lines);
-        let base = self.mesh_vertices.len() as u32;
-        self.mesh_vertices.extend_from_slice(&other.mesh_vertices);
-        self.mesh_indices.extend(other.mesh_indices.iter().map(|i| i + base));
-        self.points.extend_from_slice(&other.points);
-        self.textured.extend(other.textured.iter().cloned());
-    }
-
-    pub fn clear(&mut self) {
-        self.lines.clear();
-        self.xray_lines.clear();
-        self.mesh_vertices.clear();
-        self.mesh_indices.clear();
-        self.points.clear();
-        self.textured.clear();
-    }
 }
 
 struct GrowBuffer {
@@ -1166,7 +1148,7 @@ impl Renderer {
         let (x, y, w, h) = rect;
         let w = w.min(self.config.width.saturating_sub(x)).max(1);
         let h = h.min(self.config.height.saturating_sub(y)).max(1);
-        let padded = ((w * 4 + 255) / 256) * 256;
+        let padded = (w * 4).div_ceil(256) * 256;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("capture"), size: (padded * h) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo { texture, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },

@@ -244,7 +244,7 @@ impl Command for ExtendCmd {
                         if (x.point - end).length() < tol {
                             continue;
                         }
-                        if best.map_or(true, |bp| (x.point - end).length() < (bp - end).length()) {
+                        if best.is_none_or(|bp| (x.point - end).length() < (bp - end).length()) {
                             best = Some(x.point);
                         }
                     }

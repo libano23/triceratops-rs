@@ -83,6 +83,7 @@ impl Ans {
 }
 
 type Finish = Box<dyn Fn(&[Ans], &mut CmdCtx) -> Step>;
+type Continuation = Box<dyn Fn(Input, &mut CmdCtx) -> Step>;
 
 /// Sequential command: asks the questions in order and calls `finish` with the answers.
 pub struct SeqCmd {
@@ -92,7 +93,7 @@ pub struct SeqCmd {
     /// Options that can be chosen at any step; choosing one re-asks the current question.
     pub clear_selection_after_objects: bool,
     /// Continuation used when `finish` returns `Step::Next`: every later input goes here.
-    then: Option<Box<dyn Fn(Input, &mut CmdCtx) -> Step>>,
+    then: Option<Continuation>,
     in_then: bool,
 }
 
@@ -259,13 +260,12 @@ pub fn point_in_poly2(p: DVec2, poly: &[DVec2]) -> bool {
 
 pub struct SelPolygonCmd {
     pub crossing: bool,
-    pub label: &'static str,
     pts: Vec<DVec3>,
 }
 
 impl SelPolygonCmd {
-    pub fn new(label: &'static str, crossing: bool) -> Self {
-        Self { crossing, label, pts: Vec::new() }
+    pub fn new(crossing: bool) -> Self {
+        Self { crossing, pts: Vec::new() }
     }
 }
 
@@ -354,7 +354,7 @@ pub fn sel_key(with_value: bool) -> SeqCmd {
     SeqCmd::new(asks, move |a, ctx| {
         let key = a[0].text();
         let value = a.get(1).map(|v| v.text());
-        select_where(ctx, |_, o| o.attributes.user_text.iter().any(|(k, v)| *k == key && value.as_ref().map_or(true, |val| v == val)))
+        select_where(ctx, |_, o| o.attributes.user_text.iter().any(|(k, v)| *k == key && value.as_ref().is_none_or(|val| v == val)))
     })
 }
 
@@ -504,12 +504,6 @@ pub fn edit_file_cmd() -> SeqCmd {
     })
 }
 
-pub fn set_flag_cmd(key: &'static str, value: bool, note: &'static str) -> FnCmd {
-    // closures cannot capture in fn pointers; use memory keys through a small table
-    let _ = (key, value, note);
-    FnCmd(|_| Step::Done)
-}
-
 /// Sets a memory flag (Echo/NoEcho, SetRedrawOn/Off, DragMode ...).
 pub struct FlagCmd(pub &'static str, pub &'static str, pub &'static str);
 
@@ -639,7 +633,7 @@ pub fn find_text() -> SeqCmd {
         if t.is_empty() {
             return Step::Cancelled;
         }
-        select_where(ctx, |_, o| o.attributes.name.as_ref().map_or(false, |n| n.to_lowercase().contains(&t)))
+        select_where(ctx, |_, o| o.attributes.name.as_ref().is_some_and(|n| n.to_lowercase().contains(&t)))
     })
 }
 

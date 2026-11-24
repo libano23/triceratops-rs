@@ -204,11 +204,6 @@ impl Camera {
         self.target = eye - self.eye_dir() * self.distance;
     }
 
-    pub fn zoom_to_border(&mut self, bbox: &BoundingBox, border: f64) {
-        let inflated = if bbox.is_empty() { *bbox } else { bbox.inflate(bbox.diagonal() * border.max(0.0)) };
-        self.zoom_to(&inflated);
-    }
-
     pub fn orbit(&mut self, dx: f64, dy: f64) {
         if !self.rotatable {
             return;
@@ -311,15 +306,11 @@ impl ViewRect {
         (self.w / self.h.max(1.0)).max(1e-3)
     }
 
-    pub fn contains(&self, x: f64, y: f64) -> bool {
-        x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + self.h
-    }
-
-    pub fn to_ndc(&self, x: f64, y: f64) -> DVec2 {
+    pub fn screen_to_ndc(&self, x: f64, y: f64) -> DVec2 {
         DVec2::new((x - self.x) / self.w * 2.0 - 1.0, 1.0 - (y - self.y) / self.h * 2.0)
     }
 
-    pub fn from_ndc(&self, ndc: DVec3) -> DVec2 {
+    pub fn ndc_to_screen(&self, ndc: DVec3) -> DVec2 {
         DVec2::new(self.x + (ndc.x + 1.0) * 0.5 * self.w, self.y + (1.0 - ndc.y) * 0.5 * self.h)
     }
 }
@@ -333,7 +324,7 @@ pub struct ViewHistory {
 
 impl ViewHistory {
     pub fn push(&mut self, cam: &Camera) {
-        if self.undo.last().map_or(true, |c| !c.same_view(cam)) {
+        if self.undo.last().is_none_or(|c| !c.same_view(cam)) {
             self.undo.push(cam.clone());
             if self.undo.len() > 100 {
                 self.undo.remove(0);
@@ -375,11 +366,11 @@ impl Camera {
     }
 
     pub fn ray_at(&self, rect: &ViewRect, x: f64, y: f64) -> Ray {
-        self.ray_ndc(rect.to_ndc(x, y), rect.aspect())
+        self.ray_ndc(rect.screen_to_ndc(x, y), rect.aspect())
     }
 
     pub fn project(&self, rect: &ViewRect, p: DVec3) -> Option<(DVec2, f64)> {
         let ndc = self.project_ndc(p, rect.aspect())?;
-        Some((rect.from_ndc(ndc), ndc.z))
+        Some((rect.ndc_to_screen(ndc), ndc.z))
     }
 }

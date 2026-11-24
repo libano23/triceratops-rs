@@ -56,7 +56,7 @@ impl HelixCmd {
     fn prompt(&self) -> Prompt {
         let opts = [optv("Turns", fmt_num(self.turns)), optv("Pitch", fmt_num(0.0)), optv("Mode", "Turns"), opt("Flat"), opt("ReverseTwist")];
         match (self.pts.len(), self.radius1) {
-            (0, _) => Prompt::point(if self.spiral { "Start of axis" } else { "Start of axis" }).opts(opts),
+            (0, _) => Prompt::point("Start of axis").opts(opts),
             (1, _) => Prompt::point("End of axis").opts(opts),
             (_, None) if self.spiral => Prompt::point_or_number("First radius").opts(opts),
             _ => Prompt::point_or_number(if self.spiral { "Second radius" } else { "Radius" }).opts(opts),
@@ -220,15 +220,11 @@ impl Command for ConnectCmd {
 
 // ---- ChangeDegree / CloseCrv / Smooth / SimplifyCrv / FitCrv / InsertKnot -------
 
+#[derive(Default)]
 pub struct ChangeDegreeCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for ChangeDegreeCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for ChangeDegreeCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -291,15 +287,11 @@ impl Command for CloseCrvCmd {
     }
 }
 
+#[derive(Default)]
 pub struct SmoothCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for SmoothCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for SmoothCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -383,15 +375,11 @@ impl Command for SimplifyCrvCmd {
     }
 }
 
+#[derive(Default)]
 pub struct FitCrvCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for FitCrvCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for FitCrvCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -605,7 +593,7 @@ impl Command for DupEdgeCmd {
                 for f in &faces {
                     for e in f.edge_curves(tol) {
                         let d = (e.point_at(e.closest_parameter(p)) - p).length();
-                        if best.as_ref().map_or(true, |b| d < b.0) {
+                        if best.as_ref().is_none_or(|b| d < b.0) {
                             best = Some((d, e));
                         }
                     }

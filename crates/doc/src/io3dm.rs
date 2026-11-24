@@ -205,7 +205,7 @@ mod tests {
         d.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 1.0, 2.0, 3.0).unwrap()));
         d.add(Geometry::Surface(NurbsSurface::sphere(DVec3::ZERO, 1.0).unwrap()));
         let circle = NurbsCurve::circle(&Plane::world_xy(), 1.0).unwrap();
-        let cap = Face::from_planar_curves(&[circle.clone()], 1e-3).unwrap();
+        let cap = Face::from_planar_curves(std::slice::from_ref(&circle), 1e-3).unwrap();
         let side = NurbsSurface::extrude(&circle, DVec3::Z * 2.0).unwrap();
         let mut top = cap.clone();
         top.transform(&glam::DAffine3::from_translation(DVec3::Z * 2.0));
@@ -232,6 +232,41 @@ mod tests {
         if let Geometry::Brep(b) = &cyl.geometry {
             assert!(b.faces.iter().any(|f| f.is_trimmed()), "caps keep their trims");
             assert!(b.closed);
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// A flat, wide capped cylinder saved as an extrusion: it must load as a closed
+    /// polysurface, and its cap loops must follow the circle closely enough that the
+    /// kernel's own edge matching (compute_closed) also sees it as closed.
+    #[test]
+    fn capped_extrusion_loads_as_closed_polysurface() {
+        let dir = std::env::temp_dir().join(format!("tri-io3dm-ext-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("ext.3dm");
+        let (r, h) = (100.0, 1.0);
+        assert!(on3dm::write_test_extrusion(&p, r, h));
+        let (state, _, skipped) = load(&p).unwrap();
+        assert_eq!(skipped, 0);
+        let mut d = Document::new();
+        d.state = state;
+        let objs: Vec<_> = d.objects().collect();
+        assert_eq!(objs.len(), 1);
+        let Geometry::Brep(b) = &objs[0].geometry else { panic!("extrusion did not load as a polysurface") };
+        assert!(b.closed, "solid flag from the file");
+        assert!(b.compute_closed(), "edges of caps and wall must match");
+        // every chord of a cap loop stays near the circle (32 samples would sag by ~0.5)
+        let diag = b.bounding_box().diagonal();
+        for f in b.faces.iter().filter(|f| f.is_trimmed()) {
+            for l in &f.loops {
+                for k in 0..l.len() {
+                    let a = f.surface.point_at(l[k].x, l[k].y);
+                    let c = f.surface.point_at(l[(k + 1) % l.len()].x, l[(k + 1) % l.len()].y);
+                    let mid = (a + c) * 0.5;
+                    let sag = r - DVec3::new(mid.x, mid.y, 0.0).length();
+                    assert!(sag < diag * 2e-4, "chord sag {sag} on a loop of {} points", l.len());
+                }
+            }
         }
         std::fs::remove_dir_all(dir).ok();
     }

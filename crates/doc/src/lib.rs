@@ -212,6 +212,7 @@ pub fn surface_is_closed(s: &NurbsSurface) -> bool {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Attributes {
     pub layer: usize,
     pub name: Option<String>,
@@ -238,11 +239,6 @@ pub struct Attributes {
     pub mapping: Option<(MappingKind, f64)>,
 }
 
-impl Default for Attributes {
-    fn default() -> Self {
-        Self { layer: 0, name: None, color: None, hidden: false, locked: false, groups: Vec::new(), user_text: Vec::new(), draw_order: 0, linetype: None, material: None, mapping: None }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Object {
@@ -355,6 +351,9 @@ struct UndoRecord {
     state: State,
     selection: BTreeSet<ObjectId>,
 }
+
+/// A light object: id, kind, position, direction, colour, intensity, on.
+pub type LightInfo = (ObjectId, String, DVec3, DVec3, [f32; 3], f32, bool);
 
 #[derive(Debug)]
 pub struct Document {
@@ -480,11 +479,11 @@ impl Document {
 
     /// Whether an object is currently visible (own flag and layer visibility).
     pub fn is_visible(&self, o: &Object) -> bool {
-        !o.attributes.hidden && self.state.layers.get(o.attributes.layer).map_or(true, |l| l.visible)
+        !o.attributes.hidden && self.state.layers.get(o.attributes.layer).is_none_or(|l| l.visible)
     }
 
     pub fn is_locked(&self, o: &Object) -> bool {
-        o.attributes.locked || self.state.layers.get(o.attributes.layer).map_or(false, |l| l.locked)
+        o.attributes.locked || self.state.layers.get(o.attributes.layer).is_some_and(|l| l.locked)
     }
 
     pub fn is_selectable(&self, o: &Object) -> bool {
@@ -531,7 +530,7 @@ impl Document {
     }
 
     /// Lights: point objects tagged with the `Light` user text key (kind, direction, colour, intensity, on).
-    pub fn lights(&self) -> Vec<(ObjectId, String, DVec3, DVec3, [f32; 3], f32, bool)> {
+    pub fn lights(&self) -> Vec<LightInfo> {
         self.objects()
             .filter(|o| self.is_visible(o))
             .filter_map(|o| {
@@ -541,7 +540,7 @@ impl Document {
                 let dir = get("LightDir").map(|s| { let v: Vec<f64> = s.split(',').filter_map(|x| x.parse().ok()).collect(); if v.len() == 3 { DVec3::new(v[0], v[1], v[2]) } else { -DVec3::Z } }).unwrap_or(-DVec3::Z);
                 let color = get("LightColor").map(|s| { let v: Vec<f32> = s.split(',').filter_map(|x| x.parse().ok()).collect(); if v.len() == 3 { [v[0], v[1], v[2]] } else { [1.0, 1.0, 1.0] } }).unwrap_or([1.0, 1.0, 1.0]);
                 let intensity = get("LightIntensity").and_then(|s| s.parse().ok()).unwrap_or(1.0);
-                let on = get("LightOn").map_or(true, |s| s != "No");
+                let on = get("LightOn").is_none_or(|s| s != "No");
                 Some((o.id, kind, p, dir, color, intensity, on))
             })
             .collect()
@@ -665,7 +664,7 @@ impl Document {
 
     pub fn select(&mut self, id: ObjectId, selected: bool) {
         if selected {
-            if self.get(id).map_or(false, |o| self.is_selectable(o)) {
+            if self.get(id).is_some_and(|o| self.is_selectable(o)) {
                 self.selection.insert(id);
             }
         } else {

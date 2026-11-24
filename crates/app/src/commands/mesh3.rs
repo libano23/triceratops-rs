@@ -703,7 +703,7 @@ pub fn offset_subd() -> SeqCmd {
 
 pub fn subd_display_toggle() -> SeqCmd {
     SeqCmd::new(vec![], |_, ctx| {
-        let flat = ctx.memory.get("SubD.Flat").map_or(false, |v| v == "Yes");
+        let flat = ctx.memory.get("SubD.Flat").is_some_and(|v| v == "Yes");
         ctx.mem_set("SubD.Flat", if flat { "No" } else { "Yes" });
         ctx.doc.begin_undo("SubDDisplayToggle");
         let ids: Vec<ObjectId> = ctx.doc.objects().filter(|o| super::mesh2::is_subd(o)).map(|o| o.id).collect();
@@ -1126,7 +1126,7 @@ pub fn create_regions() -> SeqCmd {
                 }
                 let mut next = Vec::new();
                 for p in &pieces {
-                    next.extend(super::misc4::region_boolean(&[p.clone()], &[curves[j].clone()], BooleanOp::Difference));
+                    next.extend(super::misc4::region_boolean(std::slice::from_ref(p), std::slice::from_ref(&curves[j]), BooleanOp::Difference));
                 }
                 pieces = next;
             }
@@ -1168,10 +1168,6 @@ pub fn move_extracted_isocurve() -> SeqCmd {
         let c = if a[1].text() == "V" { s.isocurve_v(v) } else { s.isocurve_u(u) };
         add_all(ctx, "MoveExtractedIsocurve", vec![Geometry::Curve(c)])
     })
-}
-
-pub fn dup_edge_tools_msg() -> &'static str {
-    "triceratops keeps one edge per face side."
 }
 
 #[allow(dead_code)]

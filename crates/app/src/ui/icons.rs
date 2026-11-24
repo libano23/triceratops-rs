@@ -140,23 +140,6 @@ fn recolor_shape(shape: &mut egui::Shape) {
     }
 }
 
-#[cfg(test)]
-mod dark_tests {
-    use super::*;
-
-    #[test]
-    fn dark_mapping_inverts_neutrals_and_keeps_accents() {
-        let l = |c: Color32| (c.r() as u32 + c.g() as u32 + c.b() as u32) / 3;
-        assert!(l(dark_icon_color(CURVE)) > 200, "black strokes become light");
-        assert!(l(dark_icon_color(Color32::WHITE)) < 60, "white fills become dark");
-        let s = dark_icon_color(SURF);
-        assert!(l(s) < 110 && s.b() > s.r(), "pale surface fill becomes a dark blue-grey: {s:?}");
-        for c in [BLUE, RED, GREEN, YELLOW] {
-            assert_eq!(dark_icon_color(c), c, "accent kept");
-        }
-        assert!(l(dark_icon_color(GRAY)) > l(GRAY), "mid grey lifted");
-    }
-}
 
 fn pt(r: &Rect, x: f32, y: f32) -> Pos2 {
     Pos2::new(r.left() + r.width() * x, r.top() + r.height() * y)
@@ -721,5 +704,23 @@ pub fn draw_icon(p: &egui::Painter, r: Rect, name: &str) {
             poly(p, r, &[(0.1, 0.4), (0.5, 0.3), (0.9, 0.5)], SURF, 2.0);
         }
         _ => label(p, r, &name.chars().take(3).collect::<String>(), CURVE),
+    }
+}
+
+#[cfg(test)]
+mod dark_tests {
+    use super::*;
+
+    #[test]
+    fn dark_mapping_inverts_neutrals_and_keeps_accents() {
+        let l = |c: Color32| (c.r() as u32 + c.g() as u32 + c.b() as u32) / 3;
+        assert!(l(dark_icon_color(CURVE)) > 200, "black strokes become light");
+        assert!(l(dark_icon_color(Color32::WHITE)) < 60, "white fills become dark");
+        let s = dark_icon_color(SURF);
+        assert!(l(s) < 110 && s.b() > s.r(), "pale surface fill becomes a dark blue-grey: {s:?}");
+        for c in [BLUE, RED, GREEN, YELLOW] {
+            assert_eq!(dark_icon_color(c), c, "accent kept");
+        }
+        assert!(l(dark_icon_color(GRAY)) > l(GRAY), "mid grey lifted");
     }
 }

@@ -238,7 +238,6 @@ pub struct DragMove {
 
 #[derive(Clone, Debug)]
 pub struct SelectionMenu {
-    pub viewport: usize,
     pub screen: DVec2,
     pub candidates: Vec<ObjectId>,
     pub shift: bool,
@@ -410,7 +409,6 @@ pub struct Grip {
 #[derive(Clone, Debug)]
 pub struct GripDrag {
     pub viewport: usize,
-    pub from: DVec3,
     pub to: DVec3,
     pub started: bool,
 }
@@ -443,7 +441,6 @@ pub struct GumballScreen {
     pub arrow_end: [DVec2; 3],
     pub scale_pos: [DVec2; 3],
     pub arcs: [Vec<DVec2>; 3],
-    pub length: f64,
 }
 
 /// A clipping plane object: a planar surface in the document whose plane clips the display.
@@ -462,13 +459,6 @@ pub struct CaptureRequest {
     pub whole_window: bool,
     /// Named view to restore before capturing.
     pub view: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Turntable {
-    pub frames: usize,
-    pub index: usize,
-    pub record_dir: Option<String>,
 }
 
 /// One frame of an animation: optional camera and sun direction.
@@ -504,9 +494,7 @@ pub struct App {
     pub sun: Option<DVec3>,
     /// Ground plane height when enabled.
     pub ground_plane: Option<f64>,
-    pub turntable: Option<Turntable>,
     pub animation: Animation,
-    pub sidebar_hidden: bool,
     /// Analysis overlays: naked edges, curve ends, directions, camera frustum.
     pub show_edges: bool,
     pub show_ends: bool,
@@ -517,7 +505,6 @@ pub struct App {
     pub zoom_border: f64,
     pub px_per_mm: f64,
     pub walk_mode: bool,
-    pub last_render: Option<String>,
     pub show_command_area: bool,
     /// Dockable window layout and the on-screen rectangles of its containers.
     pub dock: crate::ui::dock::DockLayout,
@@ -613,9 +600,7 @@ impl App {
             capture_requests: Vec::new(),
             sun: None,
             ground_plane: None,
-            turntable: None,
             animation: Animation::default(),
-            sidebar_hidden: false,
             show_edges: false,
             show_ends: false,
             show_dir: false,
@@ -624,7 +609,6 @@ impl App {
             zoom_border: 0.05,
             px_per_mm: 3.78,
             walk_mode: false,
-            last_render: None,
             show_command_area: true,
             dock: crate::ui::dock::DockLayout::default_layout(),
             dock_rects: HashMap::new(),
@@ -1040,12 +1024,6 @@ impl App {
         self.scene_keys.resize(n, None);
     }
 
-    /// Page coordinates (x, y on the paper) of a point in a page viewport; the paper lies in world XY.
-    pub fn page_point(&self, vp: usize, p: DVec3) -> (f64, f64) {
-        let _ = vp;
-        (p.x, p.y)
-    }
-
     fn page_camera(w: f64, h: f64) -> Camera {
         let mut cam = Camera::top();
         cam.target = DVec3::new(w * 0.5, h * 0.5, 0.0);
@@ -1350,10 +1328,6 @@ impl App {
         self.viewports[self.active].cplane()
     }
 
-    pub fn active_vp(&self) -> &Viewport {
-        &self.viewports[self.active]
-    }
-
     fn with_ctx<R>(&mut self, f: impl FnOnce(&mut CommandRunner, &mut CmdCtx) -> R) -> R {
         let cplane = self.viewports[self.active].cplane();
         let view_dir = self.viewports[self.active].camera.view_dir();
@@ -1506,7 +1480,7 @@ impl App {
                 }
                 self.last_added = added.clone();
                 self.memory.insert("SelLast".into(), added.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","));
-                if self.doc.state.parametric.enabled && self.memory.get("Parametric.Infer").map_or(false, |v| v == "Yes") {
+                if self.doc.state.parametric.enabled && self.memory.get("Parametric.Infer").is_some_and(|v| v == "Yes") {
                     let n = self.doc.auto_constrain(&added).len();
                     if n > 0 {
                         self.log.push(format!("{n} constraints inferred."));
@@ -1595,39 +1569,36 @@ impl App {
 
     pub fn submit_enter(&mut self) {
         let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
-        match self.runner.prompt().cloned() {
-            Some(p) => match p.kind {
-                PromptKind::Objects { min, .. } => {
-                    self.sync_pick_order();
-                    let ids = self.pick_order.clone();
-                    if ids.len() < min {
-                        if ids.is_empty() {
-                            self.log.push("No objects selected.".into());
-                        } else {
-                            self.log.push(format!("Select at least {min} objects."));
-                        }
+        if let Some(p) = self.runner.prompt().cloned() { match p.kind {
+            PromptKind::Objects { min, .. } => {
+                self.sync_pick_order();
+                let ids = self.pick_order.clone();
+                if ids.len() < min {
+                    if ids.is_empty() {
+                        self.log.push("No objects selected.".into());
                     } else {
-                        self.with_ctx(|r, ctx| r.feed(Input::Objects(ids), ctx));
+                        self.log.push(format!("Select at least {min} objects."));
                     }
+                } else {
+                    self.with_ctx(|r, ctx| r.feed(Input::Objects(ids), ctx));
                 }
-                PromptKind::Number | PromptKind::PointOrNumber => {
-                    if let Some(d) = p.default.as_deref().and_then(parse_number) {
-                        self.with_ctx(|r, ctx| r.feed(Input::Number(d), ctx));
-                    } else {
-                        self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx));
-                    }
+            }
+            PromptKind::Number | PromptKind::PointOrNumber => {
+                if let Some(d) = p.default.as_deref().and_then(parse_number) {
+                    self.with_ctx(|r, ctx| r.feed(Input::Number(d), ctx));
+                } else {
+                    self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx));
                 }
-                PromptKind::Text => {
-                    if let Some(d) = p.default.clone() {
-                        self.with_ctx(|r, ctx| r.feed(Input::Text(d), ctx));
-                    } else {
-                        self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx));
-                    }
+            }
+            PromptKind::Text => {
+                if let Some(d) = p.default.clone() {
+                    self.with_ctx(|r, ctx| r.feed(Input::Text(d), ctx));
+                } else {
+                    self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx));
                 }
-                _ => self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx)),
-            },
-            None => {}
-        }
+            }
+            _ => self.with_ctx(|r, ctx| r.feed(Input::Empty, ctx)),
+        } }
         self.after_command_step(&before);
     }
 
@@ -1812,11 +1783,11 @@ impl App {
     // ----- picking ----------------------------------------------------------
 
     fn wants_point(&self) -> bool {
-        self.runner.prompt().map_or(false, |p| p.wants_point())
+        self.runner.prompt().is_some_and(|p| p.wants_point())
     }
 
     fn wants_objects(&self) -> bool {
-        self.runner.prompt().map_or(false, |p| p.wants_objects())
+        self.runner.prompt().is_some_and(|p| p.wants_objects())
     }
 
     pub fn can_select(&self) -> bool {
@@ -1913,7 +1884,7 @@ impl App {
     }
 
     pub fn update_cursor(&mut self, vp: usize, pos: DVec2) {
-        self.scene.update(&self.doc);
+        self.update_scene();
         let (world, snap) = self.snapped_point(vp, pos);
         self.cursor = Some(Cursor { viewport: vp, screen: pos, world, snap });
     }
@@ -1926,7 +1897,7 @@ impl App {
     pub fn viewport_click(&mut self, vp: usize, pos: DVec2, shift: bool, ctrl: bool) {
         self.active = vp;
         self.popup_toolbar = None;
-        self.scene.update(&self.doc);
+        self.update_scene();
         if self.wants_point() {
             if ctrl && self.constraints.elevator.is_none() {
                 // elevator mode: first click fixes the base, second the elevation
@@ -1945,15 +1916,15 @@ impl App {
             self.after_command_step(&before);
             return;
         }
-        if self.runner.prompt().map_or(false, |p| p.wants_pick()) {
+        if self.runner.prompt().is_some_and(|p| p.wants_pick()) {
             let v = &self.viewports[vp];
             let hits = self.filter_hits(self.scene.pick_all(&self.doc, &v.camera, &v.rect, pos.x, pos.y, 6.0));
-            let hits: Vec<crate::render::scene::PickHit> = hits.into_iter().filter(|h| self.doc.get(h.id).map_or(false, |o| self.object_in_viewport(vp, o))).collect();
+            let hits: Vec<crate::render::scene::PickHit> = hits.into_iter().filter(|h| self.doc.get(h.id).is_some_and(|o| self.object_in_viewport(vp, o))).collect();
             let filter = match self.runner.prompt().map(|p| p.kind.clone()) {
                 Some(PromptKind::ObjectPick { filter }) => filter,
                 _ => commands::ObjFilter::Any,
             };
-            let hit = hits.into_iter().find(|h| self.doc.get(h.id).map_or(false, |o| filter.accepts(&o.geometry)));
+            let hit = hits.into_iter().find(|h| self.doc.get(h.id).is_some_and(|o| filter.accepts(&o.geometry)));
             if let Some(h) = hit {
                 let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
                 self.with_ctx(|r, ctx| r.feed(Input::Pick(h.id, h.point), ctx));
@@ -1993,10 +1964,9 @@ impl App {
         if hits.len() >= 2 {
             // ambiguous: candidates at nearly the same depth, or several wire objects
             let ambiguous = (hits[0].depth - hits[1].depth).abs() < 2e-3
-                || hits.iter().take(2).all(|h| self.scene.get(h.id).map_or(false, |o| o.mesh.is_none()));
+                || hits.iter().take(2).all(|h| self.scene.get(h.id).is_some_and(|o| o.mesh.is_none()));
             if ambiguous {
                 self.selection_menu = Some(SelectionMenu {
-                    viewport: vp,
                     screen: pos,
                     candidates: hits.iter().map(|h| h.id).collect(),
                     shift,
@@ -2165,7 +2135,7 @@ impl App {
                 }
             }
         }
-        Some(GumballScreen { origin, world_origin, axes, arrow_end, scale_pos, arcs, length })
+        Some(GumballScreen { origin, world_origin, axes, arrow_end, scale_pos, arcs })
     }
 
     fn gumball_hit(&self, vp: usize, pos: DVec2) -> Option<(GumballHandle, GumballScreen)> {
@@ -2278,7 +2248,7 @@ impl App {
         for (i, g) in self.grips.iter().enumerate() {
             if let Some((s, _)) = v.camera.project(&v.rect, g.pos) {
                 let d = (s - pos).length();
-                if d <= tol_px && best.map_or(true, |b| d < b.1) {
+                if d <= tol_px && best.is_none_or(|b| d < b.1) {
                     best = Some((i, d));
                 }
             }
@@ -2340,8 +2310,8 @@ impl App {
     /// Start a left drag: move selected objects when pressing on one of them, else window select.
     pub fn begin_left_drag(&mut self, vp: usize, pos: DVec2) {
         self.active = vp;
-        self.scene.update(&self.doc);
-        if self.runner.is_active() && self.memory.get("Sketch.Active").map_or(false, |v| v == "Yes") {
+        self.update_scene();
+        if self.runner.is_active() && self.memory.get("Sketch.Active").is_some_and(|v| v == "Yes") {
             let (p, _) = self.snapped_point(vp, pos);
             self.sketch_points = Some(vec![p]);
             return;
@@ -2365,13 +2335,13 @@ impl App {
                     self.grips[gi].selected = true;
                 }
                 let (from, _) = self.snapped_point(vp, pos);
-                self.grip_drag = Some(GripDrag { viewport: vp, from, to: from, started: false });
+                self.grip_drag = Some(GripDrag { viewport: vp, to: from, started: false });
                 return;
             }
         }
         let v = &self.viewports[vp];
         if !self.runner.is_active() {
-            if let Some(h) = self.scene.pick(&self.doc, &v.camera, &v.rect, pos.x, pos.y, 5.0).filter(|h| self.doc.get(h.id).map_or(false, |o| self.object_in_viewport(vp, o))) {
+            if let Some(h) = self.scene.pick(&self.doc, &v.camera, &v.rect, pos.x, pos.y, 5.0).filter(|h| self.doc.get(h.id).is_some_and(|o| self.object_in_viewport(vp, o))) {
                 if self.doc.is_selected(h.id) {
                     let (from, _) = self.snapped_point(vp, pos);
                     self.drag_move = Some(DragMove { viewport: vp, ids: self.doc.selected_ids(), from, to: from });
@@ -2387,7 +2357,7 @@ impl App {
             let vp = self.active;
             let (p, _) = self.snapped_point(vp, pos);
             if let Some(pts) = &mut self.sketch_points {
-                if pts.last().map_or(true, |l| (*l - p).length() > 1e-9) {
+                if pts.last().is_none_or(|l| (*l - p).length() > 1e-9) {
                     pts.push(p);
                 }
             }
@@ -2494,7 +2464,7 @@ impl App {
                 return;
             }
         }
-        let ids: Vec<ObjectId> = self.scene.pick_window(&self.doc, &v.camera, &v.rect, min, max, crossing).into_iter().filter(|id| self.doc.get(*id).map_or(false, |o| self.object_in_viewport(drag.viewport, o))).collect();
+        let ids: Vec<ObjectId> = self.scene.pick_window(&self.doc, &v.camera, &v.rect, min, max, crossing).into_iter().filter(|id| self.doc.get(*id).is_some_and(|o| self.object_in_viewport(drag.viewport, o))).collect();
         if !shift && !ctrl && !self.wants_objects() {
             self.deselect_all();
         }
@@ -2757,8 +2727,8 @@ impl App {
                 "sun_day" | "sun_season" => {
                     let az = if kind == "sun_day" { -90.0 + 180.0 * f } else { 135.0 };
                     let alt = if kind == "sun_day" { (std::f64::consts::PI * f).sin() * 60.0 } else { 20.0 + 50.0 * (std::f64::consts::PI * f).sin() };
-                    let (sa, ca) = (az as f64).to_radians().sin_cos();
-                    let (sl, cl) = (alt as f64).to_radians().sin_cos();
+                    let (sa, ca) = az.to_radians().sin_cos();
+                    let (sl, cl) = alt.to_radians().sin_cos();
                     AnimFrame { camera: None, sun: Some(DVec3::new(sa * cl, ca * cl, sl).normalize()) }
                 }
                 _ => {
@@ -2828,8 +2798,6 @@ impl App {
                         self.viewports[self.active].display = mode;
                     }
                 }
-                AppRequest::ToggleGrid => self.doc.settings.show_grid = !self.doc.settings.show_grid,
-                AppRequest::ToggleGridAxes => self.doc.settings.show_grid_axes = !self.doc.settings.show_grid_axes,
                 AppRequest::ToggleSnap(s) => match s.as_str() {
                     "grid" => self.aids.grid_snap = !self.aids.grid_snap,
                     "ortho" => self.aids.ortho = !self.aids.ortho,
@@ -3282,7 +3250,7 @@ impl App {
         match ext.as_str() {
             "dxf" | "dwg" => tri_doc::dxf::import(&mut self.doc, path),
             "obj" => io::import_obj(&mut self.doc, path),
-            e if tri_doc::formats::format_for(e).map_or(false, |f| f.import) || tri_doc::formats::unsupported_reason(e).is_some() => tri_doc::formats::import(&mut self.doc, path),
+            e if tri_doc::formats::format_for(e).is_some_and(|f| f.import) || tri_doc::formats::unsupported_reason(e).is_some() => tri_doc::formats::import(&mut self.doc, path),
             "3dm" => {
                 let (state, _settings, skipped) = tri_doc::io3dm::load(path)?;
                 let n = state.objects.len();
@@ -3351,7 +3319,7 @@ impl App {
     }
 
     fn file_save(&mut self, save_as: bool) {
-        let native = self.doc.path.as_ref().map_or(false, |p| {
+        let native = self.doc.path.as_ref().is_some_and(|p| {
             let e = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
             e == "3dm" || e == io::NATIVE_EXTENSION
         });
@@ -3386,9 +3354,11 @@ impl App {
         let Some(f) = &self.selection_filter else { return hits };
         hits.into_iter()
             .filter(|h| {
-                self.doc.get(h.id).map_or(false, |o| match (f.as_str(), &o.geometry) {
-                    ("curve", Geometry::Curve(_)) | ("surface", Geometry::Surface(_)) | ("surface", Geometry::Brep(_)) | ("polysurface", Geometry::Brep(_)) | ("mesh", Geometry::Mesh(_)) | ("point", Geometry::Point(_)) => true,
-                    _ => false,
+                self.doc.get(h.id).is_some_and(|o| {
+                    matches!(
+                        (f.as_str(), &o.geometry),
+                        ("curve", Geometry::Curve(_)) | ("surface", Geometry::Surface(_)) | ("surface", Geometry::Brep(_)) | ("polysurface", Geometry::Brep(_)) | ("mesh", Geometry::Mesh(_)) | ("point", Geometry::Point(_))
+                    )
                 })
             })
             .collect()
@@ -3708,17 +3678,17 @@ impl App {
         let toggle = |cur: bool| match value { "On" => true, "Off" => false, _ => !cur };
         match key {
             "ortho_angle" => {
-                if let Some(v) = value.parse::<f64>().ok() {
+                if let Ok(v) = value.parse::<f64>() {
                     self.aids.ortho_angle = v.abs().max(1.0);
                 }
             }
             "fov" => {
-                if let Some(v) = value.parse::<f64>().ok() {
+                if let Ok(v) = value.parse::<f64>() {
                     self.viewports[self.active].camera.fov_y = v.clamp(1.0, 170.0).to_radians();
                 }
             }
             "lens" => {
-                if let Some(v) = value.parse::<f64>().ok() {
+                if let Ok(v) = value.parse::<f64>() {
                     self.viewports[self.active].camera.set_lens_length(v.max(1.0));
                 }
             }
@@ -4052,7 +4022,7 @@ impl App {
         let ext = crate::file_dialog::extension_of(&path).unwrap_or_else(|| types[t].extensions[0].clone());
         // never overwrite the open working file with an export (use Save for that)
         let same = |a: &std::path::Path, b: &std::path::Path| a == b || (a.canonicalize().ok().is_some() && a.canonicalize().ok() == b.canonicalize().ok());
-        if doc_path.as_deref().map_or(false, |d| same(d, &path)) {
+        if doc_path.as_deref().is_some_and(|d| same(d, &path)) {
             self.log.push(format!("Export cancelled: {} is the open working file. Use Save, or export under another name.", path.display()));
             self.message_box = Some("Export would overwrite the open working file.\nUse Save, or choose another name.".into());
             return;
@@ -4106,9 +4076,28 @@ impl App {
         h.finish()
     }
 
+    /// View tolerance tier of the most zoomed-in visible viewport (curves, edges and
+    /// isocurves are tessellated to a fraction of its pixel size).
+    fn view_tier(&self) -> i32 {
+        let wpp = self
+            .visible_viewports()
+            .into_iter()
+            .map(|vp| {
+                let v = &self.viewports[vp];
+                v.camera.world_per_pixel(v.rect.h)
+            })
+            .fold(f64::INFINITY, f64::min);
+        crate::render::scene::view_tolerance_tier(if wpp.is_finite() { wpp } else { 1.0 })
+    }
+
+    fn update_scene(&mut self) {
+        let tier = self.view_tier();
+        self.scene.update(&self.doc, tier);
+    }
+
     pub fn build_batches(&mut self) -> Vec<bool> {
         self.sync_batch_vectors();
-        self.scene.update(&self.doc);
+        self.update_scene();
         if !self.points_on.is_empty() && self.grip_drag.is_none() {
             self.rebuild_grips(false);
         }
@@ -4119,6 +4108,7 @@ impl App {
             let v = &self.viewports[vp];
             let mut h = DefaultHasher::new();
             self.doc.revision.hash(&mut h);
+            self.scene.tier.hash(&mut h);
             sel_hash.hash(&mut h);
             (v.display as u8).hash(&mut h);
             self.doc.settings.show_grid.hash(&mut h);
@@ -4337,7 +4327,6 @@ impl App {
                     }
                 }
                 Preview::Point(p) => b.point(*p, 4.0, col),
-                Preview::Tracking(a, c) => b.xray_line(*a, *c, lin(self.colors.tracking)),
             }
         }
         if let Some(pts) = &self.sketch_points {
@@ -4564,7 +4553,7 @@ mod tests {
         run(&mut app, "Circle", &[Input::Point(DVec3::new(3.0, 4.0, 0.0)), Input::Number(2.0)]);
         run(&mut app, "Rectangle", &[Input::Point(DVec3::new(10.0, 10.0, 0.0)), Input::Point(DVec3::new(14.0, 12.0, 0.0))]);
         app.zoom_extents(false, true);
-        app.scene.update(&app.doc);
+        app.update_scene();
         let s = screen_of(&app, DVec3::new(3.2, 4.1, 0.0));
         let (p, kind) = app.snapped_point(0, s);
         assert_eq!(kind, Some(SnapKind::Cen));

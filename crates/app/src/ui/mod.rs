@@ -48,7 +48,7 @@ pub fn draw(app: &mut App, ctx: &egui::Context) {
 }
 
 fn handle_shortcuts(app: &mut App, ctx: &egui::Context) {
-    let text_prompt = app.runner.prompt().map_or(false, |p| p.kind == crate::commands::PromptKind::Text);
+    let text_prompt = app.runner.prompt().is_some_and(|p| p.kind == crate::commands::PromptKind::Text);
     let typing = !app.cmd_text.is_empty();
     let modal = app.loft_dialog.is_some() || app.options_page.is_some() || app.docprops_page.is_some() || app.message_box.is_some();
     let mut cmds: Vec<&'static str> = Vec::new();
@@ -104,7 +104,7 @@ fn handle_shortcuts(app: &mut App, ctx: &egui::Context) {
         if app.walk_mode && !typing && !text_prompt {
             let step = app.viewports[app.active].camera.distance * 0.05;
             let mut mv = glam::DVec3::ZERO;
-            let mut turn = 0.0;
+            let mut turn = 0.0_f64;
             let (fwd, right) = {
                 let c = &app.viewports[app.active].camera;
                 let f = c.view_dir();
@@ -124,7 +124,7 @@ fn handle_shortcuts(app: &mut App, ctx: &egui::Context) {
                 c.target += mv;
             }
             if turn != 0.0 {
-                app.viewports[app.active].camera.rotate_camera(-(turn as f64).to_radians(), 0.0);
+                app.viewports[app.active].camera.rotate_camera(-turn.to_radians(), 0.0);
             }
         }
         if i.consume_key(ctrl, Key::Tab) {

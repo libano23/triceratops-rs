@@ -22,6 +22,9 @@ struct FaceMesh {
     bbox: (DVec3, DVec3),
 }
 
+/// Quantised 3-D point used as a hash key.
+type Key3 = (i64, i64, i64);
+
 fn face_mesh(f: &Face) -> FaceMesh {
     let (su, sv) = boolean_segs(f);
     let (mesh, uv) = f.tessellate_uv(su, sv);
@@ -94,7 +97,7 @@ fn project_to_intersection(f: &NurbsSurface, g: &NurbsSurface, p: DVec3, uv_f: D
         let r = pf - pg;
         let gap = r.length();
         p = (pf + pg) * 0.5;
-        if best.map_or(true, |b| gap < b.0) {
+        if best.is_none_or(|b| gap < b.0) {
             best = Some((gap, p, DVec2::new(uf, vf), DVec2::new(ug, vg)));
         }
         if gap < target {
@@ -192,7 +195,7 @@ fn face_face_curves(fa: usize, a: &Face, ma: &FaceMesh, fb: usize, b: &Face, mb:
     // triangle edges lying exactly in the other surface (a tessellation row on a cutting
     // plane, say) make two triangles report the same segment: keep one copy
     {
-        let mut seen: std::collections::HashSet<((i64, i64, i64), (i64, i64, i64))> = std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<(Key3, Key3)> = std::collections::HashSet::new();
         segs.retain(|s| {
             let (ka, kb) = (key(s.p[0]), key(s.p[1]));
             let k = if ka <= kb { (ka, kb) } else { (kb, ka) };
@@ -427,7 +430,7 @@ fn nearest_loop_edge(face: &Face, uv: DVec2, snap: f64) -> Option<(DVec2, DVec2,
             let q = a + d * t;
             let dist = (face.surface.point_at(q.x, q.y) - p).length();
             let duv = (q - uv).length();
-            if dist <= snap && best.map_or(true, |b| duv < b.0) {
+            if dist <= snap && best.is_none_or(|b| duv < b.0) {
                 best = Some((duv, a, b, t));
             }
         }
@@ -454,7 +457,7 @@ fn refine_on_edge(face: &Face, a: DVec2, b: DVec2, t: f64, other: &NurbsSurface,
     let w = (snap * 3.0 / len).min(0.5);
     let (mut lo, mut hi) = ((t - w).max(0.0), (t + w).min(1.0));
     let (mut ou, mut ov) = (other_uv.x, other_uv.y);
-    let mut dist = |t: f64, ou: &mut f64, ov: &mut f64| -> f64 {
+    let dist = |t: f64, ou: &mut f64, ov: &mut f64| -> f64 {
         let p = at(t);
         let (u, v) = other.closest_uv_from(p, *ou, *ov);
         *ou = u;
@@ -548,7 +551,7 @@ fn interior_uv(loops: &[Vec<DVec2>]) -> Option<DVec2> {
                 let p = DVec2::new(lo.x + (hi.x - lo.x) * (i as f64 + 0.5) / n as f64, lo.y + (hi.y - lo.y) * (j as f64 + 0.5) / n as f64);
                 if inside(p) {
                     let d = dist(p);
-                    if best.map_or(true, |b| d > b.0) {
+                    if best.is_none_or(|b| d > b.0) {
                         best = Some((d, p));
                     }
                 }
@@ -674,15 +677,15 @@ fn classify(piece: &Face, other_mesh: &Mesh, on_tol: f64) -> Option<Class> {
 }
 
 fn keep(class: Class, op: BooleanOp, from_b: bool) -> bool {
-    match (op, from_b, class) {
-        (BooleanOp::Union, false, Class::Outside) | (BooleanOp::Union, false, Class::OnSame) => true,
-        (BooleanOp::Union, true, Class::Outside) => true,
-        (BooleanOp::Intersection, false, Class::Inside) | (BooleanOp::Intersection, false, Class::OnSame) => true,
-        (BooleanOp::Intersection, true, Class::Inside) => true,
-        (BooleanOp::Difference, false, Class::Outside) | (BooleanOp::Difference, false, Class::OnOpposite) => true,
-        (BooleanOp::Difference, true, Class::Inside) => true,
-        _ => false,
-    }
+    matches!(
+        (op, from_b, class),
+        (BooleanOp::Union, false, Class::Outside | Class::OnSame)
+            | (BooleanOp::Union, true, Class::Outside)
+            | (BooleanOp::Intersection, false, Class::Inside | Class::OnSame)
+            | (BooleanOp::Intersection, true, Class::Inside)
+            | (BooleanOp::Difference, false, Class::Outside | Class::OnOpposite)
+            | (BooleanOp::Difference, true, Class::Inside)
+    )
 }
 
 /// Exact Boolean of two closed polysurfaces with outward normals.
@@ -728,7 +731,7 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
             }
         }
         let mut parent: Vec<usize> = (0..ends.len()).collect();
-        fn find(p: &mut Vec<usize>, i: usize) -> usize {
+        fn find(p: &mut [usize], i: usize) -> usize {
             let mut r = i;
             while p[r] != r {
                 r = p[r];

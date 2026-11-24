@@ -1,6 +1,6 @@
 //! Command window: history, prompt with clickable options, text entry and autocomplete.
 
-use egui::{Color32, Key, RichText};
+use egui::{Key, RichText};
 
 use crate::app::App;
 use crate::commands;
@@ -126,7 +126,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     app.submit();
                 }
                 // the command line always has the keyboard unless another text field is active
-                let other_focus = ctx.memory(|m| m.focused().map_or(false, |f| f != edit_id));
+                let other_focus = ctx.memory(|m| m.focused().is_some_and(|f| f != edit_id));
                 if !other_focus && !resp.has_focus() {
                     resp.request_focus();
                 }

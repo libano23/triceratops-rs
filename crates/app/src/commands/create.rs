@@ -366,6 +366,7 @@ impl Command for LineCmd {
     }
 }
 
+#[derive(Default)]
 pub struct PolylineCmd {
     points: Vec<DVec3>,
     persistent_close: bool,
@@ -375,11 +376,6 @@ pub struct PolylineCmd {
     pending_length: Option<f64>,
 }
 
-impl Default for PolylineCmd {
-    fn default() -> Self {
-        Self { points: Vec::new(), persistent_close: false, arc_mode: false, helpers: false, separate_lines: false, pending_length: None }
-    }
-}
 
 impl PolylineCmd {
     pub fn lines() -> Self {
@@ -698,7 +694,6 @@ impl Command for RectangleCmd {
                         let y = if self.mode == RectMode::Vertical { self.plane.z_axis } else { self.plane.z_axis.cross(x) };
                         self.finish_with(ctx, a + y * v)
                     }
-                    _ => self.prompt().step(),
                 }
             }
             Input::Empty => {
@@ -1941,7 +1936,7 @@ impl CylinderCmd {
         }
         let mut faces = vec![Face::untrimmed(side)];
         let bottom = NurbsCurve::circle(&p, r)?;
-        faces.push(Face::from_planar_curves(&[bottom.clone()], 1e-3 * (1.0 + r))?);
+        faces.push(Face::from_planar_curves(std::slice::from_ref(&bottom), 1e-3 * (1.0 + r))?);
         if self.kind == Solid::Cylinder {
             let top = NurbsCurve::circle(&Plane { origin: base + self.plane.z_axis * h, ..p }, r)?;
             faces.push(Face::from_planar_curves(&[top], 1e-3 * (1.0 + r))?);
@@ -2353,7 +2348,6 @@ pub struct RevolveCmd {
     axis_start: Option<DVec3>,
     axis_end: Option<DVec3>,
     start_angle: Option<f64>,
-    full_circle: bool,
     deformable: bool,
     delete_input: bool,
 }
@@ -2459,11 +2453,11 @@ impl Command for RevolveCmd {
             },
             ref input @ (Input::Number(_) | Input::Empty) if self.axis_end.is_some() => {
                 let n = if let Input::Number(v) = input { *v } else if self.start_angle.is_none() { 0.0 } else { 360.0 };
-                if self.start_angle.is_none() {
+                if let Some(start) = self.start_angle {
+                    self.finish(ctx, start, n)
+                } else {
                     self.start_angle = Some(n);
                     self.angle_prompt().step()
-                } else {
-                    self.finish(ctx, self.start_angle.unwrap(), n)
                 }
             }
             _ => Step::Cancelled,

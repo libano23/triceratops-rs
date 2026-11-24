@@ -3,7 +3,7 @@
 
 use glam::{DAffine3, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface};
+use tri_geom::{BooleanOp, Brep, Face, NurbsCurve, NurbsSurface};
 
 use super::{fmt_num, opt, optv, yesno, CmdCtx, Command, Input, ObjFilter, Preview, Prompt, Step};
 
@@ -352,16 +352,6 @@ impl Command for OffsetSrfCmd {
     }
 }
 
-/// Solid mesh of a surface/polysurface object (for Boolean operations).
-fn solid_mesh(doc: &Document, id: ObjectId) -> Option<(Mesh, bool)> {
-    match doc.get(id).map(|o| &o.geometry) {
-        Some(Geometry::Surface(s)) => Some((s.tessellate(12, 12), tri_doc::surface_is_closed(s))),
-        Some(Geometry::Brep(b)) => Some((b.tessellate(12, 12), b.closed)),
-        Some(Geometry::Mesh(m)) => Some((m.clone(), true)),
-        _ => None,
-    }
-}
-
 pub struct BooleanCmd {
     op: BooleanOp,
     first: Vec<ObjectId>,
@@ -405,7 +395,7 @@ impl BooleanCmd {
             return Step::Cancelled;
         }
         let mut result = set_a.remove(0);
-        for g in set_a.into_iter().chain(if self.op == BooleanOp::Union { set_b.drain(..).collect::<Vec<_>>() } else { Vec::new() }) {
+        for g in set_a.into_iter().chain(if self.op == BooleanOp::Union { std::mem::take(&mut set_b) } else { Vec::new() }) {
             match boolean_geometry(&result, &g, BooleanOp::Union) {
                 Some(r) => result = r,
                 None => {

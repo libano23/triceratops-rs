@@ -73,7 +73,7 @@ pub fn components(m: &Mesh) -> Vec<Mesh> {
     let w = weld(m, 1e-9 * (1.0 + m.bounding_box().diagonal()));
     let n = w.vertices.len();
     let mut parent: Vec<usize> = (0..n).collect();
-    fn find(p: &mut Vec<usize>, i: usize) -> usize {
+    fn find(p: &mut [usize], i: usize) -> usize {
         let mut r = i;
         while p[r] != r {
             r = p[r];
@@ -223,7 +223,6 @@ pub enum MeshOp {
     Unweld,
     SplitDisjoint,
     ExtractPt,
-    Join,
 }
 
 pub struct MeshOpCmd(pub MeshOp);
@@ -235,7 +234,6 @@ impl Command for MeshOpCmd {
             MeshOp::Unweld => "Select meshes to unweld",
             MeshOp::SplitDisjoint => "Select meshes to split into disjoint pieces",
             MeshOp::ExtractPt => "Select meshes to extract vertices from",
-            MeshOp::Join => "Select meshes to join",
         };
         Prompt::objects(msg, ObjFilter::Mesh, 1).step()
     }
@@ -275,17 +273,6 @@ impl Command for MeshOpCmd {
                     }
                 }
                 add_selected(ctx, "ExtractPt", out)
-            }
-            MeshOp::Join => {
-                let mut all = Mesh::new();
-                ctx.doc.begin_undo("Join");
-                for id in &ids {
-                    if let Some(Geometry::Mesh(m)) = ctx.doc.get(*id).map(|o| o.geometry.clone()) {
-                        all.append(&m);
-                        ctx.doc.remove(*id);
-                    }
-                }
-                add_selected(ctx, "Join", vec![Geometry::Mesh(all)])
             }
         }
     }

@@ -404,11 +404,16 @@ impl NurbsSurface {
     pub fn tessellate(&self, segs_u: usize, segs_v: usize) -> Mesh {
         let us = Self::samples(&self.knots_u, self.degree_u, segs_u.max(1));
         let vs = Self::samples(&self.knots_v, self.degree_v, segs_v.max(1));
+        self.tessellate_params(&us, &vs)
+    }
+
+    /// Grid mesh through the given parameter values (each list sorted, at least two values).
+    pub fn tessellate_params(&self, us: &[f64], vs: &[f64]) -> Mesh {
         let mut mesh = Mesh::new();
         mesh.vertices.reserve(us.len() * vs.len());
         mesh.normals.reserve(us.len() * vs.len());
-        for &u in &us {
-            for &v in &vs {
+        for &u in us {
+            for &v in vs {
                 let (p, su, sv) = self.evaluate(u, v);
                 let n = su.cross(sv);
                 let n = if n.length_squared() > 1e-20 { n.normalize() } else { self.normal_at(u, v) };
@@ -663,7 +668,7 @@ mod tests {
     #[test]
     fn coons_patch_matches_boundaries() {
         let c0 = NurbsCurve::line(DVec3::ZERO, DVec3::new(4.0, 0.0, 0.0)).unwrap();
-        let c1 = NurbsCurve::arc(&Plane { origin: DVec3::new(4.0, 2.0, 0.0), x_axis: DVec3::Z, y_axis: -DVec3::Y, z_axis: DVec3::X }, 2.0, -std::f64::consts::FRAC_PI_2, std::f64::consts::FRAC_PI_2).unwrap();
+        let _c1 = NurbsCurve::arc(&Plane { origin: DVec3::new(4.0, 2.0, 0.0), x_axis: DVec3::Z, y_axis: -DVec3::Y, z_axis: DVec3::X }, 2.0, -std::f64::consts::FRAC_PI_2, std::f64::consts::FRAC_PI_2).unwrap();
         let c1 = NurbsCurve::line(DVec3::new(4.0, 0.0, 0.0), DVec3::new(4.0, 4.0, 1.0)).unwrap();
         let c2 = NurbsCurve::line(DVec3::new(4.0, 4.0, 1.0), DVec3::new(0.0, 4.0, 0.0)).unwrap();
         let c3 = NurbsCurve::line(DVec3::new(0.0, 4.0, 0.0), DVec3::ZERO).unwrap();

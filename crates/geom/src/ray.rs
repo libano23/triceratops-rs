@@ -28,15 +28,13 @@ impl Ray {
         let dd = u.dot(w0);
         let ee = v.dot(w0);
         let denom = aa * cc - bb * bb;
-        let (mut s, mut t);
+        let (mut s, t);
         if denom.abs() < 1e-14 || cc < 1e-14 {
             // parallel or degenerate segment: project a onto ray
             t = 0.0;
             s = -dd / aa;
         } else {
-            s = (bb * ee - cc * dd) / denom;
-            t = (aa * ee - bb * dd) / denom;
-            t = t.clamp(0.0, 1.0);
+            t = ((aa * ee - bb * dd) / denom).clamp(0.0, 1.0);
             s = (bb * t - dd) / aa;
         }
         s = s.max(0.0);

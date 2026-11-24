@@ -353,7 +353,7 @@ pub fn import(doc: &mut Document, path: &Path) -> Result<usize> {
                 }
                 let group = name.rfind('F').filter(|i| *i > 0 && name[*i + 1..].chars().all(|c| c.is_ascii_digit()) && name.starts_with('S')).map(|i| name[..i].to_string());
                 if let Some(g) = group {
-                    if pending.as_ref().map_or(false, |(n, _)| *n != g) {
+                    if pending.as_ref().is_some_and(|(n, _)| *n != g) {
                         flush(&mut pending, doc, &mut count);
                     }
                     pending.get_or_insert_with(|| (g.clone(), Vec::new())).1.extend(faces);

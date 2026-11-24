@@ -123,7 +123,9 @@ fn write_mesh(out: &mut String, name: &str, mesh: &Mesh, v_base: &mut usize) -> 
 pub fn import_obj(doc: &mut Document, path: &Path) -> Result<usize> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let mut vertices: Vec<DVec3> = Vec::new();
-    let mut groups: BTreeMap<String, (Vec<[usize; 3]>, Vec<Vec<usize>>)> = BTreeMap::new();
+    // per group: triangles and the original polygons
+    type ObjGroup = (Vec<[usize; 3]>, Vec<Vec<usize>>);
+    let mut groups: BTreeMap<String, ObjGroup> = BTreeMap::new();
     let mut current = "default".to_string();
     let parse_index = |s: &str, n: usize| -> Option<usize> {
         let first = s.split('/').next()?;
@@ -181,7 +183,7 @@ pub fn import_obj(doc: &mut Document, path: &Path) -> Result<usize> {
                     mesh.indices.push(id);
                 }
             }
-            if mesh.indices.len() % 3 != 0 {
+            if !mesh.indices.len().is_multiple_of(3) {
                 mesh.indices.truncate(mesh.indices.len() / 3 * 3);
             }
             mesh.compute_normals();

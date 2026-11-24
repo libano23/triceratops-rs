@@ -52,7 +52,7 @@ impl Harness {
         self.ctx(|r, c| r.feed(Input::Objects(ids), c));
     }
     fn prompt(&self) -> String {
-        self.runner.prompt_text()
+        self.runner.prompt().map_or_else(|| "Command".to_string(), |p| p.display())
     }
 }
 
@@ -246,7 +246,7 @@ fn registry_resolves_aliases_and_autocomplete() {
     let (exact, fuzzy) = lookup("sph", 10);
     assert_eq!(exact[0].name, "Sphere");
     assert!(fuzzy.is_empty() || fuzzy.iter().all(|c| c.name.to_ascii_lowercase().contains("sph")));
-    for c in COMMANDS {
+    for c in super::registry::COMMANDS {
         // every registered command either constructs or is explicitly unimplemented
         let _ = registry::create_command(c.name);
     }
@@ -276,7 +276,7 @@ fn trim_split_extend_fillet_offset_flow() {
     assert!((short.end_point() - DVec3::new(5.0, 0.0, 0.0)).length() < 1e-6);
 
     // Split the vertical line with the short line
-    let short_id = h.doc.objects().find(|o| o.geometry.as_curve().map_or(false, |c| (c.length() - 5.0).abs() < 1e-6 && c.start_point().y.abs() < 1e-9)).unwrap().id;
+    let short_id = h.doc.objects().find(|o| o.geometry.as_curve().is_some_and(|c| (c.length() - 5.0).abs() < 1e-6 && c.start_point().y.abs() < 1e-9)).unwrap().id;
     h.start("Split");
     h.objects(vec![vert]);
     h.objects(vec![short_id]);
@@ -548,7 +548,7 @@ fn annotations_text_dim_hatch() {
     h.option("Scale", Some("2"));
     h.objects(vec![rid]);
     let lines = h.doc.objects().filter(|o| o.attributes.groups.iter().any(|g| g.starts_with("Hatch"))).count();
-    assert!(lines >= 5 && lines <= 20, "hatch lines {lines}");
+    assert!((5..=20).contains(&lines), "hatch lines {lines}");
 }
 
 #[test]
@@ -1882,4 +1882,20 @@ fn array_polar_axis_step_angle_and_z_offset() {
     assert!((d1 - DVec3::X).length() < 1e-9, "copy keeps its direction: {d1}");
     let c1 = (lines[1].start_point() + lines[1].end_point()) * 0.5;
     assert!((c1 - DVec3::new(-2.5, 0.0, 0.0)).length() < 1e-9, "copy centre on the circle: {c1}");
+}
+
+#[test]
+fn join_merges_meshes() {
+    let mut h = Harness::new();
+    let a = h.doc.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::ZERO, DVec3::splat(1.0))));
+    let b = h.doc.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::splat(2.0), DVec3::splat(3.0))));
+    let (va, vb) = [a, b].map(|id| match &h.doc.get(id).unwrap().geometry {
+        Geometry::Mesh(m) => m.vertices.len(),
+        _ => unreachable!(),
+    }).into();
+    h.start("Join");
+    h.objects(vec![a, b]);
+    let meshes: Vec<_> = h.doc.objects().filter_map(|o| match &o.geometry { Geometry::Mesh(m) => Some(m.clone()), _ => None }).collect();
+    assert_eq!(meshes.len(), 1, "two meshes join into one");
+    assert_eq!(meshes[0].vertices.len(), va + vb);
 }

@@ -12,3 +12,6 @@ thiserror.workspace = true
 [build-dependencies]
 cmake = "0.1"
 cc = "1"
+
+[lints]
+workspace = true

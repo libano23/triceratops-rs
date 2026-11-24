@@ -635,11 +635,13 @@ impl Command for JoinCmd {
         let Input::Objects(ids) = input else { return Step::Cancelled };
         let mut curves: Vec<(ObjectId, NurbsCurve)> = Vec::new();
         let mut faces: Vec<(ObjectId, Vec<Face>)> = Vec::new();
+        let mut meshes: Vec<(ObjectId, tri_geom::Mesh)> = Vec::new();
         for id in &ids {
             match ctx.doc.get(*id).map(|o| &o.geometry) {
                 Some(Geometry::Curve(c)) => curves.push((*id, c.clone())),
                 Some(Geometry::Surface(s)) => faces.push((*id, vec![Face::untrimmed(s.clone())])),
                 Some(Geometry::Brep(b)) => faces.push((*id, b.faces.clone())),
+                Some(Geometry::Mesh(m)) => meshes.push((*id, m.clone())),
                 _ => {}
             }
         }
@@ -695,6 +697,18 @@ impl Command for JoinCmd {
             let nid = ctx.doc.add_with(Geometry::Brep(brep), attrs);
             ctx.doc.select(nid, true);
             joined += n;
+        }
+        // meshes join into one mesh, as in the reference application
+        if meshes.len() > 1 {
+            let attrs = ctx.doc.get(meshes[0].0).map(|o| o.attributes.clone()).unwrap_or_default();
+            let mut all = tri_geom::Mesh::new();
+            for (id, m) in &meshes {
+                ctx.doc.remove(*id);
+                all.append(m);
+            }
+            let nid = ctx.doc.add_with(Geometry::Mesh(all), attrs);
+            ctx.doc.select(nid, true);
+            joined += meshes.len();
         }
         if joined == 0 {
             ctx.log("Unable to join the selected objects (curves must meet end to end and share the same degree).");

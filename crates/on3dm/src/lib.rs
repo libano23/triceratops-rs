@@ -446,6 +446,23 @@ unsafe fn write_object(h: *mut On3dm, o: &Object, layer_map: &[i32]) -> bool {
     }
 }
 
+extern "C" {
+    fn on3dm_add_test_extrusion(h: *mut On3dm, radius: c_double, height: c_double) -> c_int;
+}
+
+/// Test support: write a file holding one capped cylinder stored as an `ON_Extrusion`,
+/// the object type that ExtrudeCrv and Cylinder save.
+#[doc(hidden)]
+pub fn write_test_extrusion(path: &Path, radius: f64, height: f64) -> bool {
+    let Ok(cpath) = CString::new(path.to_string_lossy().as_bytes()) else { return false };
+    unsafe {
+        let h = on3dm_new();
+        let ok = on3dm_add_test_extrusion(h, radius, height) == 1 && on3dm_write(h, cpath.as_ptr(), 0) == 1;
+        on3dm_free(h);
+        ok
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -507,6 +524,24 @@ mod tests {
         assert_eq!(b.len(), 1);
         assert_eq!(b[0].loops.len(), 1);
         assert!(m.objects.iter().any(|o| o.hidden));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn capped_extrusion_reads_as_solid_brep() {
+        let dir = std::env::temp_dir().join(format!("on3dm-ext-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("ext.3dm");
+        assert!(write_test_extrusion(&p, 5.0, 10.0));
+        let m = read(&p).unwrap();
+        assert_eq!(m.objects.len(), 1);
+        match &m.objects[0].geometry {
+            Geometry::Brep { faces, solid } => {
+                assert!(*solid, "capped extrusion must stay a solid");
+                assert_eq!(faces.len(), 3, "wall and two caps");
+            }
+            g => panic!("capped extrusion read as {:?}", std::mem::discriminant(g)),
+        }
         std::fs::remove_dir_all(dir).ok();
     }
 }

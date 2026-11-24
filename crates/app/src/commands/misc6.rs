@@ -302,7 +302,7 @@ impl Command for MakeUniformUVCmd {
                         for i in 1..spans {
                             k.push(i as f64 / spans as f64);
                         }
-                        k.extend(std::iter::repeat(1.0).take(p + 1));
+                        k.extend(std::iter::repeat_n(1.0, p + 1));
                         k
                     };
                     let (ku, kv) = (uniform(s.count_u, s.degree_u), uniform(s.count_v, s.degree_v));

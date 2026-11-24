@@ -13,14 +13,14 @@ pub struct HistoryCmd;
 impl Command for HistoryCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
         let n = ctx.doc.state.history.records.len();
-        let rec = ctx.memory.get("RecordHistory").map_or(false, |v| v == "Yes");
+        let rec = ctx.memory.get("RecordHistory").is_some_and(|v| v == "Yes");
         ctx.log(format!("{n} objects with history in the document."));
         Prompt::options("History").opts([optv("Record", if rec { "Yes" } else { "No" }), opt("Update"), opt("List")]).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
         match input {
             Input::Option(o) if o == "Record" => {
-                let rec = ctx.memory.get("RecordHistory").map_or(false, |v| v == "Yes");
+                let rec = ctx.memory.get("RecordHistory").is_some_and(|v| v == "Yes");
                 ctx.requests.push(AppRequest::SetOption { key: "record_history".into(), value: if rec { "Off".into() } else { "On".into() } });
                 Step::Done
             }
@@ -137,15 +137,11 @@ fn cage_points(ctx: &CmdCtx, pick: ObjectId) -> Option<(Vec<ObjectId>, (usize, u
     Some((pts.into_iter().map(|(_, id)| id).collect(), dims))
 }
 
+#[derive(Default)]
 pub struct CageEditCmd {
     captives: Vec<ObjectId>,
 }
 
-impl Default for CageEditCmd {
-    fn default() -> Self {
-        Self { captives: Vec::new() }
-    }
-}
 
 impl Command for CageEditCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {

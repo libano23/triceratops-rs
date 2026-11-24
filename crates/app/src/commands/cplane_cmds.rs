@@ -324,17 +324,13 @@ impl Command for RebuildSrfCmd {
 }
 
 /// Triceratops' Rebuild handles curves and surfaces; route by the selected object types.
+#[derive(Default)]
 pub struct RebuildAnyCmd {
     curves: super::curve_edit::RebuildCmd,
     surfaces: RebuildSrfCmd,
     routed: Option<bool>,
 }
 
-impl Default for RebuildAnyCmd {
-    fn default() -> Self {
-        Self { curves: super::curve_edit::RebuildCmd::default(), surfaces: RebuildSrfCmd::default(), routed: None }
-    }
-}
 
 impl Command for RebuildAnyCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {

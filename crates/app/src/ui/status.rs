@@ -91,7 +91,7 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                 });
-                if ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().map_or(false, |p| area.response.rect.expand(4.0).contains(p) || lr.rect.contains(p))) {
+                if ctx.input(|i| i.pointer.any_pressed()) && !ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| area.response.rect.expand(4.0).contains(p) || lr.rect.contains(p))) {
                     popup_open = false;
                 }
             }
@@ -113,7 +113,7 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
             if pane(ui, "SmartTrack", app.aids.smarttrack, "Toggle SmartTrack (not implemented yet)").clicked() {
                 app.aids.smarttrack = !app.aids.smarttrack;
             }
-            if pane(ui, "Auto CPlane", false, "Auto CPlane (not implemented yet)").clicked() {}
+            pane(ui, "Auto CPlane", false, "Auto CPlane (not implemented yet)");
             if pane(ui, "Gumball", app.aids.gumball, "Toggle the gumball (not implemented yet)").clicked() {
                 app.aids.gumball = !app.aids.gumball;
             }

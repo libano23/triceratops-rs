@@ -109,15 +109,9 @@ pub fn uniform_clamped_knots(n_cp: usize, p: usize) -> Vec<f64> {
     let m = n_cp + p + 1;
     let interior = n_cp - p - 1;
     let mut k = Vec::with_capacity(m);
-    for _ in 0..=p {
-        k.push(0.0);
-    }
-    for i in 1..=interior {
-        k.push(i as f64 / (interior + 1) as f64);
-    }
-    for _ in 0..=p {
-        k.push(1.0);
-    }
+    k.extend(std::iter::repeat_n(0.0, p + 1));
+    k.extend((1..=interior).map(|i| i as f64 / (interior + 1) as f64));
+    k.extend(std::iter::repeat_n(1.0, p + 1));
     k
 }
 

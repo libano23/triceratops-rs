@@ -25,3 +25,9 @@ opt-level = 3
 [profile.release]
 opt-level = 3
 lto = "thin"
+
+# Numeric NURBS code indexes several arrays with the same loop variable and
+# passes many scalar parameters; rewriting those as iterators hurts clarity.
+[workspace.lints.clippy]
+needless_range_loop = "allow"
+too_many_arguments = "allow"

@@ -102,7 +102,7 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     for t in crate::theme::Theme::all() {
                         if ui.radio(t.name == current, &t.name).clicked() {
                             app.set_theme(t);
-                            ui.close_menu();
+                            ui.close();
                         }
                     }
                 });

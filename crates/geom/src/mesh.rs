@@ -80,7 +80,7 @@ impl Mesh {
         for t in 0..self.triangle_count() {
             let (a, b, c) = self.triangle(t);
             if let Some(h) = ray.intersect_triangle(a, b, c) {
-                if best.map_or(true, |bt| h < bt) {
+                if best.is_none_or(|bt| h < bt) {
                     best = Some(h);
                 }
             }
@@ -189,7 +189,7 @@ impl Mesh {
                                         continue;
                                     }
                                     let d = (pa + ab * t - p).length();
-                                    if d <= tol && best.map_or(true, |(bt, _)| t < bt) {
+                                    if d <= tol && best.is_none_or(|(bt, _)| t < bt) {
                                         best = Some((t, vi));
                                     }
                                 }

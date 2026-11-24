@@ -131,7 +131,7 @@ pub fn export_ply(doc: &Document, path: &Path, only_selected: bool) -> Result<us
     let mut base = 0usize;
     for m in &meshes {
         for v in &m.mesh.vertices {
-            writeln!(s, "{} {} {} {}", fmt(v.x), fmt(v.y), fmt(v.z), format!("{} {} {}", m.color[0], m.color[1], m.color[2]))?;
+            writeln!(s, "{} {} {} {} {} {}", fmt(v.x), fmt(v.y), fmt(v.z), m.color[0], m.color[1], m.color[2])?;
         }
         let _ = base;
         base += m.mesh.vertices.len();
@@ -552,7 +552,7 @@ pub fn export_gltf(doc: &Document, path: &Path, only_selected: bool) -> Result<u
             bin.extend_from_slice(&i.to_le_bytes());
         }
         let ilen = bin.len() - ioff;
-        while bin.len() % 4 != 0 {
+        while !bin.len().is_multiple_of(4) {
             bin.push(0);
         }
         let base = views.len();
@@ -1028,7 +1028,7 @@ pub fn import_x(doc: &mut Document, path: &Path) -> Result<usize> {
             faces.push(nums[p..p + n].iter().map(|i| *i as usize).collect());
             p += n;
         }
-        count += add_mesh(doc, if name.is_empty() { &"mesh" } else { &name }, mesh_from_polygons(vertices, &faces), None) as usize;
+        count += add_mesh(doc, if name.is_empty() { "mesh" } else { &name }, mesh_from_polygons(vertices, &faces), None) as usize;
         search = body_start;
     }
     Ok(count)
@@ -1112,7 +1112,7 @@ pub fn export_pov(doc: &Document, path: &Path, only_selected: bool) -> Result<us
 
 fn ident(name: &str) -> String {
     let mut s: String = name.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
-    if s.chars().next().map_or(true, |c| c.is_ascii_digit()) {
+    if s.chars().next().is_none_or(|c| c.is_ascii_digit()) {
         s.insert(0, '_');
     }
     s

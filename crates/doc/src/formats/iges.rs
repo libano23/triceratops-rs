@@ -310,7 +310,7 @@ pub fn import(doc: &mut Document, path: &Path) -> Result<usize> {
     }
     let ctx = Reader { entries, doc_layer: doc.current_layer() };
     let mut count = 0;
-    let dependent = |e: &Entry| e.status.get(2..4).map_or(false, |s| s == "01" || s == "02" || s == "03");
+    let dependent = |e: &Entry| e.status.get(2..4).is_some_and(|s| s == "01" || s == "02" || s == "03");
     for (de, e) in &ctx.entries {
         if dependent(e) {
             continue;

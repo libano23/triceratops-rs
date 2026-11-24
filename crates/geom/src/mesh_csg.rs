@@ -200,10 +200,7 @@ impl Node {
             Some(f) => f.clip_polygons(front),
             None => front,
         };
-        match &self.back {
-            Some(b) => out.extend(b.clip_polygons(back)),
-            None => {}
-        }
+        if let Some(b) = &self.back { out.extend(b.clip_polygons(back)) }
         out
     }
 

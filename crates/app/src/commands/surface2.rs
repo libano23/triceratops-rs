@@ -4,7 +4,7 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{mesh_boolean, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use tri_geom::{BooleanOp, Brep, Face, NurbsCurve, NurbsSurface, Plane};
 
 use super::create::{planar_cap, plane_at};
 use super::surface_edit::faces_of;
@@ -869,24 +869,11 @@ impl Command for SlabCmd {
     }
 }
 
+#[derive(Default)]
 pub struct BooleanSplitCmd {
     first: Vec<ObjectId>,
 }
 
-impl Default for BooleanSplitCmd {
-    fn default() -> Self {
-        Self { first: Vec::new() }
-    }
-}
-
-fn solid_mesh(doc: &Document, id: ObjectId) -> Option<Mesh> {
-    match doc.get(id).map(|o| &o.geometry) {
-        Some(Geometry::Surface(s)) => Some(s.tessellate(12, 12)),
-        Some(Geometry::Brep(b)) => Some(b.tessellate(12, 12)),
-        Some(Geometry::Mesh(m)) => Some(m.clone()),
-        _ => None,
-    }
-}
 
 impl Command for BooleanSplitCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {

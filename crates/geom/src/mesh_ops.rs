@@ -436,7 +436,7 @@ pub fn collapse_nearest_edge(m: &Mesh, p: DVec3) -> Mesh {
         for k in 0..3 {
             let (a, b) = (t[k], t[(k + 1) % 3]);
             let d = seg_dist(p, w.vertices[a as usize], w.vertices[b as usize]);
-            if best.map_or(true, |bst| d < bst.0) {
+            if best.is_none_or(|bst| d < bst.0) {
                 best = Some((d, a, b));
             }
         }
@@ -470,7 +470,7 @@ pub fn collapse_nearest_vertex(m: &Mesh, p: DVec3) -> Mesh {
             for &o in t {
                 if o != vi as u32 {
                     let d = (w.vertices[o as usize] - w.vertices[vi]).length();
-                    if best.map_or(true, |b| d < b.0) {
+                    if best.is_none_or(|b| d < b.0) {
                         best = Some((d, o));
                     }
                 }
@@ -491,7 +491,7 @@ pub fn swap_nearest_edge(m: &Mesh, p: DVec3) -> Mesh {
             continue;
         }
         let d = seg_dist(p, w.vertices[e.0 as usize], w.vertices[e.1 as usize]);
-        if best.map_or(true, |b| d < b.0) {
+        if best.is_none_or(|b| d < b.0) {
             best = Some((d, *e));
         }
     }
@@ -520,7 +520,7 @@ pub fn split_nearest_edge(m: &Mesh, p: DVec3) -> Mesh {
     let mut best: Option<(f64, (u32, u32))> = None;
     for e in edges.keys() {
         let d = seg_dist(p, w.vertices[e.0 as usize], w.vertices[e.1 as usize]);
-        if best.map_or(true, |b| d < b.0) {
+        if best.is_none_or(|b| d < b.0) {
             best = Some((d, *e));
         }
     }
@@ -555,7 +555,7 @@ pub fn decimate(m: &Mesh, target_triangles: usize) -> Mesh {
             for k in 0..3 {
                 let (a, b) = (w.vertices[t[k] as usize], w.vertices[t[(k + 1) % 3] as usize]);
                 let d = (a - b).length();
-                if best.map_or(true, |bst| d < bst.0) {
+                if best.is_none_or(|bst| d < bst.0) {
                     best = Some((d, (a + b) * 0.5));
                 }
             }

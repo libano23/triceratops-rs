@@ -229,15 +229,11 @@ impl Command for DelConstraintCmd {
     }
 }
 
+#[derive(Default)]
 pub struct ParametersCmd {
     asking: Option<String>,
 }
 
-impl Default for ParametersCmd {
-    fn default() -> Self {
-        Self { asking: None }
-    }
-}
 
 impl ParametersCmd {
     fn list(ctx: &mut CmdCtx) {
@@ -326,7 +322,7 @@ pub struct ConstraintSettingsCmd;
 impl Command for ConstraintSettingsCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
         let p = &ctx.doc.state.parametric;
-        Prompt::options("Constraint settings").opts([optv("DistanceTolerance", fmt_num(p.distance_tolerance)), optv("AngleTolerance", fmt_num(p.angle_tolerance)), optv("Infer", if ctx.memory.get("Parametric.Infer").map_or(false, |v| v == "Yes") { "Yes" } else { "No" })]).step()
+        Prompt::options("Constraint settings").opts([optv("DistanceTolerance", fmt_num(p.distance_tolerance)), optv("AngleTolerance", fmt_num(p.angle_tolerance)), optv("Infer", if ctx.memory.get("Parametric.Infer").is_some_and(|v| v == "Yes") { "Yes" } else { "No" })]).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
         match input {
@@ -339,7 +335,7 @@ impl Command for ConstraintSettingsCmd {
                 Prompt::number("Angle tolerance (degrees)").default_num(ctx.doc.state.parametric.angle_tolerance).step()
             }
             Input::Option(o) if o == "Infer" => {
-                let cur = ctx.memory.get("Parametric.Infer").map_or(false, |v| v == "Yes");
+                let cur = ctx.memory.get("Parametric.Infer").is_some_and(|v| v == "Yes");
                 ctx.mem_set("Parametric.Infer", if cur { "No" } else { "Yes" });
                 self.start(ctx)
             }

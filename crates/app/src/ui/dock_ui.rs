@@ -191,12 +191,12 @@ fn finish_tab_drag(app: &mut App, ctx: &egui::Context) {
     }
     ctx.data_mut(|d| d.remove::<TabDrag>(drag_id()));
     let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) else { return };
-    let inside = app.dock_rects.get(&drag.from).map_or(false, |r| r.contains(pos));
+    let inside = app.dock_rects.get(&drag.from).is_some_and(|r| r.contains(pos));
     if inside {
         return;
     }
     // dropped over another container of the same kind: move the tab there
-    let target = app.dock_rects.iter().find(|(cid, r)| **cid != drag.from && r.contains(pos) && app.dock.container(**cid).map_or(false, |c| c.kind == drag.kind)).map(|(cid, _)| *cid);
+    let target = app.dock_rects.iter().find(|(cid, r)| **cid != drag.from && r.contains(pos) && app.dock.container(**cid).is_some_and(|c| c.kind == drag.kind)).map(|(cid, _)| *cid);
     if let Some(tid) = target {
         if let Some((cid, idx)) = app.dock.find_tab(drag.kind, &drag.tab) {
             let empty = app.dock.container_mut(cid).map(|c| { c.tabs.remove(idx); if c.active >= c.tabs.len() { c.active = c.tabs.len().saturating_sub(1); } c.tabs.is_empty() }).unwrap_or(false);

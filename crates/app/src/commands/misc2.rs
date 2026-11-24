@@ -31,7 +31,6 @@ pub enum SelKind {
     Visible,
     Hidden,
     Locked,
-    All,
 }
 
 pub struct SelCmd(pub SelKind);
@@ -39,15 +38,15 @@ pub struct SelCmd(pub SelKind);
 impl Command for SelCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
         match self.0 {
-            SelKind::OpenCrv => select_where(ctx, "open curves", |_, o| o.geometry.as_curve().map_or(false, |c| !c.is_closed())),
-            SelKind::ClosedCrv => select_where(ctx, "closed curves", |_, o| o.geometry.as_curve().map_or(false, |c| c.is_closed())),
-            SelKind::Line => select_where(ctx, "lines", |_, o| o.geometry.as_curve().map_or(false, |c| c.degree == 1 && c.control_points.len() == 2)),
-            SelKind::Polyline => select_where(ctx, "polylines", |_, o| o.geometry.as_curve().map_or(false, |c| c.degree == 1 && c.control_points.len() > 2)),
+            SelKind::OpenCrv => select_where(ctx, "open curves", |_, o| o.geometry.as_curve().is_some_and(|c| !c.is_closed())),
+            SelKind::ClosedCrv => select_where(ctx, "closed curves", |_, o| o.geometry.as_curve().is_some_and(|c| c.is_closed())),
+            SelKind::Line => select_where(ctx, "lines", |_, o| o.geometry.as_curve().is_some_and(|c| c.degree == 1 && c.control_points.len() == 2)),
+            SelKind::Polyline => select_where(ctx, "polylines", |_, o| o.geometry.as_curve().is_some_and(|c| c.degree == 1 && c.control_points.len() > 2)),
             SelKind::OpenSrf => select_where(ctx, "open surfaces", |_, o| matches!(&o.geometry, Geometry::Surface(s) if !tri_doc::surface_is_closed(s))),
             SelKind::ClosedSrf => select_where(ctx, "closed surfaces", |_, o| matches!(&o.geometry, Geometry::Surface(s) if tri_doc::surface_is_closed(s))),
             SelKind::OpenPolysrf => select_where(ctx, "open polysurfaces", |_, o| matches!(&o.geometry, Geometry::Brep(b) if !b.closed)),
             SelKind::ClosedPolysrf => select_where(ctx, "closed polysurfaces", |_, o| matches!(&o.geometry, Geometry::Brep(b) if b.closed)),
-            SelKind::Visible | SelKind::All => select_where(ctx, "objects", |_, _| true),
+            SelKind::Visible => select_where(ctx, "objects", |_, _| true),
             SelKind::Hidden => {
                 let n = ctx.doc.objects().filter(|o| o.attributes.hidden).count();
                 ctx.log(format!("{n} hidden objects (hidden objects cannot be selected; use Show)."));
@@ -101,7 +100,7 @@ impl Command for SelNameCmd {
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
         let Input::Text(name) = input else { return Step::Done };
         let name = name.trim().to_string();
-        select_where(ctx, "objects", move |_, o| o.attributes.name.as_deref().map_or(false, |n| n.eq_ignore_ascii_case(&name) || wildcard(&name, n)))
+        select_where(ctx, "objects", move |_, o| o.attributes.name.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(&name) || wildcard(&name, n)))
     }
 }
 
@@ -299,15 +298,11 @@ impl Command for LayerOpCmd {
     }
 }
 
+#[derive(Default)]
 pub struct CopyToLayerCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for CopyToLayerCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for CopyToLayerCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -344,7 +339,6 @@ impl Command for CopyToLayerCmd {
 pub enum GroupOp {
     Group,
     Ungroup,
-    AddTo,
     RemoveFrom,
     SetName,
     Select,
@@ -366,7 +360,6 @@ impl Command for GroupCmd {
         match self.op {
             GroupOp::Group => Prompt::objects("Select objects to group", ObjFilter::Any, 1).step(),
             GroupOp::Ungroup => Prompt::objects("Select groups to ungroup", ObjFilter::Any, 1).step(),
-            GroupOp::AddTo => Prompt::objects("Select objects to add to a group", ObjFilter::Any, 1).step(),
             GroupOp::RemoveFrom => Prompt::objects("Select objects to remove from their group", ObjFilter::Any, 1).step(),
             GroupOp::SetName => Prompt::objects("Select group to rename", ObjFilter::Any, 1).step(),
             GroupOp::Select => Prompt::text("Group name to select").step(),
@@ -395,10 +388,6 @@ impl Command for GroupCmd {
                     }
                 }
                 Step::Done
-            }
-            (GroupOp::AddTo, Input::Objects(ids)) => {
-                self.ids = ids;
-                Prompt::objects("Select a grouped object", ObjFilter::Any, 1).step()
             }
             (GroupOp::RemoveFrom, Input::Objects(ids)) => {
                 ctx.doc.begin_undo("RemoveFromGroup");
@@ -433,25 +422,17 @@ impl Command for GroupCmd {
                 let name = name.trim().to_string();
                 select_where(ctx, "objects", move |_, o| o.attributes.groups.iter().any(|g| g.eq_ignore_ascii_case(&name)))
             }
-            (GroupOp::AddTo, Input::Objects(_)) => Step::Cancelled,
-            _ => {
-                // AddTo second prompt arrives as Objects too; handled above when self.ids is empty
-                Step::Cancelled
-            }
+            _ => Step::Cancelled,
         }
     }
 }
 
 /// AddToGroup needs two object prompts; handled by a dedicated command.
+#[derive(Default)]
 pub struct AddToGroupCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for AddToGroupCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for AddToGroupCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -593,15 +574,11 @@ impl Command for PurgeCmd {
     }
 }
 
+#[derive(Default)]
 pub struct SetObjectNameCmd {
     ids: Vec<ObjectId>,
 }
 
-impl Default for SetObjectNameCmd {
-    fn default() -> Self {
-        Self { ids: Vec::new() }
-    }
-}
 
 impl Command for SetObjectNameCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -875,7 +852,7 @@ impl Command for NamedViewCmd {
                 Prompt::text("View name").step()
             }
             Input::Text(name) => {
-                let restore = ctx.memory.get("NamedView.Op").map_or(false, |o| o == "Restore");
+                let restore = ctx.memory.get("NamedView.Op").is_some_and(|o| o == "Restore");
                 ctx.requests.push(AppRequest::NamedView { name: name.trim().to_string(), restore });
                 Step::Done
             }

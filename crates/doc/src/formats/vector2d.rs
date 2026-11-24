@@ -59,7 +59,7 @@ pub fn import_svg(doc: &mut Document, path: &Path) -> Result<usize> {
     let add = |doc: &mut Document, pts: Vec<DVec3>, color: Option<[u8; 4]>, count: &mut usize| {
         *count += add_polyline(doc, "", pts, color) as usize;
     };
-    let height = xml.root_element().attribute("viewBox").map(|v| parse_floats(v)).filter(|v| v.len() == 4).map(|v| v[1] + v[3]).or_else(|| xml.root_element().attribute("height").map(|h| parse_floats(h).first().copied().unwrap_or(0.0))).unwrap_or(0.0);
+    let height = xml.root_element().attribute("viewBox").map(parse_floats).filter(|v| v.len() == 4).map(|v| v[1] + v[3]).or_else(|| xml.root_element().attribute("height").map(|h| parse_floats(h).first().copied().unwrap_or(0.0))).unwrap_or(0.0);
     let flip = |p: DVec3| DVec3::new(p.x, height - p.y, 0.0);
     for n in xml.descendants().filter(|n| n.is_element()) {
         let color = n.attribute("stroke").and_then(parse_color);
@@ -134,10 +134,7 @@ pub fn parse_path(d: &str) -> Vec<Vec<DVec3>> {
             tokens.push(ch.to_string());
         } else if ch == ',' || ch.is_whitespace() {
             flush(&mut cur, &mut tokens);
-        } else if ch == '-' && !cur.is_empty() && prev != 'e' && prev != 'E' {
-            flush(&mut cur, &mut tokens);
-            cur.push(ch);
-        } else if ch == '.' && cur.contains('.') {
+        } else if (ch == '-' && !cur.is_empty() && prev != 'e' && prev != 'E') || (ch == '.' && cur.contains('.')) {
             flush(&mut cur, &mut tokens);
             cur.push(ch);
         } else {

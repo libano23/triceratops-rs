@@ -143,7 +143,7 @@ fn simplify_collinear(p: &[DVec3], tol: f64) -> Vec<DVec3> {
                 out.pop();
             }
         }
-        if out.last().map_or(true, |l| (*l - q).length() > tol) {
+        if out.last().is_none_or(|l| (*l - q).length() > tol) {
             out.push(q);
         }
     }

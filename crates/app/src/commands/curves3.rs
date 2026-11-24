@@ -55,7 +55,8 @@ pub fn biarc(a: DVec3, ta: DVec3, b: DVec3, tb: DVec3) -> Option<NurbsCurve> {
         let r2 = (-qb - disc.sqrt()) / (2.0 * qa);
         if r1 > 0.0 && r2 > 0.0 { r1.min(r2) } else { r1.max(r2) }
     };
-    if !(d > 0.0) {
+    // also rejects NaN from a degenerate quadratic
+    if d.is_nan() || d <= 0.0 {
         return None;
     }
     let j = (a + ta * d + b - tb * d) * 0.5;
@@ -635,15 +636,11 @@ pub fn orient_on_srf() -> SeqCmd {
     })
 }
 
+#[derive(Default)]
 pub struct RevCloudCmd {
     pts: Vec<DVec3>,
 }
 
-impl Default for RevCloudCmd {
-    fn default() -> Self {
-        Self { pts: Vec::new() }
-    }
-}
 
 impl RevCloudCmd {
     fn build(&self, cp: &Plane, pts: &[DVec3]) -> Option<NurbsCurve> {
@@ -1129,16 +1126,12 @@ pub fn move_uvn() -> SeqCmd {
     })
 }
 
+#[derive(Default)]
 pub struct HandleCurveCmd {
     pts: Vec<DVec3>,
     awaiting_handle: bool,
 }
 
-impl Default for HandleCurveCmd {
-    fn default() -> Self {
-        Self { pts: Vec::new(), awaiting_handle: false }
-    }
-}
 
 impl HandleCurveCmd {
     fn build(pts: &[DVec3]) -> Option<NurbsCurve> {

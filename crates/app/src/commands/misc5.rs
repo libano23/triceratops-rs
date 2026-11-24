@@ -165,7 +165,7 @@ fn cutter_mesh(doc: &Document, id: ObjectId, pick: DVec3, target_bb: &tri_geom::
             let plane = Plane::from_normal(p, n);
             let c = target_bb.center();
             let (cu, cv, _) = plane.closest_parameters(c);
-            let poly = vec![plane.point_at(cu - diag, cv - diag), plane.point_at(cu + diag, cv - diag), plane.point_at(cu + diag, cv + diag), plane.point_at(cu - diag, cv + diag)];
+            let poly = [plane.point_at(cu - diag, cv - diag), plane.point_at(cu + diag, cv - diag), plane.point_at(cu + diag, cv + diag), plane.point_at(cu - diag, cv + diag)];
             // half-space below the plane: box from -2*diag to 0 along the normal
             let below = Plane { origin: p - n * diag, ..plane };
             let poly: Vec<DVec3> = poly.iter().map(|q| *q - n * diag).collect();

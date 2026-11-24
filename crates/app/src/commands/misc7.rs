@@ -382,7 +382,7 @@ impl MoveFaceCmd {
                         let ab = b - a;
                         let t = if ab.length_squared() < 1e-18 { 0.0 } else { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) };
                         let d = (a + ab * t - p).length();
-                        if best.map_or(true, |bst| d < bst.0) {
+                        if best.is_none_or(|bst| d < bst.0) {
                             best = Some((d, a, b));
                         }
                     }

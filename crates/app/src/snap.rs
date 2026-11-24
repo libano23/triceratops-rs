@@ -177,7 +177,6 @@ impl OsnapSettings {
 pub struct SnapHit {
     pub point: DVec3,
     pub kind: SnapKind,
-    pub object: ObjectId,
 }
 
 pub struct SnapQuery<'a> {
@@ -208,15 +207,15 @@ impl SnapQuery<'_> {
         }
         let r = self.settings.radius_px;
         let mut best: Option<(f64, SnapHit)> = None;
-        let mut consider = |p: DVec3, kind: SnapKind, id: ObjectId, best: &mut Option<(f64, SnapHit)>| {
+        let consider = |p: DVec3, kind: SnapKind, best: &mut Option<(f64, SnapHit)>| {
             let Some((s, _)) = self.cam.project(self.rect, p) else { return };
             let d = (s - self.cursor).length();
             if d > r {
                 return;
             }
             let score = d + kind.priority() * 2.0;
-            if best.as_ref().map_or(true, |b| score < b.0) {
-                *best = Some((score, SnapHit { point: p, kind, object: id }));
+            if best.as_ref().is_none_or(|b| score < b.0) {
+                *best = Some((score, SnapHit { point: p, kind }));
             }
         };
 
@@ -232,30 +231,30 @@ impl SnapQuery<'_> {
             }
             for (p, kind) in &od.snaps {
                 if self.enabled(*kind) {
-                    consider(*p, *kind, od.id, &mut best);
+                    consider(*p, *kind, &mut best);
                 }
             }
             if let Geometry::Curve(c) = &obj.geometry {
                 if self.enabled(SnapKind::Quad) {
                     for p in quad_points(c, self.cplane) {
-                        consider(p, SnapKind::Quad, od.id, &mut best);
+                        consider(p, SnapKind::Quad, &mut best);
                     }
                 }
                 let needs_curve = self.enabled(SnapKind::Near) || self.enabled(SnapKind::Perp) || self.enabled(SnapKind::Tan);
                 if needs_curve {
                     if let Some(t_near) = self.near_param(c, &od.lines) {
                         if self.enabled(SnapKind::Near) {
-                            consider(c.point_at(t_near), SnapKind::Near, od.id, &mut best);
+                            consider(c.point_at(t_near), SnapKind::Near, &mut best);
                         }
                         if let Some(b) = self.base {
                             if self.enabled(SnapKind::Perp) {
                                 if let Some(t) = perp_param(c, b, t_near) {
-                                    consider(c.point_at(t), SnapKind::Perp, od.id, &mut best);
+                                    consider(c.point_at(t), SnapKind::Perp, &mut best);
                                 }
                             }
                             if self.enabled(SnapKind::Tan) {
                                 if let Some(t) = tan_param(c, b, t_near) {
-                                    consider(c.point_at(t), SnapKind::Tan, od.id, &mut best);
+                                    consider(c.point_at(t), SnapKind::Tan, &mut best);
                                 }
                             }
                         }
@@ -264,8 +263,8 @@ impl SnapQuery<'_> {
             }
         }
         if self.enabled(SnapKind::Int) {
-            for (p, id) in self.intersections(r) {
-                consider(p, SnapKind::Int, id, &mut best);
+            for (p, _) in self.intersections(r) {
+                consider(p, SnapKind::Int, &mut best);
             }
         }
         best.map(|(_, mut h)| {
@@ -308,7 +307,7 @@ impl SnapQuery<'_> {
             let l2 = ab.length_squared();
             let t = if l2 < 1e-12 { 0.0 } else { ((self.cursor - a).dot(ab) / l2).clamp(0.0, 1.0) };
             let d = (a + ab * t - self.cursor).length();
-            if d <= r && best.map_or(true, |b| d < b.0) {
+            if d <= r && best.is_none_or(|b| d < b.0) {
                 best = Some((d, seg[0] + (seg[1] - seg[0]) * t));
             }
         }

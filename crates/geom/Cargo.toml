@@ -9,3 +9,6 @@ earcutr = "0.4"
 glam.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[lints]
+workspace = true

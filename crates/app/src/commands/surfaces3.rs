@@ -345,7 +345,7 @@ pub fn bounce() -> SeqCmd {
             let mut best: Option<(f64, DVec3)> = None;
             for m in &meshes {
                 if let Some(t) = m.intersect_ray(&ray) {
-                    if best.map_or(true, |b| t < b.0) {
+                    if best.is_none_or(|b| t < b.0) {
                         // normal of the hit triangle
                         let hit = ray.at(t);
                         let mut n = DVec3::Z;
@@ -944,7 +944,7 @@ impl WireCutCmd {
                 let inside_wire = |p: DVec3| -> bool {
                     let q = proj(p);
                     let h = (p - centre).dot(dir);
-                    let in_depth = range.map_or(true, |(lo, hi)| h >= lo && h <= hi);
+                    let in_depth = range.is_none_or(|(lo, hi)| h >= lo && h <= hi);
                     in_depth && curve_contains_point(&closed, &plane, q)
                 };
                 for f in faces {
@@ -1118,7 +1118,7 @@ pub fn boss_rib(rib: bool) -> SeqCmd {
                 // extrude towards the boundary: ray from the centroid along the normal finds the side
                 let pts = c.tessellate_adaptive(tol);
                 let centroid = pts.iter().fold(DVec3::ZERO, |s, p| s + *p) / pts.len() as f64;
-                let probe = super::misc4::geometry_mesh(&result).map_or(false, |m| m.intersect_ray(&Ray::new(centroid + plane.z_axis * 1e-6, plane.z_axis)).is_some());
+                let probe = super::misc4::geometry_mesh(&result).is_some_and(|m| m.intersect_ray(&Ray::new(centroid + plane.z_axis * 1e-6, plane.z_axis)).is_some());
                 let dir = if probe { plane.z_axis } else { -plane.z_axis };
                 super::misc4::prism_tool(&c, &Plane { origin: plane.origin + dir * diag, ..plane }, diag)
             };

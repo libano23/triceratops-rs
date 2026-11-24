@@ -265,7 +265,7 @@ fn vda_round_trip() {
 #[test]
 fn registry_and_unsupported() {
     assert!(format_for("STL").unwrap().import);
-    assert!(format_for("pdf").map_or(false, |f| !f.import && f.export));
+    assert!(format_for("pdf").is_some_and(|f| !f.import && f.export));
     assert!(unsupported_reason("skp").is_some());
     let mut d = Document::new();
     let err = import(&mut d, &tmp("x.skp")).unwrap_err().to_string();

@@ -30,8 +30,6 @@ pub struct Projector<'a> {
     surface: &'a NurbsSurface,
     dir: DVec3,
     tris: Vec<([DVec3; 3], [DVec2; 3])>,
-    closed_u: bool,
-    closed_v: bool,
     bbox: (DVec3, DVec3),
     pub tol: f64,
 }
@@ -52,15 +50,10 @@ impl<'a> Projector<'a> {
                 tris.push(([a.0, c.0, d.0], [a.1, c.1, d.1]));
             }
         }
-        let (u0, u1) = surface.domain_u();
-        let (v0, v1) = surface.domain_v();
-        let (um, vm) = ((u0 + u1) * 0.5, (v0 + v1) * 0.5);
         let diag = surface.bounding_box().diagonal().max(1e-9);
-        let closed_u = (surface.point_at(u0, vm) - surface.point_at(u1, vm)).length() < diag * 1e-6 && (surface.point_at(u0, v0 + (v1 - v0) * 0.25) - surface.point_at(u1, v0 + (v1 - v0) * 0.25)).length() < diag * 1e-6;
-        let closed_v = (surface.point_at(um, v0) - surface.point_at(um, v1)).length() < diag * 1e-6 && (surface.point_at(u0 + (u1 - u0) * 0.25, v0) - surface.point_at(u0 + (u1 - u0) * 0.25, v1)).length() < diag * 1e-6;
         let bb = surface.bounding_box();
         let pad = DVec3::splat(diag * 1e-3 + tol);
-        Self { surface, dir, tris, closed_u, closed_v, bbox: (bb.min - pad, bb.max + pad), tol: tol.max(1e-12) }
+        Self { surface, dir, tris, bbox: (bb.min - pad, bb.max + pad), tol: tol.max(1e-12) }
     }
 
     /// Whether the infinite line through `p` along the direction meets the surface's box.
@@ -139,7 +132,7 @@ impl<'a> Projector<'a> {
             let (s, su, sv) = self.surface.evaluate(u, v);
             let f = s - p - self.dir * t;
             let r = f.length();
-            if best.map_or(true, |b| r < b.0) {
+            if best.is_none_or(|b| r < b.0) {
                 best = Some((r, u, v, t, s));
             }
             if r < self.tol * 1e-3 {
@@ -154,8 +147,6 @@ impl<'a> Projector<'a> {
             let nv = (v - d.y).clamp(va, vb);
             t -= d.z;
             if (nu - u).abs() + (nv - v).abs() + d.z.abs() < 1e-15 {
-                u = nu;
-                v = nv;
                 break;
             }
             u = nu;
@@ -459,7 +450,7 @@ pub fn split_region(loops: &[Vec<DVec2>], paths: &[Vec<DVec2>]) -> Vec<Vec<Vec<D
     let mut nodes: Vec<DVec2> = Vec::new();
     let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     let cell = eps * 4.0;
-    let mut node_of = |p: DVec2, nodes: &mut Vec<DVec2>, grid: &mut HashMap<(i64, i64), Vec<usize>>| -> usize {
+    let node_of = |p: DVec2, nodes: &mut Vec<DVec2>, grid: &mut HashMap<(i64, i64), Vec<usize>>| -> usize {
         let (cx, cy) = ((p.x / cell).floor() as i64, (p.y / cell).floor() as i64);
         for dx in -1..=1 {
             for dy in -1..=1 {
@@ -493,7 +484,7 @@ pub fn split_region(loops: &[Vec<DVec2>], paths: &[Vec<DVec2>]) -> Vec<Vec<Vec<D
         }
     }
     // path pieces outside the region are dropped; duplicates merged (loop edges win)
-    edges.sort_by(|x, y| (x.0, x.1, x.2).cmp(&(y.0, y.1, y.2)));
+    edges.sort_by_key(|x| (x.0, x.1, x.2));
     edges.dedup_by(|x, y| x.0 == y.0 && x.1 == y.1);
     let inside_region = |p: DVec2| point_in_polygon(p, &loops[0]) && !loops[1..].iter().any(|h| point_in_polygon(p, h));
     edges.retain(|(a, b, is_path)| !*is_path || inside_region((nodes[*a] + nodes[*b]) * 0.5));
@@ -601,7 +592,7 @@ pub fn split_region(loops: &[Vec<DVec2>], paths: &[Vec<DVec2>]) -> Vec<Vec<Vec<D
                 let inward = DVec2::new(-d.y, d.x).normalize_or_zero();
                 (p + q) * 0.5 + inward * (eps * 1e3).min(d.length() * 0.01)
             }).find(|m| !on_boundary(*m, &c, eps));
-            if probe.map_or(true, inside_region) {
+            if probe.is_none_or(inside_region) {
                 positive.push((a, c));
             }
         } else if a < -eps * eps {
@@ -654,7 +645,7 @@ pub fn interior_point(poly: &[DVec2]) -> Option<DVec2> {
                 let p = DVec2::new(lo.x + (hi.x - lo.x) * (i as f64 + 0.5) / n as f64, lo.y + (hi.y - lo.y) * (j as f64 + 0.5) / n as f64);
                 if point_in_polygon(p, poly) {
                     let d = dist(p);
-                    if best.map_or(true, |b| d > b.0) {
+                    if best.is_none_or(|b| d > b.0) {
                         best = Some((d, p));
                     }
                 }
@@ -758,7 +749,7 @@ mod tests {
     #[test]
     fn split_square_by_one_and_two_paths() {
         let p1 = vec![DVec2::new(4.0, -1.0), DVec2::new(4.0, 11.0)];
-        let pieces = split_region(&square(), &[p1.clone()]);
+        let pieces = split_region(&square(), std::slice::from_ref(&p1));
         assert_eq!(pieces.len(), 2);
         let areas: Vec<f64> = pieces.iter().map(|p| signed_area(&p[0])).collect();
         assert!(areas.iter().all(|a| *a > 0.0));
@@ -875,10 +866,10 @@ mod debug_tests {
         let pieces = split_region(&sq, &paths);
         assert_eq!(pieces.len(), 2, "{pieces:?}");
         let paths = vec![
-            vec![DVec2::new(2.99999999999999989e-1,2.99999999999999989e-1), DVec2::new(2.99999999999999989e-1,5.99999999999999978e-1), DVec2::new(2.99999999999999933e-1,6.99999999999999845e-1)],
-            vec![DVec2::new(6.99999999999999956e-1,2.99999999999999989e-1), DVec2::new(6.99999999999999956e-1,5.99999999999999978e-1), DVec2::new(6.99999999999999956e-1,6.99999999999999956e-1)],
-            vec![DVec2::new(2.99999999999999989e-1,2.99999999999999989e-1), DVec2::new(5.99999999999999978e-1,2.99999999999999989e-1), DVec2::new(6.99999999999999956e-1,2.99999999999999989e-1)],
-            vec![DVec2::new(2.99999999999999933e-1,6.99999999999999845e-1), DVec2::new(5.99999999999999978e-1,6.99999999999999956e-1), DVec2::new(6.99999999999999956e-1,6.99999999999999956e-1)],
+            vec![DVec2::new(3e-1,3e-1), DVec2::new(3e-1,6e-1), DVec2::new(2.999_999_999_999_999_3e-1,6.999_999_999_999_998e-1)],
+            vec![DVec2::new(7e-1,3e-1), DVec2::new(7e-1,6e-1), DVec2::new(7e-1,7e-1)],
+            vec![DVec2::new(3e-1,3e-1), DVec2::new(6e-1,3e-1), DVec2::new(7e-1,3e-1)],
+            vec![DVec2::new(2.999_999_999_999_999_3e-1,6.999_999_999_999_998e-1), DVec2::new(6e-1,7e-1), DVec2::new(7e-1,7e-1)],
         ];
         let pieces = split_region(&sq, &paths);
         assert_eq!(pieces.len(), 2, "{pieces:?}");
