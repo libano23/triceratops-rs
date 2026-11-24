@@ -110,7 +110,7 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
             if pane(ui, "Osnap", osnap_on, "Toggle object snaps").clicked() {
                 app.aids.osnap.disable = !app.aids.osnap.disable;
             }
-            if pane(ui, "SmartTrack", app.aids.smarttrack, "Toggle SmartTrack (not implemented yet)").clicked() {
+            if pane(ui, "SmartTrack", app.aids.smarttrack, "Toggle SmartTrack: tracking lines through object snap points").clicked() {
                 app.aids.smarttrack = !app.aids.smarttrack;
             }
             pane(ui, "Auto CPlane", false, "Auto CPlane (not implemented yet)");

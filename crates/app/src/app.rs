@@ -563,6 +563,10 @@ pub struct App {
     pub selection_menu: Option<SelectionMenu>,
     pub constraints: Constraints,
     pub one_shot_snap: Option<SnapKind>,
+    /// SmartTrack: object-snap points the cursor has rested on during this command.
+    pub track_points: Vec<DVec3>,
+    /// SmartTrack lines the cursor currently follows (for drawing).
+    pub track_lines: Vec<(DVec3, DVec3)>,
     pub alt_down: bool,
     pub shift_down: bool,
     pub requests: Vec<AppRequest>,
@@ -610,6 +614,8 @@ impl App {
             show_dir: false,
             show_camera: false,
             guides: Vec::new(),
+            track_points: Vec::new(),
+            track_lines: Vec::new(),
             zoom_border: 0.05,
             px_per_mm: 3.78,
             walk_mode: false,
@@ -1822,8 +1828,10 @@ impl App {
             return (p, None);
         }
 
-        // object snaps
+        // object snaps, including the points of what the command has drawn so far
+        let mut near_hit = None;
         if !self.alt_down {
+            let pending = self.pending_snaps();
             let q = SnapQuery {
                 cache: &self.scene,
                 doc: &self.doc,
@@ -1834,14 +1842,27 @@ impl App {
                 cplane: &cplane,
                 settings: &self.aids.osnap,
                 one_shot: self.one_shot_snap,
+                pending: &pending,
             };
             if let Some(h) = q.find() {
                 let mut p = h.point;
                 if let (Some(d), Some(b)) = (self.constraints.distance, base) {
                     p = b + (p - b).normalize_or(cplane.x_axis) * d;
                 }
-                return (p, Some(h.kind));
+                // a point on a curve gives way to a SmartTrack line or intersection
+                if h.kind != SnapKind::Near {
+                    return (p, Some(h.kind));
+                }
+                near_hit = Some((p, h.kind));
             }
+        }
+        if self.constraints.distance.is_none() && self.constraints.direction.is_none() && self.constraints.angle_deg.is_none() {
+            if let Some((p, _)) = self.smart_track(vp, pos) {
+                return (p, None);
+            }
+        }
+        if let Some((p, k)) = near_hit {
+            return (p, Some(k));
         }
 
         // construction plane
@@ -1892,8 +1913,113 @@ impl App {
 
     pub fn update_cursor(&mut self, vp: usize, pos: DVec2) {
         self.update_scene();
+        if !self.runner.is_active() || !self.aids.smarttrack {
+            self.track_points.clear();
+        }
         let (world, snap) = self.snapped_point(vp, pos);
+        self.track_lines = if snap.is_none() { self.smart_track(vp, pos).map(|t| t.1).unwrap_or_default() } else { Vec::new() };
+        // resting on an object snap makes that point a SmartTrack point
+        if self.aids.smarttrack && self.wants_point() && snap.is_some_and(|k| k != SnapKind::Near) && !self.track_points.iter().any(|q| q.distance(world) < 1e-9) {
+            self.track_points.push(world);
+            if self.track_points.len() > 6 {
+                self.track_points.remove(0);
+            }
+        }
         self.cursor = Some(Cursor { viewport: vp, screen: pos, world, snap });
+    }
+
+    /// Object-snap points of the geometry the running command has drawn so far: the
+    /// vertices and midpoints of a polyline in progress, the ends of a line, and so on.
+    fn pending_snaps(&self) -> Vec<(DVec3, SnapKind)> {
+        let mut out = Vec::new();
+        if !self.wants_point() {
+            return out;
+        }
+        let seg = |a: DVec3, b: DVec3, out: &mut Vec<(DVec3, SnapKind)>| {
+            out.push((a, SnapKind::End));
+            out.push((b, SnapKind::End));
+            out.push(((a + b) * 0.5, SnapKind::Mid));
+        };
+        for p in self.runner.preview(None, &self.doc) {
+            match p {
+                Preview::Line(a, b) => seg(a, b, &mut out),
+                Preview::Polyline(pts) => {
+                    for w in pts.windows(2) {
+                        seg(w[0], w[1], &mut out);
+                    }
+                }
+                Preview::Curve(c) => {
+                    out.push((c.start_point(), SnapKind::End));
+                    out.push((c.end_point(), SnapKind::End));
+                }
+                Preview::Point(p) => out.push((p, SnapKind::Point)),
+                _ => {}
+            }
+        }
+        if let Some(b) = self.runner.base_point() {
+            out.push((b, SnapKind::End));
+        }
+        out
+    }
+
+    /// SmartTrack: horizontal and vertical (construction-plane x and y) lines through the
+    /// tracking points — the snap points the cursor has rested on and the last picked
+    /// point. Near one line the cursor slides along it; near two it snaps to where they
+    /// cross. Returns the point and the lines to draw.
+    fn smart_track(&self, vp: usize, pos: DVec2) -> Option<(DVec3, Vec<(DVec3, DVec3)>)> {
+        if !self.aids.smarttrack || !self.wants_point() || self.alt_down {
+            return None;
+        }
+        let v = &self.viewports[vp];
+        let (cam, rect) = (&v.camera, &v.rect);
+        let cp = v.cplane();
+        let mut points = self.track_points.clone();
+        if let Some(b) = self.runner.base_point() {
+            if !points.iter().any(|q| q.distance(b) < 1e-9) {
+                points.push(b);
+            }
+        }
+        if points.is_empty() {
+            return None;
+        }
+        let radius = 8.0;
+        let scale = cam.world_per_pixel(rect.h) * 100.0;
+        // (screen distance, point, direction)
+        let mut near: Vec<(f64, DVec3, DVec3)> = Vec::new();
+        for &tp in &points {
+            for dir in [cp.x_axis, cp.y_axis] {
+                let (Some((s0, _)), Some((s1, _))) = (cam.project(rect, tp), cam.project(rect, tp + dir * scale)) else { continue };
+                let d = s1 - s0;
+                if d.length() < 1e-6 {
+                    continue; // seen end-on
+                }
+                let n = DVec2::new(-d.y, d.x).normalize();
+                let dist = (pos - s0).dot(n).abs();
+                if dist <= radius {
+                    near.push((dist, tp, dir));
+                }
+            }
+        }
+        if near.is_empty() {
+            return None;
+        }
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let ray = cam.ray_at(rect, pos.x, pos.y);
+        let long = scale * 1e4;
+        // two crossing lines: their intersection, in the construction plane through the first
+        let (_, a, da) = near[0];
+        if let Some(&(_, b, _)) = near.iter().skip(1).find(|n| n.2.cross(da).length() > 1e-9) {
+            let to2 = |p: DVec3| DVec2::new((p - cp.origin).dot(cp.x_axis), (p - cp.origin).dot(cp.y_axis));
+            let (a2, b2) = (to2(a), to2(b));
+            let (u, w) = if da.dot(cp.x_axis).abs() > 0.5 { (b2.x, a2.y) } else { (a2.x, b2.y) };
+            let elev = (a - cp.origin).dot(cp.z_axis);
+            let p = cp.point_at_3(u, w, elev);
+            if cam.project(rect, p).is_some_and(|(s, _)| (s - pos).length() <= radius * 1.5) {
+                return Some((p, vec![(a, p), (b, p)]));
+            }
+        }
+        let (_, _, p) = ray.closest_to_segment(a - da * long, a + da * long);
+        Some((p, vec![(a, p)]))
     }
 
     pub fn clear_cursor(&mut self) {
@@ -4587,6 +4713,18 @@ impl App {
                 }
             }
         }
+        // SmartTrack: tracking points and the lines the cursor follows
+        if self.cursor.is_some_and(|c| c.viewport == vp) && self.aids.smarttrack && self.wants_point() {
+            let track = lin(self.colors.tracking);
+            for p in &self.track_points {
+                b.point(*p, 5.0, [1.0, 1.0, 1.0, 1.0]);
+            }
+            let ext = v.camera.world_per_pixel(v.rect.h) * 1e4;
+            for (a, p) in &self.track_lines {
+                let d = (*p - *a).normalize_or(DVec3::X);
+                b.xray_line(*a - d * ext, *a + d * ext, track);
+            }
+        }
         // tracking lines for constraints
         if let (Some(base), Some(c)) = (self.runner.base_point(), self.cursor) {
             if c.viewport == vp {
@@ -4893,6 +5031,60 @@ mod gumball_tests {
         assert_eq!(app.backend, "gl");
         app.theme_op("backend:dx12");
         assert_eq!(app.backend, "gl");
+    }
+
+    /// The Top viewport sized to 800×600, looking at a 10-unit square around the origin.
+    fn top_view(app: &mut App) -> usize {
+        let vp = app.viewports.iter().position(|v| v.name == "Top").unwrap();
+        app.viewports[vp].rect = ViewRect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        app.viewports[vp].camera.zoom_to(&BoundingBox::from_points(&[DVec3::ZERO, DVec3::new(10.0, 10.0, 0.0)]));
+        vp
+    }
+
+    fn screen(app: &App, vp: usize, p: DVec3) -> DVec2 {
+        let v = &app.viewports[vp];
+        v.camera.project(&v.rect, p).unwrap().0
+    }
+
+    #[test]
+    fn osnap_finds_the_points_of_a_polyline_in_progress() {
+        let mut app = App::new();
+        let vp = top_view(&mut app);
+        app.aids.osnap.set(SnapKind::End, true);
+        app.start_command("Polyline");
+        for p in [DVec3::ZERO, DVec3::new(8.0, 0.0, 0.0), DVec3::new(4.0, 6.0, 0.0)] {
+            app.with_ctx(|r, c| r.feed(Input::Point(p), c));
+        }
+        // closing the triangle: the first vertex is still only in the command
+        let near_start = screen(&app, vp, DVec3::ZERO) + DVec2::new(4.0, -3.0);
+        let (p, kind) = app.snapped_point(vp, near_start);
+        assert_eq!(kind, Some(SnapKind::End));
+        assert!(p.distance(DVec3::ZERO) < 1e-9);
+    }
+
+    #[test]
+    fn smarttrack_follows_lines_through_snap_points() {
+        let mut app = App::new();
+        let vp = top_view(&mut app);
+        app.aids.osnap.set(SnapKind::End, true);
+        app.aids.smarttrack = true;
+        app.start_command("Polyline");
+        let (a, b) = (DVec3::new(2.0, 1.0, 0.0), DVec3::new(7.0, 5.0, 0.0));
+        app.with_ctx(|r, c| r.feed(Input::Point(a), c));
+        app.with_ctx(|r, c| r.feed(Input::Point(b), c));
+        // rest on the first vertex: it becomes a tracking point
+        app.update_cursor(vp, screen(&app, vp, a));
+        assert_eq!(app.track_points, vec![a]);
+        // near the vertical through `a`: the point slides onto it
+        let off = screen(&app, vp, DVec3::new(2.0, 3.5, 0.0)) + DVec2::new(5.0, 0.0);
+        let (p, _) = app.snapped_point(vp, off);
+        assert!((p.x - 2.0).abs() < 1e-9 && (p.y - 3.5).abs() < 0.2, "{p}");
+        // where the vertical through `a` meets the horizontal through the last point
+        let corner = screen(&app, vp, DVec3::new(2.0, 5.0, 0.0)) + DVec2::new(4.0, 3.0);
+        let (p, _) = app.snapped_point(vp, corner);
+        assert!(p.distance(DVec3::new(2.0, 5.0, 0.0)) < 1e-9, "{p}");
+        app.update_cursor(vp, corner);
+        assert_eq!(app.track_lines.len(), 2);
     }
 
     #[test]

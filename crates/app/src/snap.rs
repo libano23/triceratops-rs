@@ -190,6 +190,8 @@ pub struct SnapQuery<'a> {
     pub settings: &'a OsnapSettings,
     /// One-shot override: only this snap for one pick.
     pub one_shot: Option<SnapKind>,
+    /// Snap points of what the running command has drawn so far (not yet in the document).
+    pub pending: &'a [(DVec3, SnapKind)],
 }
 
 impl SnapQuery<'_> {
@@ -219,6 +221,11 @@ impl SnapQuery<'_> {
             }
         };
 
+        for (p, kind) in self.pending {
+            if self.enabled(*kind) {
+                consider(*p, *kind, &mut best);
+            }
+        }
         // precomputed point snaps
         for od in &self.cache.objects {
             let Some(obj) = self.doc.get(od.id) else { continue };
