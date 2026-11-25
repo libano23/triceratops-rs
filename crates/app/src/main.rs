@@ -53,10 +53,11 @@ impl Runner {
             return;
         };
         let raw_input = state.take_egui_input(window);
-        let full_output = self.egui_ctx.run_ui(raw_input, |root| ui::draw(&mut self.app, root));
+        let mut full_output = self.egui_ctx.run_ui(raw_input, |root| ui::draw(&mut self.app, root));
         state.handle_platform_output(window, full_output.platform_output.clone());
         self.app.process_requests();
         if self.app.quit {
+            full_output.textures_delta.clear(); // closing: nothing left to upload them to
             event_loop.exit();
             return;
         }

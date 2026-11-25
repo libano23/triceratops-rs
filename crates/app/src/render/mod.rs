@@ -933,13 +933,28 @@ impl Renderer {
         viewports: &[(usize, ViewRect)],
         ppp: f64,
         egui_ctx: &egui::Context,
-        egui_output: egui::FullOutput,
+        mut egui_output: egui::FullOutput,
     ) -> Result<(), FrameError> {
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return Err(FrameError::Skip),
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => return Err(FrameError::Reconfigure),
-            wgpu::CurrentSurfaceTexture::Validation => return Err(FrameError::Validation),
+        // Upload egui's texture changes (the font atlas among them) before acquiring the
+        // frame: they must not be lost when this frame is skipped.
+        let mut textures = std::mem::take(&mut egui_output.textures_delta);
+        for (id, deltas) in &textures.set {
+            for delta in deltas {
+                self.egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
+            }
+        }
+        let acquired = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(t),
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => Err(FrameError::Skip),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => Err(FrameError::Reconfigure),
+            wgpu::CurrentSurfaceTexture::Validation => Err(FrameError::Validation),
+        };
+        let frame = match acquired {
+            Ok(frame) => frame,
+            Err(e) => {
+                self.free_egui_textures(&mut textures);
+                return Err(e);
+            }
         };
         let surface_view = frame.texture.create_view(&Default::default());
         // OpenGL swapchains cannot be copied: capture frames render into an offscreen texture
@@ -955,11 +970,6 @@ impl Renderer {
             size_in_pixels: [self.config.width, self.config.height],
             pixels_per_point: egui_output.pixels_per_point,
         };
-        for (id, deltas) in &egui_output.textures_delta.set {
-            for delta in deltas {
-                self.egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
-            }
-        }
         self.egui_renderer.update_buffers(&self.device, &self.queue, &mut encoder, &paint_jobs, &screen);
 
         {
@@ -1092,10 +1102,16 @@ impl Renderer {
         }
         self.capture = None;
         self.queue.present(frame);
-        for id in &egui_output.textures_delta.free {
+        self.free_egui_textures(&mut textures);
+        Ok(())
+    }
+
+    /// Free the textures egui no longer uses, and mark the delta as handled.
+    fn free_egui_textures(&mut self, textures: &mut egui::TexturesDelta) {
+        for id in &textures.free {
             self.egui_renderer.free_texture(id);
         }
-        Ok(())
+        textures.clear();
     }
 
     /// Offscreen colour target of the window size used for captures on backends whose
