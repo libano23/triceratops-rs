@@ -73,7 +73,7 @@ pub const STANDARD: &[Btn] = &[
     b("spotlight", "Spotlight", "Spotlight", "", ""),
     b("options", "Options", "Options", "", ""),
     b("dim", "Dimension", "Dim", "", ""),
-    b("grasshopper", "Grasshopper", "Grasshopper", "", ""),
+    b("locust", "Locust node editor", "Locust", "", ""),
     b("help", "Help", "Help", "", ""),
 ];
 
