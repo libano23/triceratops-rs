@@ -15,6 +15,7 @@ Exact curves, surfaces and solids · native `.3dm` files · a node editor for al
 [**Website**](https://libano23.github.io/triceratops-rs/) ·
 [**Download**](#download) ·
 [**Locust**](#locust-visual-programming) ·
+[**AI assistants**](#model-with-an-ai-assistant-mcp) ·
 [**Build from source**](#build-and-run)
 
 <img src="site/assets/screenshots/hero.webp" alt="Triceratops main window: a machined block with Boolean holes, a revolved vase, a torus and a sphere" width="100%">
@@ -35,6 +36,8 @@ exact NURBS curves, surfaces and polysurfaces (B-reps).
   splitting by any number of curves.
 - **Locust:** a built-in node editor for algorithmic modelling, with more than 200 components
   and a live preview in the viewport ([below](#locust-visual-programming)).
+- **AI assistants:** Claude, Codex and other MCP clients can model in the open window from a
+  prompt ([below](#model-with-an-ai-assistant-mcp)).
 - **Interface:** dockable and floating panels and toolbars (including torn-off flyouts),
   light, dark and Blender-style themes, persistent settings and window layouts.
 - **Display modes:** Wireframe, Shaded, Rendered, Ghosted, X-Ray, Technical, Arctic, Pen, and
@@ -71,6 +74,55 @@ the command line (or `lc`) to open it.
 A worked example (sliders driving a circle, an extrusion and a volume readout) loads the first
 time. The tower in the screenshot is [`site/tools/scenes/tower.locust`](site/tools/scenes/tower.locust):
 open it from Locust's **Open...** button.
+
+## Model with an AI assistant (MCP)
+
+Claude, Codex and other [MCP](https://modelcontextprotocol.io) clients can model in the
+Triceratops window you have open: you describe the part, the assistant runs Triceratops
+commands, and the viewports update as it works. Everything it does is on the command history
+and can be undone.
+
+The executable doubles as the MCP server: `triceratops mcp` speaks MCP on stdin/stdout and
+drives the running window over a local socket (it starts Triceratops if no window is open).
+
+| System | Executable to use |
+|--------|-------------------|
+| Linux | the AppImage, e.g. `~/Applications/Triceratops.AppImage` (rename it so the path stays the same across versions) |
+| Windows | `C:\path\to\Triceratops\triceratops.exe` |
+| macOS | `/Applications/Triceratops.app/Contents/MacOS/triceratops` |
+
+```sh
+# Claude Code
+claude mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp
+# Codex
+codex mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp
+```
+
+Claude Desktop (`claude_desktop_config.json`) and Codex (`~/.codex/config.toml`):
+
+```json
+{ "mcpServers": { "triceratops": { "command": "/Applications/Triceratops.app/Contents/MacOS/triceratops", "args": ["mcp"] } } }
+```
+
+```toml
+[mcp_servers.triceratops]
+command = "/Applications/Triceratops.app/Contents/MacOS/triceratops"
+args = ["mcp"]
+```
+
+Then ask, for example: *"In Triceratops, make a 60×40×8 mm plate with two 6 mm holes 40 mm
+apart and a 30 mm high flange along one long edge."*
+
+The assistant gets these tools: `run_commands` (command-line entries, exactly as typed),
+`get_state`, `list_objects`, `object_info` (volume, area), `find_commands`, `capture_view`
+(an image of a viewport, so it can look at its work), `undo` and `redo`.
+
+- Requests wait while you are typing or running a command of your own.
+- Commands that would open a dialog do not: Loft uses its default options, and commands that
+  need a file (Open, Save, Import, Export) are refused.
+- Only programs running as you on the same computer can connect; nothing listens on the
+  network. **Options > AI Assistants** switches it off, and the status bar shows
+  *Assistant connected* while an assistant is attached.
 
 ## Download
 

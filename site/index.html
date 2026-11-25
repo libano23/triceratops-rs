@@ -199,6 +199,7 @@ footer .brand img { width: 30px; height: 30px; }
       <a href="#features">Features</a>
       <a href="#gallery">Gallery</a>
       <a href="#locust">Locust</a>
+      <a href="#ai">AI</a>
       <a href="#download">Download</a>
       <a class="gh" href="https://github.com/libano23/triceratops-rs">GitHub ↗</a>
     </div>
@@ -319,6 +320,31 @@ footer .brand img { width: 30px; height: 30px; }
       <div class="bar"><i></i><i></i><i></i></div>
       <img src="assets/screenshots/locust.webp" width="1680" height="1020" alt="The Locust node editor: sliders for floors, floor height, radius, sides, twist and taper drive a lofted, twisted tower previewed in the viewport">
     </div>
+  </div>
+</section>
+
+<section id="ai">
+  <div class="wrap split">
+    <div>
+      <div class="kicker">AI assistants</div>
+      <h2>Describe it. <span class="grad-text">Watch it being modelled.</span></h2>
+      <p class="sub">Claude, Codex and other MCP clients can drive the Triceratops window you have open. The assistant runs real Triceratops commands, the viewports update as it works, and every step can be undone.</p>
+      <ul class="checks">
+        <li><span><b>Your window, live</b>: the assistant works on the model you have open; you can step in at any time.</span></li>
+        <li><span><b>It checks its work</b>: it can list objects, measure volumes and look at a viewport image.</span></li>
+        <li><span><b>Local only</b>: nothing listens on the network, and Options › AI Assistants switches it off.</span></li>
+      </ul>
+    </div>
+<pre><span class="c"># Claude Code</span>
+claude mcp add triceratops -- ~/Triceratops.AppImage mcp
+
+<span class="c"># Codex</span>
+codex mcp add triceratops -- ~/Triceratops.AppImage mcp
+
+<span class="c"># then ask:</span>
+"In Triceratops, make a 60×40×8 mm plate
+ with two 6 mm holes 40 mm apart and a
+ 30 mm high flange along one long edge."</pre>
   </div>
 </section>
 
