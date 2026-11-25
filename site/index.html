@@ -11,7 +11,6 @@
 <meta property="og:description" content="Free, open-source NURBS modelling in Rust for Linux, Windows and macOS.">
 <meta property="og:image" content="https://libano23.github.io/triceratops-rs/assets/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -86,9 +85,8 @@ header.hero { position: relative; overflow: hidden; padding: 72px 0 40px; }
     radial-gradient(600px 380px at 80% 10%, rgba(167, 139, 250, .18), transparent 70%),
     radial-gradient(800px 400px at 50% 60%, rgba(56, 189, 248, .10), transparent 70%);
 }
-.hero-mesh { position: absolute; right: -120px; top: 10px; width: 640px; opacity: .08; z-index: -1; pointer-events: none; }
 .hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
-@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } .hero-mesh { display: none; } }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } }
 .eyebrow {
   display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: .04em;
   color: var(--teal); background: rgba(94, 234, 212, .08); border: 1px solid rgba(94, 234, 212, .25);
@@ -196,7 +194,7 @@ footer .brand img { width: 30px; height: 30px; }
 
 <nav>
   <div class="wrap">
-    <a class="brand" href="#top"><img src="assets/logo.svg" alt="">Triceratops</a>
+    <a class="brand" href="#top"><img src="assets/logo.png" alt="">Triceratops</a>
     <div class="links">
       <a href="#features">Features</a>
       <a href="#gallery">Gallery</a>
@@ -208,7 +206,6 @@ footer .brand img { width: 30px; height: 30px; }
 </nav>
 
 <header class="hero" id="top">
-  <img class="hero-mesh" src="assets/logo.svg" alt="" aria-hidden="true">
   <div class="wrap">
     <div class="hero-grid">
       <div>
@@ -227,7 +224,7 @@ footer .brand img { width: 30px; height: 30px; }
         </div>
         <p class="cta-note" id="hero-note">Linux · Windows · macOS</p>
       </div>
-      <img class="hero-logo" src="assets/logo.svg" alt="Triceratops logo: a low-poly wireframe triceratops">
+      <img class="hero-logo" src="assets/logo.png" alt="Triceratops logo: a 3D triceratops head">
     </div>
 
     <div class="showcase frame">
@@ -396,7 +393,7 @@ cargo run --release -- --script commands.txt</pre>
 
 <footer>
   <div class="wrap">
-    <a class="brand" href="#top"><img src="assets/logo.svg" alt="">Triceratops</a>
+    <a class="brand" href="#top"><img src="assets/logo.png" alt="">Triceratops</a>
     <span>MIT licensed · openNURBS is distributed under its own license.</span>
     <a href="https://github.com/libano23/triceratops-rs">github.com/libano23/triceratops-rs</a>
   </div>
