@@ -28,6 +28,9 @@ fn fail(e: impl Into<String>) -> Outcome {
 /// Execute one request. Commands run exactly as typed ones do, with `assistant_mode` set
 /// so that nothing waits for a person.
 pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
+    if matches!(method, "run_commands" | "undo" | "redo") && busy_with_user(app) {
+        return fail("the user is running a command in Triceratops");
+    }
     match method {
         "hello" => ok(json!({ "version": crate::mcp::protocol::VERSION })),
         "run_commands" => run_commands(app, params),
@@ -45,6 +48,11 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
         "capture_view" => capture_view(app, params),
         other => fail(format!("unknown method {other}")),
     }
+}
+
+/// The user is typing, or running a command they started: leave them alone.
+pub fn busy_with_user(app: &App) -> bool {
+    !app.cmd_text.trim().is_empty() || (app.runner.is_active() && !app.assistant_owns_command)
 }
 
 fn run_lines(app: &mut App, lines: &[String]) {
@@ -423,5 +431,42 @@ mod tests {
             Outcome::Reply(Err(e)) => assert!(e.contains("not shown"), "{e}"),
             _ => panic!("expected an error"),
         }
+    }
+
+    fn err(o: Outcome) -> String {
+        match o {
+            Outcome::Reply(Err(e)) => e,
+            _ => panic!("expected an error"),
+        }
+    }
+
+    #[test]
+    fn request_refused_while_user_types() {
+        let mut app = App::new();
+        app.cmd_text = "Cir".into();
+        assert_eq!(err(handle(&mut app, "run_commands", &json!({ "lines": ["Sphere"] }))), "the user is running a command in Triceratops");
+        assert_eq!(app.cmd_text, "Cir");
+        assert_eq!(app.doc.objects().count(), 0);
+    }
+
+    #[test]
+    fn request_refused_while_user_runs_own_command() {
+        let mut app = App::new();
+        // the assistant leaves a command waiting, the user cancels it and starts their own
+        run(&mut app, &["Box", "0,0,0"]);
+        app.cancel();
+        app.cmd_text = "Circle".into();
+        app.submit();
+        assert!(app.runner.is_active());
+        assert_eq!(err(handle(&mut app, "run_commands", &json!({ "lines": ["5,5,0"] }))), "the user is running a command in Triceratops");
+        assert_eq!(err(handle(&mut app, "undo", &json!({}))), "the user is running a command in Triceratops");
+    }
+
+    #[test]
+    fn assistant_continues_its_own_pending_command() {
+        let mut app = App::new();
+        run(&mut app, &["Circle", "0,0,0"]);
+        let r = run(&mut app, &["5"]);
+        assert_eq!(ids(&r["added"]).len(), 1);
     }
 }

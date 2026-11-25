@@ -345,6 +345,8 @@ pub struct UserOptions {
     pub dock: Option<crate::ui::dock::DockLayout>,
     pub show_command_area: bool,
     pub show_viewport_tabs: bool,
+    /// AI assistants may drive this window through `triceratops mcp`.
+    pub allow_assistants: bool,
     /// Viewport arrangement ("Four", "Three", "Single", "Grid").
     pub viewport_layout: String,
     /// Display mode per viewport name.
@@ -379,6 +381,7 @@ impl Default for UserOptions {
             dock: None,
             show_command_area: true,
             show_viewport_tabs: true,
+            allow_assistants: true,
             viewport_layout: "Four".into(),
             display_modes: Vec::new(),
             zoom_border: 0.05,
@@ -595,6 +598,12 @@ pub struct App {
     pub message_box: Option<String>,
     /// Commands are being run for an AI assistant: no modal dialogs, messages go to the log.
     pub assistant_mode: bool,
+    /// The running command was started by an assistant.
+    pub assistant_owns_command: bool,
+    /// Assistants may connect (Options > General); saved with the options.
+    pub allow_assistants: bool,
+    /// A `triceratops mcp` bridge is attached right now (status bar).
+    pub assistant_connected: bool,
     scene_batches: Vec<Batch>,
     scene_keys: Vec<Option<u64>>,
     pub overlay_batches: Vec<Batch>,
@@ -703,6 +712,9 @@ impl App {
             last_added: Vec::new(),
             message_box: None,
             assistant_mode: false,
+            assistant_owns_command: false,
+            allow_assistants: true,
+            assistant_connected: false,
             scene_batches: (0..n).map(|_| Batch::default()).collect(),
             scene_keys: vec![None; n],
             overlay_batches: (0..n).map(|_| Batch::default()).collect(),
@@ -752,6 +764,7 @@ impl App {
             }
             self.show_command_area = o.show_command_area;
             self.show_viewport_tabs = o.show_viewport_tabs;
+            self.allow_assistants = o.allow_assistants;
             self.layout = match o.viewport_layout.as_str() { "Three" => Layout::Three, "Single" => Layout::Single, "Grid" => Layout::Grid, _ => Layout::Four };
             for (name, mode) in &o.display_modes {
                 if let (Some(v), Some(m)) = (self.viewports.iter_mut().find(|v| &v.name == name), DisplayMode::from_name(mode)) {
@@ -909,6 +922,7 @@ impl App {
             dock: Some(self.dock.clone()),
             show_command_area: self.show_command_area,
             show_viewport_tabs: self.show_viewport_tabs,
+            allow_assistants: self.allow_assistants,
             viewport_layout: match self.layout { Layout::Three => "Three", Layout::Single => "Single", Layout::Grid => "Grid", Layout::Four => "Four" }.into(),
             display_modes: self.viewports.iter().filter(|v| !v.is_detail() && !v.is_page()).map(|v| (v.name.clone(), v.display.name().to_string())).collect(),
             zoom_border: self.zoom_border,
@@ -1384,6 +1398,8 @@ impl App {
     }
 
     fn start_command_typed(&mut self, name: &str, typed: &str) {
+        // remember who started it, so an assistant never feeds input into the user's command
+        self.assistant_owns_command = self.assistant_mode;
         let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
         self.pick_order = self.doc.selected_ids();
         self.constraints = Constraints::default();

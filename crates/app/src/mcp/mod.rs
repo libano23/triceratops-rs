@@ -6,5 +6,6 @@
 //! the two halves.
 
 pub mod handler;
+pub mod host;
 pub mod protocol;
 pub mod socket;

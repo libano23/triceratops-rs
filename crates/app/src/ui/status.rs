@@ -128,6 +128,10 @@ pub fn status_bar(app: &mut App, root: &mut egui::Ui) {
                 app.doc.state.parametric.enabled = !app.doc.state.parametric.enabled;
                 app.doc.touch_revision();
             }
+            if app.assistant_connected {
+                ui.label(RichText::new("Assistant connected").color(Color32::from_rgb(94, 234, 212)))
+                    .on_hover_text("An AI assistant is modelling through `triceratops mcp` (Options > AI Assistants)");
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("◨").on_hover_text("Toggle right sidebar").clicked() {
                     app.toggle_side(crate::ui::dock::Placement::Right);
