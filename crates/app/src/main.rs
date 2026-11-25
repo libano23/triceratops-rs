@@ -7,6 +7,8 @@ mod camera;
 mod commands;
 mod input;
 mod locust;
+#[allow(dead_code)] // TEMP: removed once the event loop (task 5) and the bridge (task 6) use it
+mod mcp;
 mod render;
 mod snap;
 mod theme;
