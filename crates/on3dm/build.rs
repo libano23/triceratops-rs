@@ -3,6 +3,12 @@ use std::path::PathBuf;
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let src = manifest.join("../../third_party/opennurbs").canonicalize().expect("third_party/opennurbs is missing");
+    // On Windows canonicalize() returns a `\\?\C:\...` verbatim path, which
+    // MSBuild cannot resolve source files against; use the plain form.
+    let src = match src.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(plain) => PathBuf::from(plain),
+        None => src,
+    };
     println!("cargo:rerun-if-changed={}", src.join("CMakeLists.txt").display());
     println!("cargo:rerun-if-changed={}", manifest.join("shim/on3dm_shim.cpp").display());
 
