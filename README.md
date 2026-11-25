@@ -1,9 +1,31 @@
+<div align="center">
+
+<img src="packaging/logo/logo.svg" alt="Triceratops logo" width="180">
+
 # Triceratops
 
-Triceratops is a NURBS 3D modeller for Linux written in Rust. It follows the interaction
-model of professional NURBS CAD tools: a command line with prompts and clickable options,
-object snaps, four synchronised viewports, a gumball, layers, and exact NURBS curves,
-surfaces and polysurfaces (B-reps).
+**Free, open-source NURBS 3D modelling, written in Rust.**<br>
+Exact curves, surfaces and solids · native `.3dm` files · a node editor for algorithmic design.
+
+[![CI](https://github.com/libano23/triceratops-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/libano23/triceratops-rs/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/libano23/triceratops-rs?label=release&color=38bdf8)](https://github.com/libano23/triceratops-rs/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-a78bfa.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-5eead4)
+
+[**Website**](https://libano23.github.io/triceratops-rs/) ·
+[**Download**](#download) ·
+[**Locust**](#locust-visual-programming) ·
+[**Build from source**](#build-and-run)
+
+<img src="site/assets/screenshots/hero.webp" alt="Triceratops main window: a machined block with Boolean holes, a revolved vase, a torus and a sphere" width="100%">
+
+</div>
+
+## Features
+
+Triceratops follows the interaction model of professional NURBS CAD tools: a command line with
+prompts and clickable options, object snaps, four synchronised viewports, a gumball, layers, and
+exact NURBS curves, surfaces and polysurfaces (B-reps).
 
 - **Modelling:** points, curves (lines, polylines, arcs, circles, ellipses, interpolated and
   control-point curves), surfaces (extrude, revolve, loft, sweep, network, edge surfaces,
@@ -11,10 +33,55 @@ surfaces and polysurfaces (B-reps).
 - **NURBS kernel:** exact surface/surface intersections, Booleans that keep the original
   surfaces and only add trim curves, projection of curves onto any surface, trimming and
   splitting by any number of curves.
+- **Locust:** a built-in node editor for algorithmic modelling, with more than 200 components
+  and a live preview in the viewport ([below](#locust-visual-programming)).
 - **Interface:** dockable and floating panels and toolbars (including torn-off flyouts),
   light, dark and Blender-style themes, persistent settings and window layouts.
+- **Display modes:** Wireframe, Shaded, Rendered, Ghosted, X-Ray, Technical, Arctic, Pen, and
+  analysis modes such as Zebra, Curvature, Draft Angle and Thickness.
 - **Files:** native `.3dm` through openNURBS, plus STEP, IGES, DXF/DWG, OBJ, STL, glTF and about
   twenty more formats.
+
+<table>
+  <tr>
+    <td width="50%"><img src="site/assets/screenshots/fourview.webp" alt="Four viewports: Top, Front and Right in wireframe, Perspective shaded"><br><sub>The four-viewport workspace</sub></td>
+    <td width="50%"><img src="site/assets/screenshots/ghosted.webp" alt="The model in Ghosted display mode"><br><sub>Ghosted display shows the inside of Boolean cuts</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="site/assets/screenshots/surfaces.webp" alt="A free-form NURBS surface with control points in the light theme"><br><sub>A free-form surface with its control points, light theme</sub></td>
+    <td width="50%"><img src="site/assets/screenshots/locust.webp" alt="The Locust node editor driving a twisted tower"><br><sub>Locust drives a parametric tower</sub></td>
+  </tr>
+</table>
+
+## Locust: visual programming
+
+Locust is a node-based editor for algorithmic modelling, built into Triceratops. Type `Locust` in
+the command line (or `lc`) to open it.
+
+- **Components:** more than 200 of them, for numbers and maths, vectors and planes, curves,
+  surfaces, solids, meshes, transforms, lists and data trees, text and analysis.
+- **Live preview:** wire components together and drag a slider; the result is drawn in the
+  viewport as you edit. **Bake** turns it into ordinary document objects.
+- **Same kernel:** nodes call the NURBS kernel and the helpers the modelling commands use, so a
+  lofted surface from Locust is the same surface the `Loft` command makes.
+- **Organised graphs:** groups, comments, clusters (sub-graphs), undo and redo, copy and paste.
+  The canvas is saved between sessions in `<config>/triceratops/locust.locust`, and definitions
+  can be saved and opened as files.
+
+A worked example (sliders driving a circle, an extrusion and a volume readout) loads the first
+time. The tower in the screenshot is [`site/tools/scenes/tower.locust`](site/tools/scenes/tower.locust):
+open it from Locust's **Open...** button.
+
+## Download
+
+Ready-to-run builds are attached to each [GitHub release](https://github.com/libano23/triceratops-rs/releases/latest),
+and the [website](https://libano23.github.io/triceratops-rs/#download) links the right one for your system:
+
+| Platform | File | How to start |
+|----------|------|--------------|
+| Linux (x86_64, glibc 2.35+) | `Triceratops-<version>-x86_64.AppImage` | `chmod +x Triceratops-*.AppImage`, then run it |
+| Windows 10/11 (x64) | `Triceratops-<version>-windows-x64.zip` | Unzip and run `triceratops.exe` |
+| macOS 11+ (Apple Silicon and Intel) | `Triceratops-<version>-macos-universal.dmg` | Drag Triceratops to Applications. The app is not notarized: the first time, right-click it and choose Open |
 
 ## Build and run
 
@@ -32,8 +99,41 @@ cargo test --workspace                 # run the test suites
 then starts the program with any arguments you pass (`./triceratops.sh model.3dm`,
 `./triceratops.sh --script s.txt`). Pass `--no-build` first to skip the build check.
 
-The first build compiles openNURBS and takes a few minutes. Triceratops has been tested on
-Arch Linux under Wayland (niri) with an AMD GPU.
+The first build compiles openNURBS and takes a few minutes. On Windows, install the Visual
+Studio Build Tools (C++ workload) and CMake; on macOS, the Xcode command line tools and CMake
+(`brew install cmake`). Triceratops is developed on Arch Linux under Wayland with an AMD GPU;
+the Windows and macOS builds are compiled and tested in CI.
+
+## Packaging
+
+Each script runs on its own OS and writes to `dist/`:
+
+| Platform | Command | Output |
+|----------|---------|--------|
+| Linux | `scripts/package-linux.sh` | `Triceratops-<version>-x86_64.AppImage` |
+| Windows | `pwsh scripts/package-windows.ps1` | `Triceratops-<version>-windows-x64.zip` |
+| macOS | `scripts/package-macos.sh` | `Triceratops-<version>-macos-universal.dmg` |
+
+The [Build workflow](.github/workflows/release.yml) runs all three on GitHub-hosted runners.
+Start it from the Actions tab, or push a version tag to publish a release:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Bump `version` in the root `Cargo.toml` first; the tag and the version should match.
+
+## Website and logo
+
+The website in `site/` is a single static page, published to GitHub Pages by the
+[Website workflow](.github/workflows/pages.yml) whenever `site/` changes on `master`.
+
+- **Screenshots** are real Triceratops windows. `site/tools/shoot.sh <name> <script>` runs a
+  command script from `site/tools/scenes/` in a private Xwayland server at a fixed size, with a
+  throw-away configuration, and writes `target/shots/<name>.png`; convert it to WebP into
+  `site/assets/screenshots/`. Linux with Xwayland and ImageMagick is required.
+- **The logo** is generated: `python3 packaging/logo/generate_logo.py` writes the SVGs in
+  `packaging/logo/`, from which the Linux, macOS and Windows icons are rendered.
 
 ## Using it
 
@@ -70,10 +170,13 @@ cannot be read (SKP, SAT, DGN, E57, binary FBX, ...) give a message naming an al
 
 | Path or variable | Purpose |
 |------------------|---------|
-| `~/.config/triceratops/options.json` | Settings, window layout, export memory |
-| `~/.config/triceratops/themes/*.json` | User themes |
+| `<config>/triceratops/options.json` | Settings, window layout, export memory |
+| `<config>/triceratops/themes/*.json` | User themes |
 | `TRICERATOPS_BACKEND=auto\|gl\|vulkan` | Graphics backend |
 | `TRICERATOPS_BOOL_DEBUG=1` | Diagnostics for Booleans, projections and trims |
+
+`<config>` is `~/.config` on Linux, `%APPDATA%` on Windows and
+`~/Library/Application Support` on macOS.
 
 ## Project layout
 
@@ -104,8 +207,14 @@ being followed. `docs/commands.json` is the command catalogue.
 - Shell works on solids with planar faces only.
 - FilletEdge works on planar faces only.
 - SubD objects are smoothed meshes.
-- Digitizer support, visual scripting, licensing and plug-in management are not available.
+- Digitizer support, licensing and plug-in management are not available.
   Those commands say so and name the closest alternative.
+
+## Contributing
+
+Bug reports and pull requests are welcome. Before opening a pull request, run
+`cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`; CI runs
+both on Linux, Windows and macOS.
 
 ## License
 

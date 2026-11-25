@@ -1,0 +1,272 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="0.55" stop-color="#38bdf8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+<radialGradient id="bg" cx="0.3" cy="0.25" r="0.9"><stop offset="0" stop-color="#1e293b"/><stop offset="1" stop-color="#0b1120"/></radialGradient>
+</defs>
+<rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+<g transform="translate(28 63.625) scale(0.8906)">
+<g>
+<path d="M176 108L172 82L200 84Z" fill="url(#g)" fill-opacity="0.264"/>
+<path d="M200 84L212 60L232 70Z" fill="url(#g)" fill-opacity="0.211"/>
+<path d="M232 70L254 52L264 74Z" fill="url(#g)" fill-opacity="0.208"/>
+<path d="M264 74L294 66L292 96Z" fill="url(#g)" fill-opacity="0.126"/>
+<path d="M292 96L324 102L310 130Z" fill="url(#g)" fill-opacity="0.141"/>
+<path d="M310 130L338 148L316 170Z" fill="url(#g)" fill-opacity="0.123"/>
+<path d="M470 208L510 250L472 252Z" fill="url(#g)" fill-opacity="0.100"/>
+<path d="M450 320L456 376L420 378Z" fill="url(#g)" fill-opacity="0.159"/>
+<path d="M450 320L420 378L414 320Z" fill="url(#g)" fill-opacity="0.174"/>
+<path d="M330 322L334 378L298 380Z" fill="url(#g)" fill-opacity="0.156"/>
+<path d="M330 322L298 380L292 322Z" fill="url(#g)" fill-opacity="0.179"/>
+<path d="M30 300L60 280L50 310Z" fill="url(#g)" fill-opacity="0.161"/>
+<path d="M60 280L80 320L50 310Z" fill="url(#g)" fill-opacity="0.135"/>
+<path d="M92 258L124 244L96 290Z" fill="url(#g)" fill-opacity="0.172"/>
+<path d="M60 280L74 268L96 290Z" fill="url(#g)" fill-opacity="0.150"/>
+<path d="M60 280L80 320L96 290Z" fill="url(#g)" fill-opacity="0.116"/>
+<path d="M74 268L92 258L96 290Z" fill="url(#g)" fill-opacity="0.166"/>
+<path d="M120 328L80 320L96 290Z" fill="url(#g)" fill-opacity="0.342"/>
+<path d="M124 244L150 226L146 292Z" fill="url(#g)" fill-opacity="0.149"/>
+<path d="M170 328L120 328L146 292Z" fill="url(#g)" fill-opacity="0.293"/>
+<path d="M120 328L96 290L146 292Z" fill="url(#g)" fill-opacity="0.336"/>
+<path d="M124 244L96 290L146 292Z" fill="url(#g)" fill-opacity="0.116"/>
+<path d="M220 320L170 328L196 286Z" fill="url(#g)" fill-opacity="0.322"/>
+<path d="M170 328L146 292L196 286Z" fill="url(#g)" fill-opacity="0.283"/>
+<path d="M150 226L146 292L182 236Z" fill="url(#g)" fill-opacity="0.108"/>
+<path d="M146 292L196 286L182 236Z" fill="url(#g)" fill-opacity="0.201"/>
+<path d="M150 226L150 180L190 180Z" fill="url(#g)" fill-opacity="0.261"/>
+<path d="M150 226L182 236L190 180Z" fill="url(#g)" fill-opacity="0.240"/>
+<path d="M150 180L160 140L190 180Z" fill="url(#g)" fill-opacity="0.210"/>
+<path d="M160 140L176 108L214 130Z" fill="url(#g)" fill-opacity="0.229"/>
+<path d="M160 140L190 180L214 130Z" fill="url(#g)" fill-opacity="0.164"/>
+<path d="M176 108L200 84L214 130Z" fill="url(#g)" fill-opacity="0.169"/>
+<path d="M200 84L232 70L252 104Z" fill="url(#g)" fill-opacity="0.174"/>
+<path d="M200 84L214 130L252 104Z" fill="url(#g)" fill-opacity="0.102"/>
+<path d="M232 70L264 74L252 104Z" fill="url(#g)" fill-opacity="0.106"/>
+<path d="M264 74L292 96L252 104Z" fill="url(#g)" fill-opacity="0.114"/>
+<path d="M292 96L310 130L270 146Z" fill="url(#g)" fill-opacity="0.163"/>
+<path d="M292 96L252 104L270 146Z" fill="url(#g)" fill-opacity="0.201"/>
+<path d="M310 130L316 170L270 146Z" fill="url(#g)" fill-opacity="0.169"/>
+<path d="M214 130L252 104L270 146Z" fill="url(#g)" fill-opacity="0.191"/>
+<path d="M182 236L190 180L232 214Z" fill="url(#g)" fill-opacity="0.253"/>
+<path d="M316 170L306 206L268 186Z" fill="url(#g)" fill-opacity="0.193"/>
+<path d="M316 170L270 146L268 186Z" fill="url(#g)" fill-opacity="0.301"/>
+<path d="M262 316L220 320L250 262Z" fill="url(#g)" fill-opacity="0.327"/>
+<path d="M220 320L196 286L250 262Z" fill="url(#g)" fill-opacity="0.278"/>
+<path d="M232 214L268 186L296 252Z" fill="url(#g)" fill-opacity="0.174"/>
+<path d="M306 206L268 186L296 252Z" fill="url(#g)" fill-opacity="0.232"/>
+<path d="M232 214L250 262L296 252Z" fill="url(#g)" fill-opacity="0.164"/>
+<path d="M306 206L340 190L330 230Z" fill="url(#g)" fill-opacity="0.184"/>
+<path d="M306 206L296 252L330 230Z" fill="url(#g)" fill-opacity="0.123"/>
+<path d="M340 190L390 178L372 220Z" fill="url(#g)" fill-opacity="0.198"/>
+<path d="M340 190L330 230L372 220Z" fill="url(#g)" fill-opacity="0.107"/>
+<path d="M390 178L436 186L414 220Z" fill="url(#g)" fill-opacity="0.134"/>
+<path d="M390 178L372 220L414 220Z" fill="url(#g)" fill-opacity="0.164"/>
+<path d="M470 208L472 252L446 236Z" fill="url(#g)" fill-opacity="0.138"/>
+<path d="M472 252L450 262L446 236Z" fill="url(#g)" fill-opacity="0.280"/>
+<path d="M436 186L470 208L446 236Z" fill="url(#g)" fill-opacity="0.098"/>
+<path d="M436 186L414 220L446 236Z" fill="url(#g)" fill-opacity="0.168"/>
+<path d="M450 262L414 220L446 236Z" fill="url(#g)" fill-opacity="0.335"/>
+<path d="M350 316L330 322L336 284Z" fill="url(#g)" fill-opacity="0.314"/>
+<path d="M296 252L330 230L336 284Z" fill="url(#g)" fill-opacity="0.195"/>
+<path d="M450 262L414 220L384 272Z" fill="url(#g)" fill-opacity="0.278"/>
+<path d="M372 220L414 220L384 272Z" fill="url(#g)" fill-opacity="0.151"/>
+<path d="M388 312L350 316L384 272Z" fill="url(#g)" fill-opacity="0.318"/>
+<path d="M350 316L336 284L384 272Z" fill="url(#g)" fill-opacity="0.292"/>
+<path d="M330 230L372 220L384 272Z" fill="url(#g)" fill-opacity="0.151"/>
+<path d="M330 230L336 284L384 272Z" fill="url(#g)" fill-opacity="0.160"/>
+<path d="M450 262L450 320L424 290Z" fill="url(#g)" fill-opacity="0.199"/>
+<path d="M450 320L414 320L424 290Z" fill="url(#g)" fill-opacity="0.299"/>
+<path d="M450 262L384 272L424 290Z" fill="url(#g)" fill-opacity="0.252"/>
+<path d="M414 320L388 312L424 290Z" fill="url(#g)" fill-opacity="0.280"/>
+<path d="M388 312L384 272L424 290Z" fill="url(#g)" fill-opacity="0.286"/>
+<path d="M292 322L262 316L290 296Z" fill="url(#g)" fill-opacity="0.324"/>
+<path d="M262 316L250 262L290 296Z" fill="url(#g)" fill-opacity="0.327"/>
+<path d="M250 262L296 252L290 296Z" fill="url(#g)" fill-opacity="0.182"/>
+<path d="M330 322L292 322L290 296Z" fill="url(#g)" fill-opacity="0.277"/>
+<path d="M330 322L336 284L290 296Z" fill="url(#g)" fill-opacity="0.306"/>
+<path d="M296 252L336 284L290 296Z" fill="url(#g)" fill-opacity="0.147"/>
+<path d="M196 286L182 236L204 252Z" fill="url(#g)" fill-opacity="0.267"/>
+<path d="M196 286L250 262L204 252Z" fill="url(#g)" fill-opacity="0.238"/>
+<path d="M182 236L232 214L204 252Z" fill="url(#g)" fill-opacity="0.157"/>
+<path d="M232 214L250 262L204 252Z" fill="url(#g)" fill-opacity="0.124"/>
+<path d="M190 180L214 130L232 162Z" fill="url(#g)" fill-opacity="0.212"/>
+<path d="M214 130L270 146L232 162Z" fill="url(#g)" fill-opacity="0.163"/>
+<path d="M270 146L268 186L232 162Z" fill="url(#g)" fill-opacity="0.161"/>
+<path d="M190 180L232 214L232 162Z" fill="url(#g)" fill-opacity="0.143"/>
+<path d="M232 214L268 186L232 162Z" fill="url(#g)" fill-opacity="0.266"/>
+<path d="M66 276L58 226L96 262Z" fill="url(#g)" fill-opacity="0.310"/>
+<path d="M96 192L40 138L110 178Z" fill="url(#g)" fill-opacity="0.282"/>
+<path d="M146 230L96 192L118 204Z" fill="url(#g)" fill-opacity="0.306"/>
+<path d="M96 192L110 178L118 204Z" fill="url(#g)" fill-opacity="0.184"/>
+<path d="M110 178L170 214L118 204Z" fill="url(#g)" fill-opacity="0.166"/>
+<path d="M146 230L170 214L118 204Z" fill="url(#g)" fill-opacity="0.330"/>
+</g>
+<g stroke="url(#g)" stroke-width="7.0" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<line x1="30" y1="300" x2="50" y2="310"/>
+<line x1="30" y1="300" x2="60" y2="280"/>
+<line x1="40" y1="138" x2="96" y2="192"/>
+<line x1="40" y1="138" x2="110" y2="178"/>
+<line x1="50" y1="310" x2="60" y2="280"/>
+<line x1="50" y1="310" x2="80" y2="320"/>
+<line x1="58" y1="226" x2="66" y2="276"/>
+<line x1="58" y1="226" x2="96" y2="262"/>
+<line x1="60" y1="280" x2="74" y2="268"/>
+<line x1="60" y1="280" x2="80" y2="320"/>
+<line x1="60" y1="280" x2="96" y2="290"/>
+<line x1="66" y1="276" x2="96" y2="262"/>
+<line x1="74" y1="268" x2="92" y2="258"/>
+<line x1="74" y1="268" x2="96" y2="290"/>
+<line x1="80" y1="320" x2="96" y2="290"/>
+<line x1="80" y1="320" x2="120" y2="328"/>
+<line x1="92" y1="258" x2="96" y2="290"/>
+<line x1="92" y1="258" x2="124" y2="244"/>
+<line x1="96" y1="192" x2="110" y2="178"/>
+<line x1="96" y1="192" x2="118" y2="204"/>
+<line x1="96" y1="192" x2="146" y2="230"/>
+<line x1="96" y1="290" x2="120" y2="328"/>
+<line x1="96" y1="290" x2="124" y2="244"/>
+<line x1="96" y1="290" x2="146" y2="292"/>
+<line x1="110" y1="178" x2="118" y2="204"/>
+<line x1="110" y1="178" x2="170" y2="214"/>
+<line x1="118" y1="204" x2="146" y2="230"/>
+<line x1="118" y1="204" x2="170" y2="214"/>
+<line x1="120" y1="328" x2="146" y2="292"/>
+<line x1="120" y1="328" x2="170" y2="328"/>
+<line x1="124" y1="244" x2="146" y2="292"/>
+<line x1="124" y1="244" x2="150" y2="226"/>
+<line x1="146" y1="230" x2="170" y2="214"/>
+<line x1="146" y1="292" x2="150" y2="226"/>
+<line x1="146" y1="292" x2="170" y2="328"/>
+<line x1="146" y1="292" x2="182" y2="236"/>
+<line x1="146" y1="292" x2="196" y2="286"/>
+<line x1="150" y1="180" x2="150" y2="226"/>
+<line x1="150" y1="180" x2="160" y2="140"/>
+<line x1="150" y1="180" x2="190" y2="180"/>
+<line x1="150" y1="226" x2="182" y2="236"/>
+<line x1="150" y1="226" x2="190" y2="180"/>
+<line x1="160" y1="140" x2="176" y2="108"/>
+<line x1="160" y1="140" x2="190" y2="180"/>
+<line x1="160" y1="140" x2="214" y2="130"/>
+<line x1="170" y1="328" x2="196" y2="286"/>
+<line x1="170" y1="328" x2="220" y2="320"/>
+<line x1="172" y1="82" x2="176" y2="108"/>
+<line x1="172" y1="82" x2="200" y2="84"/>
+<line x1="176" y1="108" x2="200" y2="84"/>
+<line x1="176" y1="108" x2="214" y2="130"/>
+<line x1="182" y1="236" x2="190" y2="180"/>
+<line x1="182" y1="236" x2="196" y2="286"/>
+<line x1="182" y1="236" x2="204" y2="252"/>
+<line x1="182" y1="236" x2="232" y2="214"/>
+<line x1="190" y1="180" x2="214" y2="130"/>
+<line x1="190" y1="180" x2="232" y2="162"/>
+<line x1="190" y1="180" x2="232" y2="214"/>
+<line x1="196" y1="286" x2="204" y2="252"/>
+<line x1="196" y1="286" x2="220" y2="320"/>
+<line x1="196" y1="286" x2="250" y2="262"/>
+<line x1="200" y1="84" x2="212" y2="60"/>
+<line x1="200" y1="84" x2="214" y2="130"/>
+<line x1="200" y1="84" x2="232" y2="70"/>
+<line x1="200" y1="84" x2="252" y2="104"/>
+<line x1="204" y1="252" x2="232" y2="214"/>
+<line x1="204" y1="252" x2="250" y2="262"/>
+<line x1="212" y1="60" x2="232" y2="70"/>
+<line x1="214" y1="130" x2="232" y2="162"/>
+<line x1="214" y1="130" x2="252" y2="104"/>
+<line x1="214" y1="130" x2="270" y2="146"/>
+<line x1="220" y1="320" x2="250" y2="262"/>
+<line x1="220" y1="320" x2="262" y2="316"/>
+<line x1="232" y1="70" x2="252" y2="104"/>
+<line x1="232" y1="70" x2="254" y2="52"/>
+<line x1="232" y1="70" x2="264" y2="74"/>
+<line x1="232" y1="162" x2="232" y2="214"/>
+<line x1="232" y1="162" x2="268" y2="186"/>
+<line x1="232" y1="162" x2="270" y2="146"/>
+<line x1="232" y1="214" x2="250" y2="262"/>
+<line x1="232" y1="214" x2="268" y2="186"/>
+<line x1="232" y1="214" x2="296" y2="252"/>
+<line x1="250" y1="262" x2="262" y2="316"/>
+<line x1="250" y1="262" x2="290" y2="296"/>
+<line x1="250" y1="262" x2="296" y2="252"/>
+<line x1="252" y1="104" x2="264" y2="74"/>
+<line x1="252" y1="104" x2="270" y2="146"/>
+<line x1="252" y1="104" x2="292" y2="96"/>
+<line x1="254" y1="52" x2="264" y2="74"/>
+<line x1="262" y1="316" x2="290" y2="296"/>
+<line x1="262" y1="316" x2="292" y2="322"/>
+<line x1="264" y1="74" x2="292" y2="96"/>
+<line x1="264" y1="74" x2="294" y2="66"/>
+<line x1="268" y1="186" x2="270" y2="146"/>
+<line x1="268" y1="186" x2="296" y2="252"/>
+<line x1="268" y1="186" x2="306" y2="206"/>
+<line x1="268" y1="186" x2="316" y2="170"/>
+<line x1="270" y1="146" x2="292" y2="96"/>
+<line x1="270" y1="146" x2="310" y2="130"/>
+<line x1="270" y1="146" x2="316" y2="170"/>
+<line x1="290" y1="296" x2="292" y2="322"/>
+<line x1="290" y1="296" x2="296" y2="252"/>
+<line x1="290" y1="296" x2="330" y2="322"/>
+<line x1="290" y1="296" x2="336" y2="284"/>
+<line x1="292" y1="96" x2="294" y2="66"/>
+<line x1="292" y1="96" x2="310" y2="130"/>
+<line x1="292" y1="96" x2="324" y2="102"/>
+<line x1="292" y1="322" x2="298" y2="380"/>
+<line x1="292" y1="322" x2="330" y2="322"/>
+<line x1="296" y1="252" x2="306" y2="206"/>
+<line x1="296" y1="252" x2="330" y2="230"/>
+<line x1="296" y1="252" x2="336" y2="284"/>
+<line x1="298" y1="380" x2="330" y2="322"/>
+<line x1="298" y1="380" x2="334" y2="378"/>
+<line x1="306" y1="206" x2="316" y2="170"/>
+<line x1="306" y1="206" x2="330" y2="230"/>
+<line x1="306" y1="206" x2="340" y2="190"/>
+<line x1="310" y1="130" x2="316" y2="170"/>
+<line x1="310" y1="130" x2="324" y2="102"/>
+<line x1="310" y1="130" x2="338" y2="148"/>
+<line x1="316" y1="170" x2="338" y2="148"/>
+<line x1="330" y1="230" x2="336" y2="284"/>
+<line x1="330" y1="230" x2="340" y2="190"/>
+<line x1="330" y1="230" x2="372" y2="220"/>
+<line x1="330" y1="230" x2="384" y2="272"/>
+<line x1="330" y1="322" x2="334" y2="378"/>
+<line x1="330" y1="322" x2="336" y2="284"/>
+<line x1="330" y1="322" x2="350" y2="316"/>
+<line x1="336" y1="284" x2="350" y2="316"/>
+<line x1="336" y1="284" x2="384" y2="272"/>
+<line x1="340" y1="190" x2="372" y2="220"/>
+<line x1="340" y1="190" x2="390" y2="178"/>
+<line x1="350" y1="316" x2="384" y2="272"/>
+<line x1="350" y1="316" x2="388" y2="312"/>
+<line x1="372" y1="220" x2="384" y2="272"/>
+<line x1="372" y1="220" x2="390" y2="178"/>
+<line x1="372" y1="220" x2="414" y2="220"/>
+<line x1="384" y1="272" x2="388" y2="312"/>
+<line x1="384" y1="272" x2="414" y2="220"/>
+<line x1="384" y1="272" x2="424" y2="290"/>
+<line x1="384" y1="272" x2="450" y2="262"/>
+<line x1="388" y1="312" x2="414" y2="320"/>
+<line x1="388" y1="312" x2="424" y2="290"/>
+<line x1="390" y1="178" x2="414" y2="220"/>
+<line x1="390" y1="178" x2="436" y2="186"/>
+<line x1="414" y1="220" x2="436" y2="186"/>
+<line x1="414" y1="220" x2="446" y2="236"/>
+<line x1="414" y1="220" x2="450" y2="262"/>
+<line x1="414" y1="320" x2="420" y2="378"/>
+<line x1="414" y1="320" x2="424" y2="290"/>
+<line x1="414" y1="320" x2="450" y2="320"/>
+<line x1="420" y1="378" x2="450" y2="320"/>
+<line x1="420" y1="378" x2="456" y2="376"/>
+<line x1="424" y1="290" x2="450" y2="262"/>
+<line x1="424" y1="290" x2="450" y2="320"/>
+<line x1="436" y1="186" x2="446" y2="236"/>
+<line x1="436" y1="186" x2="470" y2="208"/>
+<line x1="446" y1="236" x2="450" y2="262"/>
+<line x1="446" y1="236" x2="470" y2="208"/>
+<line x1="446" y1="236" x2="472" y2="252"/>
+<line x1="450" y1="262" x2="450" y2="320"/>
+<line x1="450" y1="262" x2="472" y2="252"/>
+<line x1="450" y1="320" x2="456" y2="376"/>
+<line x1="470" y1="208" x2="472" y2="252"/>
+<line x1="470" y1="208" x2="510" y2="250"/>
+<line x1="472" y1="252" x2="510" y2="250"/>
+</g>
+<circle cx="130" cy="262" r="9" fill="#0b1120" stroke="#e0f2fe" stroke-width="3"/>
+</g></svg>

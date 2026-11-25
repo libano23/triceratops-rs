@@ -1,3 +1,6 @@
+// Release builds on Windows are GUI apps: no console window behind the main one.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod file_dialog;
 mod camera;
@@ -149,7 +152,13 @@ impl ApplicationHandler for Runner {
         if self.window.is_some() {
             return;
         }
-        let attrs = Window::default_attributes().with_title("Untitled - Triceratops").with_inner_size(winit::dpi::LogicalSize::new(1680.0, 1020.0));
+        let attrs = Window::default_attributes()
+            .with_title("Untitled - Triceratops")
+            .with_inner_size(winit::dpi::LogicalSize::new(1680.0, 1020.0))
+            .with_window_icon(window_icon());
+        // Wayland compositors match the window to triceratops.desktop by app id.
+        #[cfg(target_os = "linux")]
+        let attrs = winit::platform::wayland::WindowAttributesExtWayland::with_name(attrs, "triceratops", "triceratops");
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let backend = std::env::var("TRICERATOPS_BACKEND").unwrap_or_else(|_| self.app.backend.clone());
         let mut renderer = Renderer::new(window.clone(), &backend).expect("init renderer");
@@ -195,4 +204,12 @@ fn main() -> anyhow::Result<()> {
     let mut runner = Runner::new();
     event_loop.run_app(&mut runner)?;
     Ok(())
+}
+
+/// The application icon shown by X11 window managers and the Windows taskbar.
+fn window_icon() -> Option<winit::window::Icon> {
+    let png = include_bytes!("../../../packaging/linux/triceratops.png");
+    let rgba = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.into_rgba8();
+    let (w, h) = rgba.dimensions();
+    winit::window::Icon::from_rgba(rgba.into_raw(), w, h).ok()
 }

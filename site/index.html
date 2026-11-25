@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triceratops — NURBS 3D modeller</title>
+<meta name="description" content="Triceratops is a free, open-source NURBS 3D modeller written in Rust for Linux, Windows and macOS: exact curves, surfaces and B-rep solids, native .3dm files and Locust, a node-based visual programming editor.">
+<meta name="theme-color" content="#0b1120">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Triceratops — NURBS 3D modeller">
+<meta property="og:description" content="Free, open-source NURBS modelling in Rust for Linux, Windows and macOS.">
+<meta property="og:image" content="https://libano23.github.io/triceratops-rs/assets/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b1120;
+  --bg-2: #0f172a;
+  --surface: #111a2e;
+  --surface-2: #16213a;
+  --border: #22304d;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --teal: #5eead4;
+  --sky: #38bdf8;
+  --violet: #a78bfa;
+  --grad: linear-gradient(120deg, var(--teal), var(--sky) 55%, var(--violet));
+  --radius: 14px;
+  --shadow: 0 30px 80px -20px rgba(0, 0, 0, .65);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.wrap { width: min(1160px, 100% - 32px); margin-inline: auto; }
+.grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* nav */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(11, 17, 32, .75);
+  border-bottom: 1px solid rgba(34, 48, 77, .6);
+}
+nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 18px; }
+.brand:hover { text-decoration: none; }
+.brand img { width: 40px; height: 40px; }
+nav .links { display: flex; gap: 22px; margin-left: auto; font-size: 15px; }
+nav .links a { color: var(--muted); }
+nav .links a:hover { color: var(--text); text-decoration: none; }
+@media (max-width: 720px) { nav .links a:not(.gh) { display: none; } }
+
+/* buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 22px; border-radius: 10px; font-weight: 600; font-size: 16px;
+  border: 1px solid var(--border); color: var(--text); background: var(--surface);
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.btn:hover { text-decoration: none; transform: translateY(-1px); border-color: #35507e; }
+.btn.primary { background: var(--grad); color: #04111f; border: none; box-shadow: 0 10px 30px -10px rgba(56, 189, 248, .6); }
+.btn svg { width: 20px; height: 20px; flex: none; }
+
+/* hero */
+header.hero { position: relative; overflow: hidden; padding: 72px 0 40px; }
+.hero::before {
+  content: ""; position: absolute; inset: -20% -10% auto; height: 760px; z-index: -1;
+  background:
+    radial-gradient(600px 340px at 20% 20%, rgba(94, 234, 212, .16), transparent 70%),
+    radial-gradient(600px 380px at 80% 10%, rgba(167, 139, 250, .18), transparent 70%),
+    radial-gradient(800px 400px at 50% 60%, rgba(56, 189, 248, .10), transparent 70%);
+}
+.hero-mesh { position: absolute; right: -120px; top: 10px; width: 640px; opacity: .08; z-index: -1; pointer-events: none; }
+.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } .hero-mesh { display: none; } }
+.eyebrow {
+  display: inline-flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  color: var(--teal); background: rgba(94, 234, 212, .08); border: 1px solid rgba(94, 234, 212, .25);
+  padding: 5px 12px; border-radius: 999px; text-transform: uppercase;
+}
+h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.05; letter-spacing: -.03em; margin: 18px 0 18px; font-weight: 800; }
+.lede { font-size: 19px; color: var(--muted); max-width: 560px; margin: 0 0 30px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.cta-note { color: var(--muted); font-size: 14px; margin-top: 14px; }
+.hero-logo { width: min(420px, 90%); margin-inline: auto; filter: drop-shadow(0 20px 60px rgba(56, 189, 248, .25)); }
+@media (prefers-reduced-motion: no-preference) {
+  .hero-logo { animation: float 7s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-10px); } }
+}
+
+/* window frame for screenshots */
+.frame {
+  border-radius: var(--radius); overflow: hidden; background: #1b1b1b;
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.frame .bar { display: flex; gap: 7px; padding: 10px 14px; background: #202634; border-bottom: 1px solid #2a3550; }
+.frame .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a4663; }
+.frame .bar i:nth-child(1) { background: #f87171; } .frame .bar i:nth-child(2) { background: #fbbf24; } .frame .bar i:nth-child(3) { background: #34d399; }
+.showcase { margin-top: 56px; }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 56px 0 0; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; }
+.stat b { display: block; font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+.stat span { color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* sections */
+section { padding: 96px 0 0; }
+.kicker { color: var(--teal); font-weight: 600; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.02em; line-height: 1.12; margin: 8px 0 14px; }
+.sub { color: var(--muted); font-size: 18px; max-width: 680px; margin: 0 0 40px; }
+
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+.card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;
+  transition: border-color .2s ease, transform .2s ease;
+}
+.card:hover { border-color: #35507e; transform: translateY(-2px); }
+.card .ico {
+  width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 14px;
+  background: rgba(56, 189, 248, .1); border: 1px solid rgba(56, 189, 248, .25); color: var(--sky);
+}
+.card .ico svg { width: 22px; height: 22px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* gallery */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.tab {
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+}
+.tab[aria-selected="true"] { color: #04111f; background: var(--grad); border-color: transparent; }
+.gallery-caption { color: var(--muted); font-size: 15px; margin-top: 14px; min-height: 48px; }
+
+/* locust */
+.split { display: grid; grid-template-columns: .9fr 1.1fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.checks { list-style: none; padding: 0; margin: 0 0 26px; display: grid; gap: 12px; }
+.checks li { display: flex; gap: 12px; color: var(--muted); }
+.checks li::before {
+  content: ""; flex: none; width: 20px; height: 20px; margin-top: 3px; border-radius: 6px;
+  background: var(--grad); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.5l3.2 3.2L15 7' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.5l3.2 3.2L15 7' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+.checks b { color: var(--text); font-weight: 600; }
+
+/* downloads */
+.downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 900px) { .downloads { grid-template-columns: 1fr; } }
+.dl { display: flex; flex-direction: column; gap: 14px; }
+.dl.detected { border-color: rgba(94, 234, 212, .6); box-shadow: 0 0 0 1px rgba(94, 234, 212, .25), 0 20px 50px -25px rgba(94, 234, 212, .5); }
+.dl header { display: flex; align-items: center; gap: 12px; }
+.dl header svg { width: 32px; height: 32px; color: var(--text); }
+.dl h3 { margin: 0; }
+.dl .meta { color: var(--muted); font-size: 14px; }
+.dl ol { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+.dl ol code { font-size: 12.5px; background: var(--bg-2); padding: 2px 6px; border-radius: 6px; color: var(--text); }
+.dl .btn { justify-content: center; margin-top: auto; }
+.badge { font-size: 12px; font-weight: 700; color: var(--teal); text-transform: uppercase; letter-spacing: .05em; margin-left: auto; }
+.release-line { color: var(--muted); font-size: 14px; margin-top: 18px; }
+
+pre {
+  background: #0a0f1c; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 22px; overflow-x: auto; font-size: 14px; line-height: 1.7; color: #cbd5e1; margin: 0;
+}
+pre .c { color: #64748b; }
+
+footer { margin-top: 110px; border-top: 1px solid var(--border); padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 18px; justify-content: space-between; align-items: center; }
+footer .brand { font-size: 16px; }
+footer .brand img { width: 30px; height: 30px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/logo.svg" alt="">Triceratops</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#locust">Locust</a>
+      <a href="#download">Download</a>
+      <a class="gh" href="https://github.com/libano23/triceratops-rs">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <img class="hero-mesh" src="assets/logo.svg" alt="" aria-hidden="true">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow">Free &amp; open source · MIT</span>
+        <h1>NURBS modelling,<br><span class="grad-text">built in Rust.</span></h1>
+        <p class="lede">Triceratops is a precise 3D modeller for designers and engineers: exact curves, surfaces and solids, a fast command line, native <code>.3dm</code> files, and Locust, a node editor for algorithmic design.</p>
+        <div class="cta">
+          <a class="btn primary" id="hero-download" href="#download">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+            <span>Download</span>
+          </a>
+          <a class="btn" href="https://github.com/libano23/triceratops-rs">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+            <span>View source</span>
+          </a>
+        </div>
+        <p class="cta-note" id="hero-note">Linux · Windows · macOS</p>
+      </div>
+      <img class="hero-logo" src="assets/logo.svg" alt="Triceratops logo: a low-poly wireframe triceratops">
+    </div>
+
+    <div class="showcase frame">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <img src="assets/screenshots/hero.webp" width="1680" height="1020" alt="Triceratops main window: a machined block with Boolean holes, a revolved vase, a torus and a sphere in a shaded perspective viewport">
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b class="grad-text">1,070+</b><span>commands</span></div>
+      <div class="stat"><b class="grad-text">30+</b><span>file formats</span></div>
+      <div class="stat"><b class="grad-text">Exact</b><span>NURBS Booleans</span></div>
+      <div class="stat"><b class="grad-text">3</b><span>platforms, one codebase</span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="features">
+  <div class="wrap">
+    <div class="kicker">Features</div>
+    <h2>A complete modeller, from first curve to finished solid.</h2>
+    <p class="sub">Triceratops follows the interaction model of professional NURBS CAD tools, so you can type a command, click its options and keep working.</p>
+    <div class="features">
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18c4-10 8-12 18-12"/><circle cx="3" cy="18" r="1.6" fill="currentColor"/><circle cx="10" cy="8" r="1.6" fill="currentColor"/><circle cx="21" cy="6" r="1.6" fill="currentColor"/></svg></div>
+        <h3>Curves and surfaces</h3>
+        <p>Lines, arcs, interpolated and control-point curves; extrude, revolve, loft, sweep, network, edge and blend surfaces.</p>
+      </article>
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 22V12m0 0l9-5m-9 5L3 7"/></svg></div>
+        <h3>Exact solids</h3>
+        <p>Booleans that keep the original NURBS surfaces and only add trim curves, plus closed polysurfaces, SubD-style meshes and meshes.</p>
+      </article>
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6 4 4 6-6"/><path d="M14 9h6v6"/></svg></div>
+        <h3>Precise kernel</h3>
+        <p>Exact surface/surface intersections, projection of curves onto any surface, and trimming or splitting by any number of curves.</p>
+      </article>
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15l3 3-3 3"/></svg></div>
+        <h3>Command line first</h3>
+        <p>Prompts with clickable options, object snaps, SmartTrack, a gumball and four synchronised viewports. Enter repeats the last command.</p>
+      </article>
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></div>
+        <h3>Opens your files</h3>
+        <p>Native <code>.3dm</code> through openNURBS, plus STEP, IGES, DXF/DWG, OBJ, STL, glTF, 3MF, SVG, PDF and many more.</p>
+      </article>
+      <article class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></div>
+        <h3>Your workspace</h3>
+        <p>Dockable panels, tear-off toolbars, light, dark and Blender-style themes, and layouts that are saved between sessions.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="gallery">
+  <div class="wrap">
+    <div class="kicker">Gallery</div>
+    <h2>See it at work.</h2>
+    <p class="sub">Every screenshot on this page is a real Triceratops window, generated from a command script.</p>
+    <div class="tabs" role="tablist" aria-label="Screenshots">
+      <button class="tab" role="tab" aria-selected="true" data-shot="fourview">Four viewports</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="ghosted">Display modes</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="surfaces">Free-form surfaces</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="hero">Solids</button>
+    </div>
+    <div class="frame">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <img id="gallery-img" src="assets/screenshots/fourview.webp" width="1680" height="1020" alt="">
+    </div>
+    <p class="gallery-caption" id="gallery-caption" aria-live="polite"></p>
+  </div>
+</section>
+
+<section id="locust">
+  <div class="wrap split">
+    <div>
+      <div class="kicker">Locust</div>
+      <h2>Design with <span class="grad-text">nodes</span>, not just clicks.</h2>
+      <p class="sub">Locust is a built-in visual programming editor. Wire components together, drag a slider, and the model in the viewport updates as you go.</p>
+      <ul class="checks">
+        <li><span><b>200+ components</b>: numbers, vectors, curves, surfaces, solids, meshes, transforms, lists and data trees.</span></li>
+        <li><span><b>Live preview</b>: results are drawn in the viewport while you edit, and Bake turns them into regular objects.</span></li>
+        <li><span><b>Real geometry</b>: nodes run on the same NURBS kernel as the modelling commands.</span></li>
+        <li><span><b>Organised graphs</b>: groups, comments, clusters, undo and redo; the canvas is kept between sessions.</span></li>
+      </ul>
+      <p class="cta-note">Type <code>Locust</code> in the command line to open it. A worked example loads on the first run.</p>
+    </div>
+    <div class="frame">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <img src="assets/screenshots/locust.webp" width="1680" height="1020" alt="The Locust node editor: sliders for floors, floor height, radius, sides, twist and taper drive a lofted, twisted tower previewed in the viewport">
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="kicker">Download</div>
+    <h2>Get Triceratops.</h2>
+    <p class="sub">Free for everyone, released under the MIT license. Pick your system:</p>
+    <div class="downloads">
+      <article class="card dl" data-os="linux">
+        <header>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 2c-2.3 0-3.6 1.9-3.6 4.4 0 1.3.3 2.2.1 3.1-.3 1.2-1.9 2.7-2.9 4.6-.8 1.6-1 3.2-.5 4.3-.6.4-1.6.6-1.9 1.3-.3.9.6 1.6 2 2 1.5.5 2.4 1 3.3.4.6-.4.9-1 1.7-1h2.6c.8 0 1.1.6 1.7 1 .9.6 1.8.1 3.3-.4 1.4-.4 2.3-1.1 2-2-.3-.7-1.3-.9-1.9-1.3.5-1.1.3-2.7-.5-4.3-1-1.9-2.6-3.4-2.9-4.6-.2-.9.1-1.8.1-3.1C16.4 3.9 14.8 2 12.5 2zm-1.3 4.2c.4 0 .7.5.7 1.1s-.3 1.1-.7 1.1-.7-.5-.7-1.1.3-1.1.7-1.1zm2.7 0c.4 0 .7.5.7 1.1s-.3 1.1-.7 1.1-.7-.5-.7-1.1.3-1.1.7-1.1zm-1.4 3c.9 0 2 .6 2 1s-1.1 1.2-2 1.2-2-.8-2-1.2 1.1-1 2-1z"/></svg>
+          <div><h3>Linux</h3><div class="meta">AppImage · x86_64 · glibc 2.35+</div></div>
+          <span class="badge" hidden>Your system</span>
+        </header>
+        <ol>
+          <li>Download the AppImage.</li>
+          <li>Make it executable: <code>chmod +x Triceratops-*.AppImage</code></li>
+          <li>Run it. No installation needed.</li>
+        </ol>
+        <a class="btn primary" data-asset="AppImage" href="https://github.com/libano23/triceratops-rs/releases/latest">Download for Linux</a>
+      </article>
+      <article class="card dl" data-os="windows">
+        <header>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5l7.5-1v7H3zm8.5-1.2L21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zm8.5 0H21V21l-9.5-1.3z"/></svg>
+          <div><h3>Windows</h3><div class="meta">Zip · x64 · Windows 10 and 11</div></div>
+          <span class="badge" hidden>Your system</span>
+        </header>
+        <ol>
+          <li>Download and unzip the archive.</li>
+          <li>Run <code>triceratops.exe</code>.</li>
+          <li>If SmartScreen warns about an unknown publisher, choose <em>More info › Run anyway</em>.</li>
+        </ol>
+        <a class="btn primary" data-asset="windows-x64.zip" href="https://github.com/libano23/triceratops-rs/releases/latest">Download for Windows</a>
+      </article>
+      <article class="card dl" data-os="mac">
+        <header>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.7-1-2.7-4.1zM13.9 5c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5z"/></svg>
+          <div><h3>macOS</h3><div class="meta">Disk image · Apple Silicon and Intel · macOS 11+</div></div>
+          <span class="badge" hidden>Your system</span>
+        </header>
+        <ol>
+          <li>Open the disk image and drag Triceratops to Applications.</li>
+          <li>The first time, right-click the app and choose <em>Open</em>: the build is not notarized by Apple.</li>
+        </ol>
+        <a class="btn primary" data-asset=".dmg" href="https://github.com/libano23/triceratops-rs/releases/latest">Download for macOS</a>
+      </article>
+    </div>
+    <p class="release-line" id="release-line">All files are on the <a href="https://github.com/libano23/triceratops-rs/releases">releases page</a>.</p>
+  </div>
+</section>
+
+<section id="source">
+  <div class="wrap split">
+    <div>
+      <div class="kicker">Build from source</div>
+      <h2>Hackable all the way down.</h2>
+      <p class="sub">The NURBS kernel, the document model and the application are separate Rust crates. Bug reports and pull requests are welcome.</p>
+      <a class="btn" href="https://github.com/libano23/triceratops-rs#build-and-run">Read the build guide</a>
+    </div>
+<pre><span class="c"># Rust, CMake and a C++ compiler are required</span>
+git clone https://github.com/libano23/triceratops-rs
+cd triceratops-rs
+cargo run --release
+
+<span class="c"># open a model, or run a command script</span>
+cargo run --release -- model.3dm
+cargo run --release -- --script commands.txt</pre>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/logo.svg" alt="">Triceratops</a>
+    <span>MIT licensed · openNURBS is distributed under its own license.</span>
+    <a href="https://github.com/libano23/triceratops-rs">github.com/libano23/triceratops-rs</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Gallery tabs
+  var captions = {
+    fourview: "The classic four-viewport workspace: Top, Front and Right in wireframe, Perspective shaded.",
+    ghosted: "Ghosted display shows hidden edges and the inside of Boolean cuts. Wireframe, Shaded, Rendered, X-Ray, Technical, Arctic, Pen and analysis modes such as Zebra and Curvature are one click away.",
+    surfaces: "A free-form surface through four edge curves, with its control points on, in the Triceratops Light theme.",
+    hero: "Solids built with Box, Cylinder, Sphere and BooleanDifference, a revolved vase and a torus."
+  };
+  var alts = {
+    fourview: "Four viewports showing the same model from the top, front, right and in perspective",
+    ghosted: "The model in Ghosted display mode, with translucent surfaces",
+    surfaces: "A wavy NURBS surface with its control points, in the light theme",
+    hero: "Shaded solids in the perspective viewport"
+  };
+  var img = document.getElementById("gallery-img");
+  var cap = document.getElementById("gallery-caption");
+  var tabs = document.querySelectorAll(".tab");
+  function show(name) {
+    img.src = "assets/screenshots/" + name + ".webp";
+    img.alt = alts[name];
+    cap.textContent = captions[name];
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", String(t.dataset.shot === name)); });
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function () { show(t.dataset.shot); }); });
+  show("fourview");
+  ["ghosted", "surfaces", "hero"].forEach(function (n) { new Image().src = "assets/screenshots/" + n + ".webp"; });
+
+  // Detect the visitor's OS and point the hero button at the right download
+  var ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+  ua = ua.toLowerCase();
+  var os = /win/.test(ua) ? "windows" : /mac|iphone|ipad/.test(ua) ? "mac" : /linux|x11/.test(ua) && !/android/.test(ua) ? "linux" : null;
+  var names = { linux: "Linux", windows: "Windows", mac: "macOS" };
+  var heroBtn = document.getElementById("hero-download");
+  if (os) {
+    var card = document.querySelector('.dl[data-os="' + os + '"]');
+    card.classList.add("detected");
+    card.querySelector(".badge").hidden = false;
+    heroBtn.querySelector("span").textContent = "Download for " + names[os];
+  }
+
+  // Fill in direct links from the latest GitHub release
+  fetch("https://api.github.com/repos/libano23/triceratops-rs/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (rel) {
+      var assets = rel.assets || [];
+      document.querySelectorAll("[data-asset]").forEach(function (a) {
+        var hit = assets.find(function (x) { return x.name.indexOf(a.dataset.asset) !== -1; });
+        if (hit) { a.href = hit.browser_download_url; }
+      });
+      if (os) {
+        var mine = document.querySelector('.dl[data-os="' + os + '"] [data-asset]');
+        if (mine && mine.href.indexOf("/releases/latest") === -1) { heroBtn.href = mine.href; }
+      }
+      var date = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
+      document.getElementById("release-line").innerHTML =
+        'Latest release: <a href="' + rel.html_url + '">' + (rel.name || rel.tag_name).replace(/</g, "&lt;") + "</a>" +
+        (date ? " · " + date : "") + ' · <a href="https://github.com/libano23/triceratops-rs/releases">all releases</a>';
+      document.getElementById("hero-note").textContent = (rel.tag_name || "") + " · Linux · Windows · macOS";
+    })
+    .catch(function () { /* keep the links to the releases page */ });
+})();
+</script>
+</body>
+</html>

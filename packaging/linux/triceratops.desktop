@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Triceratops
+Comment=NURBS 3D modeler
+Exec=triceratops %F
+Icon=triceratops
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+MimeType=application/x-3dm;

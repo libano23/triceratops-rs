@@ -159,6 +159,15 @@ pub const UNITS_METERS: i32 = 4;
 pub const UNITS_INCHES: i32 = 8;
 pub const UNITS_FEET: i32 = 9;
 
+/// openNURBS keeps global state (runtime serial numbers, the class registry, shared
+/// archive tables) that is not safe to use from several threads at once: two files read
+/// in parallel can lose objects. Every entry point holds this lock.
+static OPENNURBS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn opennurbs_lock() -> std::sync::MutexGuard<'static, ()> {
+    OPENNURBS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn rgb(v: u32) -> [u8; 3] {
     [((v >> 16) & 255) as u8, ((v >> 8) & 255) as u8, (v & 255) as u8]
 }
@@ -212,6 +221,7 @@ unsafe fn read_surface(rational: c_int, ou: c_int, ov: c_int, cu: c_int, cvv: c_
 /// Read a `.3dm` file.
 pub fn read(path: &Path) -> Result<Model, Error> {
     let cpath = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| Error::Path)?;
+    let _lock = opennurbs_lock();
     unsafe {
         let h = on3dm_open(cpath.as_ptr());
         if h.is_null() {
@@ -363,6 +373,7 @@ fn is_rational(weights: &[f64]) -> bool {
 /// Write a model to a `.3dm` file (Triceratops 7/8 archive). Returns the number of objects written.
 pub fn write(model: &Model, path: &Path) -> Result<usize, Error> {
     let cpath = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| Error::Path)?;
+    let _lock = opennurbs_lock();
     unsafe {
         let h = on3dm_new();
         on3dm_set_units(h, model.unit_system, model.absolute_tolerance);
@@ -455,6 +466,7 @@ extern "C" {
 #[doc(hidden)]
 pub fn write_test_extrusion(path: &Path, radius: f64, height: f64) -> bool {
     let Ok(cpath) = CString::new(path.to_string_lossy().as_bytes()) else { return false };
+    let _lock = opennurbs_lock();
     unsafe {
         let h = on3dm_new();
         let ok = on3dm_add_test_extrusion(h, radius, height) == 1 && on3dm_write(h, cpath.as_ptr(), 0) == 1;
