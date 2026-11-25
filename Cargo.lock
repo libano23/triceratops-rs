@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "on3dm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cc",
  "cmake",
@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "tri-doc"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "cadcraft-color",
@@ -3418,7 +3418,7 @@ dependencies = [
 
 [[package]]
 name = "tri-geom"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "earcutr",
  "glam",
@@ -3428,7 +3428,7 @@ dependencies = [
 
 [[package]]
 name = "triceratops"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "bytemuck",
