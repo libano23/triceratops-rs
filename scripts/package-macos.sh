@@ -50,5 +50,8 @@ codesign --force --deep --options runtime --sign "${MACOS_SIGN_IDENTITY:--}" "$A
 DMG="$DIST/Triceratops-$VERSION-macos-$suffix.dmg"
 rm -f "$DMG"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname Triceratops -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+# hdiutil's own size estimate is sometimes too small ("No space left on
+# device"), so give it the payload size plus a margin.
+size_mb=$(( $(du -sm "$STAGE" | cut -f1) + 32 ))
+hdiutil create -volname Triceratops -srcfolder "$STAGE" -fs HFS+ -size "${size_mb}m" -ov -format UDZO "$DMG"
 echo "built $DMG"

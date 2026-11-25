@@ -74,6 +74,7 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=gdi32");
             println!("cargo:rustc-link-lib=dylib=advapi32");
             println!("cargo:rustc-link-lib=dylib=dwrite");
+            println!("cargo:rustc-link-lib=dylib=shell32");
             if !msvc {
                 println!("cargo:rustc-link-lib=dylib=stdc++");
             }
