@@ -1,6 +1,8 @@
 name: Website
 
 # Publishes site/ (without the screenshot tooling) to GitHub Pages.
+# Two jobs, as in GitHub's own template: the deploy job only starts once the
+# build job has finished, so the uploaded artifact is visible to it.
 on:
   push:
     branches: [master]
@@ -18,11 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Assemble the site
@@ -34,5 +33,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
