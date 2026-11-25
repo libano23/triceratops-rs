@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # start the Website workflow after a release
 
 concurrency:
   group: build-${{ github.ref }}
@@ -78,3 +79,9 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+      # A release made with GITHUB_TOKEN does not trigger other workflows by
+      # itself; a manual dispatch does, so the website picks up the new files.
+      - name: Update the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref master

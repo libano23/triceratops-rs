@@ -438,6 +438,9 @@ cargo run --release -- --script commands.txt</pre>
     card.classList.add("detected");
     card.querySelector(".badge").hidden = false;
     heroBtn.querySelector("span").textContent = "Download for " + names[os];
+    // the build already wrote the latest release's files into the page
+    var stamped = card.querySelector("[data-asset]");
+    if (stamped && stamped.href.indexOf("/releases/latest") === -1) { heroBtn.href = stamped.href; }
   }
 
   // Fill in direct links from the latest GitHub release

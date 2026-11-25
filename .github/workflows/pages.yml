@@ -1,6 +1,8 @@
 name: Website
 
-# Publishes site/ (without the screenshot tooling) to GitHub Pages.
+# Publishes site/ (without the screenshot tooling) to GitHub Pages, with the
+# latest release's download links written into the page. The Build workflow
+# runs this again after each release.
 # Two jobs, as in GitHub's own template: the deploy job only starts once the
 # build job has finished, so the uploaded artifact is visible to it.
 on:
@@ -29,6 +31,10 @@ jobs:
           mkdir _site
           cp -r site/index.html site/assets _site/
           touch _site/.nojekyll
+      - name: Write the latest release into the page
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 site/tools/stamp_release.py _site/index.html "$GITHUB_REPOSITORY"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
