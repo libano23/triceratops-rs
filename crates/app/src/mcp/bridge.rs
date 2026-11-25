@@ -30,13 +30,14 @@ discover more by what they do.\n\
 - Then answer its prompts in order: points as x,y,z (document units, usually millimetres), numbers, option names, \
 or objects as #id, #id1,#id2 or last (the objects the last command made). #id@x,y,z picks an object at a point. \
 Every command you start begins with nothing selected, so always name the objects it works on.\n\
-- An empty string \"\" presses Enter: it finishes point lists (Polyline, InterpCrv) and accepts defaults.\n\
+- An empty string \"\" presses Enter: it finishes point lists (Polyline, InterpCrv) and accepts defaults. \
+\"_Cancel\" presses Esc: it abandons the command that is waiting.\n\
 - The reply lists the log, the ids added, changed and deleted, and the prompt still waiting, if any. A waiting \
-prompt means the command wants more input: continue it with another run_commands call.\n\
+prompt means the command wants more input: continue it with another run_commands call, or send \"_Cancel\".\n\
 \n\
 Check your work with list_objects, object_info (volume, area) and capture_view, which returns an image of a \
 viewport (Perspective, Top, Front, Right). Commands that need a file (Open, Save, Export) are not available. \
-If the user is typing a command, requests are refused until they finish.";
+If the user is typing or running a command of their own, requests are refused: wait and try again.";
 
 /// Which window to talk to.
 pub enum Target {
@@ -51,6 +52,9 @@ pub enum Target {
 pub struct Bridge {
     target: Arc<Target>,
     conn: Arc<Mutex<Option<Client>>>,
+    /// A window has answered in this session: once it is gone (closed, or assistants
+    /// switched off), never start another one on our own.
+    connected_once: Arc<std::sync::atomic::AtomicBool>,
     #[allow(dead_code)] // read by the code #[tool_handler] generates
     tool_router: ToolRouter<Self>,
 }
@@ -106,18 +110,33 @@ pub struct StepsParams {
 
 impl Bridge {
     pub fn new(target: Target) -> Self {
-        Self { target: Arc::new(target), conn: Arc::new(Mutex::new(None)), tool_router: Self::tool_router() }
+        Self { target: Arc::new(target), conn: Arc::new(Mutex::new(None)), connected_once: Default::default(), tool_router: Self::tool_router() }
     }
 
     fn connect(&self) -> Result<Client, String> {
         match &*self.target {
             Target::Socket(name) => Client::connect(name).map_err(|e| format!("cannot reach Triceratops at {name}: {e}")),
-            Target::Discover { dir, launch } => {
-                if let Some(c) = live_sockets_in(dir).iter().find_map(|n| Client::connect(n).ok()) {
-                    return Ok(c);
+            Target::Discover { dir, launch: exe } => {
+                let live = live_sockets_in(dir);
+                if !live.is_empty() {
+                    // a window is there: use it, or say why not (another version, busy),
+                    // but never start a second one beside it
+                    let mut first_error = None;
+                    for name in &live {
+                        match Client::connect(name) {
+                            Ok(c) => return Ok(c),
+                            Err(e) => {
+                                first_error.get_or_insert(e.to_string());
+                            }
+                        }
+                    }
+                    return Err(format!("Triceratops is running but cannot be used: {}", first_error.unwrap_or_default()));
                 }
-                let Some(exe) = launch else { return Err("Triceratops is not running; start it and try again".into()) };
-                std::process::Command::new(exe).spawn().map_err(|e| format!("cannot start Triceratops ({}): {e}", exe.display()))?;
+                if self.connected_once.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("Triceratops is not running any more (it was closed, or AI assistants were switched off in Options); start it again to continue".into());
+                }
+                let Some(exe) = exe else { return Err("Triceratops is not running; start it and try again".into()) };
+                launch(exe).map_err(|e| format!("cannot start Triceratops ({}): {e}", exe.display()))?;
                 let deadline = Instant::now() + LAUNCH_TIMEOUT;
                 while Instant::now() < deadline {
                     std::thread::sleep(Duration::from_millis(250));
@@ -135,6 +154,7 @@ impl Bridge {
         let mut conn = self.conn.lock().map_err(|_| "internal error: connection lock poisoned".to_string())?;
         if conn.is_none() {
             *conn = Some(self.connect()?);
+            self.connected_once.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         let result = conn.as_mut().map(|c| c.call(method, params, CALL_TIMEOUT)).unwrap_or_else(|| Err("not connected".into()));
         if matches!(&result, Err(e) if e == "Triceratops was closed") {
@@ -219,7 +239,7 @@ impl ServerHandler for Bridge {
 pub fn run() -> anyhow::Result<()> {
     let target = match std::env::var("TRICERATOPS_SOCKET") {
         Ok(name) if !name.is_empty() => Target::Socket(name),
-        _ => Target::Discover { dir: socket_dir(), launch: std::env::current_exe().ok() },
+        _ => Target::Discover { dir: socket_dir(), launch: std::env::current_exe().ok().map(|exe| launch_path(exe, std::env::var_os("APPIMAGE"))) },
     };
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     runtime.block_on(async move {
@@ -227,6 +247,35 @@ pub fn run() -> anyhow::Result<()> {
         service.waiting().await?;
         anyhow::Ok(())
     })
+}
+
+/// The program to start for a new window. Inside an AppImage, `current_exe` lies in a
+/// mount that disappears when the bridge exits, so start the AppImage itself.
+fn launch_path(exe: PathBuf, appimage: Option<std::ffi::OsString>) -> PathBuf {
+    match appimage {
+        Some(a) if !a.is_empty() => PathBuf::from(a),
+        _ => exe,
+    }
+}
+
+/// Start a window that outlives the bridge: no shared stdio (the MCP pipes stay ours) and
+/// its own process group, so the assistant client closing does not take it down.
+fn launch(exe: &std::path::Path) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new(exe);
+    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    cmd.spawn().map(|_| ())
 }
 
 #[cfg(test)]
@@ -323,5 +372,42 @@ mod tests {
         let r = b.get_state().await.unwrap();
         assert_eq!(r.is_error, Some(true));
         assert!(text(&r).contains("Triceratops is not running"), "{}", text(&r));
+    }
+
+    /// Review: a window that refuses (version mismatch) made the bridge start another one.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn refusing_window_is_reported_not_replaced() {
+        let dir = temp_dir("mismatch");
+        let _l = crate::mcp::socket::Listener::start_in(&dir, |req: crate::mcp::protocol::Request, tx: std::sync::mpsc::Sender<crate::mcp::protocol::Response>| {
+            let _ = tx.send(crate::mcp::protocol::Response::ok(req.id, serde_json::json!({ "version": "0.0.1" })));
+        })
+        .unwrap();
+        let b = Bridge::new(Target::Discover { dir, launch: Some(PathBuf::from("/nonexistent/triceratops")) });
+        let r = b.get_state().await.unwrap();
+        assert_eq!(r.is_error, Some(true));
+        let t = text(&r);
+        assert!(t.contains("0.0.1") && !t.contains("cannot start"), "{t}");
+    }
+
+    /// Review: after the window closed (or assistants were switched off) the bridge
+    /// started a new window.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_relaunch_after_the_window_went_away() {
+        let dir = temp_dir("norelaunch");
+        let b = Bridge::new(Target::Discover { dir: dir.clone(), launch: Some(PathBuf::from("/nonexistent/triceratops")) });
+        let w = Window::open(&dir);
+        assert_ne!(b.get_state().await.unwrap().is_error, Some(true));
+        drop(w);
+        let _ = b.get_state().await.unwrap();
+        let t = text(&b.get_state().await.unwrap());
+        assert!(!t.contains("cannot start"), "must not launch: {t}");
+        assert!(t.contains("not running"), "{t}");
+    }
+
+    #[test]
+    fn launches_the_appimage_rather_than_its_mount() {
+        let exe = PathBuf::from("/tmp/.mount_abc/usr/bin/triceratops");
+        assert_eq!(launch_path(exe.clone(), Some("/home/u/Triceratops.AppImage".into())), PathBuf::from("/home/u/Triceratops.AppImage"));
+        assert_eq!(launch_path(exe.clone(), None), exe);
     }
 }

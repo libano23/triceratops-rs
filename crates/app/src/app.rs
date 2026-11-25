@@ -3147,6 +3147,10 @@ impl App {
                         }
                     }
                 }
+                AppRequest::ViewCapture { path, clipboard } if self.assistant_mode && !clipboard && path.trim_start_matches("screen:").is_empty() => {
+                    // the capture runs on a later frame, after assistant mode ends: refuse now
+                    self.log.push("Capture needs a file path when run by an assistant".into());
+                }
                 AppRequest::ViewCapture { path, clipboard } => {
                     let whole = path.starts_with("screen:");
                     let path = path.trim_start_matches("screen:").to_string();
@@ -4123,9 +4127,13 @@ impl App {
 
     /// Run every non-empty line of a text file as command-line input (`//` starts a comment).
     /// Run command-line entries as if typed: an empty line (or "_Enter") presses Enter in
-    /// the running command, and lines starting with "//" are comments.
+    /// the running command, "_Cancel" presses Esc, and lines starting with "//" are comments.
     pub fn run_script_lines(&mut self, lines: &[String]) {
         for line in lines.iter().map(|l| l.trim()).filter(|l| !l.starts_with("//")) {
+            if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
+                self.cancel();
+                continue;
+            }
             if line.is_empty() || line.eq_ignore_ascii_case("_enter") {
                 if self.runner.is_active() {
                     self.submit_enter();

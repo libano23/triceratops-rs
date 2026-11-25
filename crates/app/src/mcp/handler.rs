@@ -42,6 +42,11 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
             let steps = params["steps"].as_u64().unwrap_or(1).clamp(1, 100) as usize;
             let cmd = if method == "undo" { "Undo" } else { "Redo" };
             let start = app.log.len();
+            if app.runner.is_active() {
+                // the busy guard has made sure it is the assistant's own command: leave it,
+                // or "Undo" would be taken as that command's option
+                app.cancel();
+            }
             run_lines(app, &vec![cmd.to_string(); steps]);
             ok(json!({ "log": log_since(app, start) }))
         }
@@ -485,6 +490,14 @@ mod acceptance_tests {
     use crate::app::App;
     use serde_json::json;
 
+    fn run(app: &mut App, lines: &[&str]) -> Value {
+        match handle(app, "run_commands", &json!({ "lines": lines })) {
+            Outcome::Reply(Ok(v)) => v,
+            Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
+            Outcome::Deferred(_) => panic!("deferred"),
+        }
+    }
+
     /// Found by the acceptance run: the union result stayed selected, BooleanDifference took
     /// it as preselection, and every explicit #id shifted to the following prompt.
     #[test]
@@ -513,5 +526,41 @@ mod acceptance_tests {
         for n in ["BooleanDifference", "BooleanUnion", "BooleanIntersection"] {
             assert!(names.contains(&n), "{names:?}");
         }
+    }
+
+    /// Review: an assistant could not leave a command it started.
+    #[test]
+    fn assistant_can_cancel_its_own_pending_command() {
+        let mut app = App::new();
+        let r = run(&mut app, &["Polyline", "0,0,0", "10,0,0"]);
+        assert!(!r["prompt"].is_null(), "Polyline still waits for points");
+        let r = run(&mut app, &["_Cancel", "Sphere", "0,0,0", "5"]);
+        assert_eq!(r["added"].as_array().unwrap().len(), 1, "only the sphere: {r}");
+        assert!(r["prompt"].is_null(), "{r}");
+        assert!(!r["log"].to_string().contains("Unknown command: _Cancel"), "{r}");
+    }
+
+    /// Review: undo fed "Undo" into a pending Polyline instead of undoing the document.
+    #[test]
+    fn undo_tool_undoes_the_document_even_with_a_pending_command() {
+        let mut app = App::new();
+        run(&mut app, &["Sphere", "0,0,0", "5"]);
+        run(&mut app, &["Polyline", "0,0,0", "10,0,0"]);
+        assert!(app.runner.is_active());
+        match handle(&mut app, "undo", &json!({})) {
+            Outcome::Reply(Ok(_)) => {}
+            _ => panic!("undo failed"),
+        }
+        assert!(!app.runner.is_active(), "the pending command was cancelled");
+        assert_eq!(app.doc.objects().count(), 0, "the sphere was undone");
+    }
+
+    /// Review: Render queued a capture that opened a Save dialog after assistant mode ended.
+    #[test]
+    fn render_from_an_assistant_never_reaches_a_file_dialog() {
+        let mut app = App::new();
+        let r = run(&mut app, &["Render"]);
+        assert!(app.capture_requests.is_empty(), "nothing queued for a later dialog");
+        assert!(r["log"].to_string().contains("needs a file path when run by an assistant"), "{r}");
     }
 }

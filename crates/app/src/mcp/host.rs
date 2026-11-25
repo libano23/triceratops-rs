@@ -5,6 +5,7 @@
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::{Duration, Instant};
 
 use crate::app::App;
 use crate::mcp::handler::{handle, take_capture, Outcome};
@@ -14,10 +15,12 @@ use crate::mcp::socket::{socket_dir, Listener};
 type Incoming = (Request, Sender<Response>);
 
 pub struct Host {
+    /// How long a capture may wait for a rendered frame (a minimized window renders none).
+    pub capture_deadline: Duration,
     listener: Listener,
     queue: Receiver<Incoming>,
-    /// (capture id, request id, reply channel) waiting for a rendered frame.
-    pending: Vec<(u64, u64, Sender<Response>)>,
+    /// (capture id, request id, reply channel, when asked) waiting for a rendered frame.
+    pending: Vec<(u64, u64, Sender<Response>, Instant)>,
 }
 
 impl Host {
@@ -35,7 +38,7 @@ impl Host {
                 wake();
             }
         })?;
-        Ok(Self { listener, queue, pending: Vec::new() })
+        Ok(Self { listener, queue, pending: Vec::new(), capture_deadline: Duration::from_secs(5) })
     }
 
     #[cfg(test)]
@@ -65,15 +68,17 @@ impl Host {
                         Err(e) => Response::err(req.id, e),
                     });
                 }
-                Outcome::Deferred(capture) => self.pending.push((capture, req.id, reply)),
+                Outcome::Deferred(capture) => self.pending.push((capture, req.id, reply, Instant::now())),
             }
         }
         any
     }
 
-    /// Answer the captures a frame has finished.
+    /// Answer the captures a frame has finished, and fail those no frame rendered in time
+    /// (a minimized or hidden window), withdrawing them from the queue.
     pub fn finish_captures(&mut self, app: &mut App) {
-        self.pending.retain(|(capture, id, reply)| match take_capture(app, *capture) {
+        let deadline = self.capture_deadline;
+        self.pending.retain(|(capture, id, reply, asked)| match take_capture(app, *capture) {
             Some(r) => {
                 let _ = reply.send(match r {
                     Ok(v) => Response::ok(*id, v),
@@ -81,8 +86,16 @@ impl Host {
                 });
                 false
             }
+            None if asked.elapsed() > deadline => {
+                app.capture_requests.retain(|c| c.memory != Some(*capture));
+                let _ = reply.send(Response::err(*id, "the Triceratops window is minimized or hidden, so the view could not be captured; it needs to be visible"));
+                false
+            }
             None => true,
         });
+        // captures nobody waits for any more
+        let pending: Vec<u64> = self.pending.iter().map(|p| p.0).collect();
+        app.finished_captures.retain(|(c, _)| pending.contains(c));
     }
 }
 
@@ -164,5 +177,26 @@ mod tests {
         pump(&mut host, &mut app, |_| woken.load(std::sync::atomic::Ordering::SeqCst) >= 2);
         caller.join().unwrap();
         assert!(woken.load(std::sync::atomic::Ordering::SeqCst) >= 2, "hello and get_state");
+    }
+
+    /// Review: a capture that never renders (minimized window) froze the connection.
+    #[test]
+    fn unrendered_capture_fails_after_its_deadline() {
+        let mut app = App::new();
+        let mut host = Host::start_in(&temp_dir("deadline"), || {}).unwrap();
+        host.capture_deadline = Duration::from_millis(200);
+        let name = host.name().to_string();
+        let caller = std::thread::spawn(move || {
+            let mut c = Client::connect(&name).unwrap();
+            c.call("capture_view", json!({}), Duration::from_secs(10))
+        });
+        pump(&mut host, &mut app, |a| !a.capture_requests.is_empty());
+        // no frame ever renders it
+        std::thread::sleep(Duration::from_millis(300));
+        pump(&mut host, &mut app, |_| true);
+        let e = caller.join().unwrap().unwrap_err();
+        assert!(e.contains("minimized or hidden"), "{e}");
+        assert!(!host.waiting_for_frame(), "no endless redraws");
+        assert!(app.capture_requests.iter().all(|c| c.memory.is_none()), "the queued capture is withdrawn");
     }
 }

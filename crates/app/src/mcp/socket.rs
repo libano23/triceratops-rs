@@ -64,6 +64,35 @@ fn restrict(path: &Path, mode: u32) {
 #[cfg(not(unix))]
 fn restrict(_path: &Path, _mode: u32) {}
 
+/// The registry folder must belong to this user and be closed to everyone else, or
+/// another account could point the bridge at a socket of its own.
+#[cfg(unix)]
+fn is_private(dir: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let me = unsafe { libc::geteuid() };
+    std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir() && m.uid() == me && m.mode() & 0o077 == 0)
+}
+
+#[cfg(not(unix))]
+fn is_private(_dir: &Path) -> bool {
+    true
+}
+
+fn ensure_private_dir(dir: &Path) -> io::Result<()> {
+    // only a folder we create ourselves is closed off here: one found open may already
+    // hold entries someone else wrote, so it is refused rather than repaired
+    if !dir.exists() {
+        std::fs::create_dir_all(dir)?;
+        restrict(dir, 0o700);
+    }
+    if is_private(dir) {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("the socket folder {} is not private (owned by another user or open to others)", dir.display())))
+    }
+}
+
 /// One registry file per running window.
 #[derive(Serialize, Deserialize)]
 struct Entry {
@@ -85,8 +114,7 @@ pub struct Listener {
 
 impl Listener {
     pub fn start_in(dir: &Path, on_request: impl Fn(Request, Sender<Response>) + Send + Sync + 'static) -> io::Result<Self> {
-        std::fs::create_dir_all(dir)?;
-        restrict(dir, 0o700);
+        ensure_private_dir(dir)?;
         let seq = SEQ.fetch_add(1, Ordering::SeqCst);
         let tag = format!("{}-{seq}", std::process::id());
         let name = socket_name(dir, &tag);
@@ -161,7 +189,8 @@ fn serve(stream: Stream, stop: &AtomicBool, clients: &AtomicUsize, on_request: &
                 let id = req.id;
                 let (tx, rx) = mpsc::channel();
                 on_request(req, tx);
-                rx.recv().unwrap_or_else(|_| Response::err(id, "Triceratops did not answer"))
+                // the window answers or gives up on captures well within this
+                rx.recv_timeout(Duration::from_secs(120)).unwrap_or_else(|_| Response::err(id, "Triceratops did not answer"))
             }
             Err(e) => Response::err(0, format!("bad request: {e}")),
         };
@@ -182,6 +211,9 @@ fn write_line<T: Serialize>(mut w: impl Write, v: &T) -> io::Result<()> {
 /// Windows registered in `dir` that still answer, most recently started first. Entries
 /// nobody listens on any more (a crashed window) are deleted.
 pub fn live_sockets_in(dir: &Path) -> Vec<String> {
+    if !is_private(dir) {
+        return Vec::new();
+    }
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut entries: Vec<(PathBuf, Entry)> = rd
         .filter_map(|e| e.ok())
@@ -384,5 +416,20 @@ mod tests {
         drop(c);
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(l.connected_clients(), 0);
+    }
+
+    /// Review: a registry folder another user could write to was accepted.
+    #[cfg(unix)]
+    #[test]
+    fn world_writable_registry_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("unsafe");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+        // pretend another user left an entry there
+        std::fs::write(dir.join("1-0.json"), br#"{"name":"/tmp/evil.sock","pid":1,"started_ms":9999999999999,"seq":0}"#).unwrap();
+        assert!(live_sockets_in(&dir).is_empty(), "entries in an unsafe folder are ignored");
+        let err = Listener::start_in(&dir, echo(crate::mcp::protocol::VERSION)).err().expect("refused").to_string();
+        assert!(err.contains("not private"), "{err}");
     }
 }

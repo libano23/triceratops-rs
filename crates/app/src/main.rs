@@ -169,8 +169,14 @@ impl Runner {
             }
             Err(e) => log::warn!("render error: {e:?}"),
         }
-        if let (Some(cr), Some((w, h, data))) = (capture, renderer.captured.take()) {
-            self.app.finish_capture(&cr, w, h, data);
+        match (capture, renderer.captured.take()) {
+            (Some(cr), Some((w, h, data))) => self.app.finish_capture(&cr, w, h, data),
+            (Some(cr), None) => {
+                // the frame was skipped (minimized, surface lost): try again on the next one
+                renderer.capture = None;
+                self.app.capture_requests.insert(0, cr);
+            }
+            _ => {}
         }
         let mut repaint = repaint;
         if let Some(host) = &mut self.mcp {

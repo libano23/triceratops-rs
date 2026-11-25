@@ -117,7 +117,8 @@ The assistant gets these tools: `run_commands` (command-line entries, exactly as
 `get_state`, `list_objects`, `object_info` (volume, area), `find_commands`, `capture_view`
 (an image of a viewport, so it can look at its work), `undo` and `redo`.
 
-- Requests wait while you are typing or running a command of your own.
+- Requests are refused while you are typing or running a command of your own; the
+  assistant is told to try again. It can abandon a command it left waiting with `_Cancel`.
 - Commands that would open a dialog do not: Loft uses its default options, and commands that
   need a file (Open, Save, Import, Export) are refused.
 - Only programs running as you on the same computer can connect; nothing listens on the
