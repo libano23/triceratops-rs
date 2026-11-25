@@ -253,6 +253,17 @@ struct ViewportBuffers {
     overlay: DrawSet,
 }
 
+/// Why a frame was not drawn.
+#[derive(Debug)]
+pub enum FrameError {
+    /// The window is hidden or the swapchain timed out: try again next frame.
+    Skip,
+    /// The surface is lost or no longer matches the window: configure it again.
+    Reconfigure,
+    /// wgpu reported a validation error while acquiring the frame.
+    Validation,
+}
+
 pub struct Renderer {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -543,15 +554,16 @@ impl Renderer {
             "vulkan" | "vk" => wgpu::Backends::VULKAN,
             _ => wgpu::Backends::VULKAN | wgpu::Backends::GL,
         };
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends,
-            ..Default::default()
-        });
+        // GLES (notably on Wayland) presents through the display connection, so pass it on
+        let mut instance_desc = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(window.clone()));
+        instance_desc.backends = backends;
+        let instance = wgpu::Instance::new(instance_desc);
         let surface = instance.create_surface(window.clone())?;
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))?;
         log::info!("adapter: {:?}", adapter.get_info());
         let info = adapter.get_info();
@@ -559,6 +571,7 @@ impl Renderer {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("triceratops device"),
             required_features: wgpu::Features::empty(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
             required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
             memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
@@ -593,13 +606,12 @@ impl Renderer {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene layout"),
-            bind_group_layouts: &[&bind_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_layout)], immediate_size: 0,
         });
         let depth_state = |write: bool, compare: wgpu::CompareFunction| wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: write,
-            depth_compare: compare,
+            depth_write_enabled: Some(write),
+            depth_compare: Some(compare),
             stencil: Default::default(),
             bias: Default::default(),
         };
@@ -607,8 +619,8 @@ impl Renderer {
         // zoom) so that curves and isocurves lying on them stay visible
         let depth_state_biased = || wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: Default::default(),
             bias: wgpu::DepthBiasState { constant: 4, slope_scale: 2.0, clamp: 0.0 },
         };
@@ -632,7 +644,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Always)),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -642,11 +654,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_line"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<LineVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -657,7 +669,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::LineList, ..Default::default() },
             depth_stencil: Some(depth_state(true, wgpu::CompareFunction::LessEqual)),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let line_xray_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -667,11 +679,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_line"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<LineVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -682,7 +694,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::LineList, ..Default::default() },
             depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Always)),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let tex_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -692,10 +704,10 @@ impl Renderer {
                 wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
             ],
         });
-        let tex_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("textured"), bind_group_layouts: &[&bind_layout, &tex_layout], push_constant_ranges: &[] });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor { label: Some("texture sampler"), address_mode_u: wgpu::AddressMode::Repeat, address_mode_v: wgpu::AddressMode::Repeat, mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::FilterMode::Linear, ..Default::default() });
+        let tex_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("textured"), bind_group_layouts: &[Some(&bind_layout), Some(&tex_layout)], immediate_size: 0 });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor { label: Some("texture sampler"), address_mode_u: wgpu::AddressMode::Repeat, address_mode_v: wgpu::AddressMode::Repeat, mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::MipmapFilterMode::Linear, ..Default::default() });
         let blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("blit"), source: wgpu::ShaderSource::Wgsl(BLIT_SHADER.into()) });
-        let blit_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("blit"), bind_group_layouts: &[&tex_layout], push_constant_ranges: &[] });
+        let blit_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("blit"), bind_group_layouts: &[Some(&tex_layout)], immediate_size: 0 });
         let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("blit"),
             layout: Some(&blit_layout),
@@ -704,7 +716,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let mesh_tex_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -714,17 +726,17 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_mesh"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<MeshVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Float32x2],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_mesh_tex"), compilation_options: Default::default(), targets: &target }),
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, cull_mode: None, ..Default::default() },
             depth_stencil: Some(depth_state_biased()),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -734,11 +746,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_mesh"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<MeshVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Float32x2],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -753,7 +765,7 @@ impl Renderer {
             },
             depth_stencil: Some(depth_state_biased()),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let point_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -763,11 +775,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_point"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<PointInstance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32, 2 => Float32x4],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -778,7 +790,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: Some(depth_state(true, wgpu::CompareFunction::LessEqual)),
             multisample,
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -787,7 +799,7 @@ impl Renderer {
         for _ in 0..MAX_VIEWPORTS {
             viewports.push(Self::make_viewport_buffers(&device, &bind_layout));
         }
-        let egui_renderer = egui_wgpu::Renderer::new(&device, format, None, 1, false);
+        let egui_renderer = egui_wgpu::Renderer::new(&device, format, egui_wgpu::RendererOptions::default());
         Ok(Self {
             device,
             queue,
@@ -922,8 +934,13 @@ impl Renderer {
         ppp: f64,
         egui_ctx: &egui::Context,
         egui_output: egui::FullOutput,
-    ) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface.get_current_texture()?;
+    ) -> Result<(), FrameError> {
+        let frame = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return Err(FrameError::Skip),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => return Err(FrameError::Reconfigure),
+            wgpu::CurrentSurfaceTexture::Validation => return Err(FrameError::Validation),
+        };
         let surface_view = frame.texture.create_view(&Default::default());
         // OpenGL swapchains cannot be copied: capture frames render into an offscreen texture
         let use_offscreen = self.capture.is_some() && !self.surface_copy;
@@ -938,8 +955,10 @@ impl Renderer {
             size_in_pixels: [self.config.width, self.config.height],
             pixels_per_point: egui_output.pixels_per_point,
         };
-        for (id, delta) in &egui_output.textures_delta.set {
-            self.egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
+        for (id, deltas) in &egui_output.textures_delta.set {
+            for delta in deltas {
+                self.egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
+            }
         }
         self.egui_renderer.update_buffers(&self.device, &self.queue, &mut encoder, &paint_jobs, &screen);
 
@@ -949,6 +968,7 @@ impl Renderer {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.msaa_view,
+                    depth_slice: None,
                     resolve_target: Some(&view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color { r: bg[0], g: bg[1], b: bg[2], a: 1.0 }),
@@ -962,6 +982,7 @@ impl Renderer {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             let (fw, fh) = (self.config.width as f64, self.config.height as f64);
             for (idx, rect) in viewports {
@@ -1036,12 +1057,14 @@ impl Renderer {
                 label: Some("egui"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             let mut pass = pass.forget_lifetime();
             self.egui_renderer.render(&mut pass, &paint_jobs, &screen);
@@ -1053,10 +1076,11 @@ impl Renderer {
             let bg = &self.offscreen.as_ref().unwrap().2;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("blit"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &surface_view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &surface_view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             pass.set_pipeline(&self.blit_pipeline);
             pass.set_bind_group(0, bg, &[]);
@@ -1067,7 +1091,7 @@ impl Renderer {
             self.read_capture(cb);
         }
         self.capture = None;
-        frame.present();
+        self.queue.present(frame);
         for id in &egui_output.textures_delta.free {
             self.egui_renderer.free_texture(id);
         }
@@ -1164,9 +1188,12 @@ impl Renderer {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
-        let _ = self.device.poll(wgpu::PollType::Wait);
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
         if rx.recv().map(|r| r.is_ok()).unwrap_or(false) {
-            let data = slice.get_mapped_range();
+            let Ok(data) = slice.get_mapped_range() else {
+                cb.buffer.unmap();
+                return;
+            };
             let mut out = Vec::with_capacity((cb.w * cb.h * 4) as usize);
             let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
             for row in 0..cb.h {

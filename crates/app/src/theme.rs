@@ -437,7 +437,7 @@ impl Theme {
 /// Apply a theme to an egui context (visuals, spacing and text sizes).
 pub fn apply_theme(ctx: &egui::Context, theme: &Theme) {
     ctx.set_visuals(theme.visuals());
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     let s = theme.ui.font_size;
     style.spacing.item_spacing = egui::vec2(4.0, 3.0);
     style.spacing.button_padding = if theme.ui.region_gap > 0.0 { egui::vec2(7.0, 3.0) } else { egui::vec2(5.0, 2.0) };
@@ -447,7 +447,7 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme) {
     style.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(s));
     style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional((s - 2.0).max(8.0)));
     style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(s + 2.0));
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 /// Paint the four corner masks that make a rectangular region look rounded (Blender editors).
@@ -499,14 +499,14 @@ mod tests {
     fn blender_theme_drives_egui_visuals() {
         let ctx = egui::Context::default();
         apply_theme(&ctx, &Theme::blender());
-        let v = ctx.style().visuals.clone();
+        let v = ctx.global_style().visuals.clone();
         assert!(v.dark_mode);
         assert_eq!(v.panel_fill, Color32::from_rgb(48, 48, 48));
         assert_eq!(v.selection.bg_fill, Color32::from_rgb(71, 114, 179));
         assert_eq!(v.widgets.inactive.corner_radius, egui::CornerRadius::same(4));
         apply_theme(&ctx, &Theme::default_light());
-        assert!(!ctx.style().visuals.dark_mode);
-        assert_eq!(ctx.style().visuals.widgets.inactive.corner_radius, egui::CornerRadius::same(2));
+        assert!(!ctx.global_style().visuals.dark_mode);
+        assert_eq!(ctx.global_style().visuals.widgets.inactive.corner_radius, egui::CornerRadius::same(2));
     }
 
     #[test]

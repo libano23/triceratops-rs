@@ -15,11 +15,12 @@ struct TabDrag {
 }
 
 fn drag_id() -> egui::Id {
-    egui::Id::new("dock_tab_drag")
+    egui::Id::unique("dock_tab_drag")
 }
 
 /// Docked containers: top, bottom, left, right (in that order so the sides fit between the bars).
-pub fn draw_docked(app: &mut App, ctx: &egui::Context) {
+pub fn draw_docked(app: &mut App, root: &mut egui::Ui) {
+    let ctx = &root.ctx().clone();
     for side in [Placement::Top, Placement::Bottom, Placement::Left, Placement::Right] {
         for id in app.dock.containers_at(&side) {
             let Some(c) = app.dock.container(id) else { continue };
@@ -29,16 +30,16 @@ pub fn draw_docked(app: &mut App, ctx: &egui::Context) {
             let name = format!("dock_{id}");
             let rect = match side {
                 Placement::Top | Placement::Bottom => {
-                    let panel = if side == Placement::Top { egui::TopBottomPanel::top(name.clone()) } else { egui::TopBottomPanel::bottom(name.clone()) };
-                    let r = panel.frame(frame).resizable(true).default_height(size).min_height(28.0).show(ctx, |ui| {
+                    let panel = if side == Placement::Top { egui::Panel::top(name.clone()) } else { egui::Panel::bottom(name.clone()) };
+                    let r = panel.frame(frame).resizable(true).default_size(size).min_size(28.0).show(root, |ui| {
                         container_contents(app, ui, id, false);
                     });
                     r.response.rect
                 }
                 _ => {
-                    let panel = if side == Placement::Left { egui::SidePanel::left(name.clone()) } else { egui::SidePanel::right(name.clone()) };
+                    let panel = if side == Placement::Left { egui::Panel::left(name.clone()) } else { egui::Panel::right(name.clone()) };
                     let min = if kind == ContainerKind::Toolbars { 40.0 } else { 160.0 };
-                    let r = panel.frame(frame).resizable(true).default_width(size).min_width(min).max_width(700.0).show(ctx, |ui| {
+                    let r = panel.frame(frame).resizable(true).default_size(size).min_size(min).max_size(700.0).show(root, |ui| {
                         container_contents(app, ui, id, true);
                     });
                     r.response.rect
@@ -67,7 +68,7 @@ pub fn draw_floating(app: &mut App, ctx: &egui::Context) {
         let Placement::Floating { x, y, w, h } = c.placement else { continue };
         let title = c.tabs.get(c.active).cloned().unwrap_or_else(|| "Panel".into());
         let mut open = true;
-        let win = egui::Window::new(title.clone()).id(egui::Id::new(("dock_float", id))).open(&mut open).default_pos(Pos2::new(x, y)).default_size(Vec2::new(w, h)).resizable(true).collapsible(true).show(ctx, |ui| {
+        let win = egui::Window::new(title.clone()).id(egui::Id::unique(("dock_float", id))).open(&mut open).default_pos(Pos2::new(x, y)).default_size(Vec2::new(w, h)).resizable(true).collapsible(true).show(ctx, |ui| {
             container_contents(app, ui, id, false);
         });
         if let Some(r) = win {

@@ -423,7 +423,7 @@ struct FlyoutState {
 }
 
 fn flyout_id() -> egui::Id {
-    egui::Id::new("flyout_state")
+    egui::Id::unique("flyout_state")
 }
 
 fn open_flyout(ctx: &egui::Context, name: &str, pos: Pos2) {
@@ -505,7 +505,7 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
         let items = flyout_items(&st.name);
         let mut close = items.is_empty();
         let mut tear: Option<Pos2> = None;
-        let area = egui::Area::new(egui::Id::new("flyout_area")).fixed_pos(st.pos).order(egui::Order::Foreground).show(ctx, |ui| {
+        let area = egui::Area::new(egui::Id::unique("flyout_area")).fixed_pos(st.pos).order(egui::Order::Foreground).show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // the title bar is a drag handle: dragging it tears the flyout off
@@ -566,7 +566,7 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
             b("delete", "Delete", "Delete", "", ""),
         ];
         let mut close = false;
-        let area = egui::Area::new(egui::Id::new("popup_toolbar")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+        let area = egui::Area::new(egui::Id::unique("popup_toolbar")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.label(egui::RichText::new("Popup").small().color(Color32::GRAY));
                 ui.horizontal_wrapped(|ui| {

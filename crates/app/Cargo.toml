@@ -16,10 +16,10 @@ anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
 winit = "0.30"
-wgpu = "25"
-egui = "0.32"
-egui-wgpu = { version = "0.32", features = ["winit"] }
-egui-winit = "0.32"
+wgpu = "30"
+egui = { version = "0.37", features = ["default_fonts"] }  # fonts are no longer a default feature
+egui-wgpu = { version = "0.37", features = ["winit"] }
+egui-winit = "0.37"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
 rfd = "0.15"
