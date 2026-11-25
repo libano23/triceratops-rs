@@ -1,6 +1,10 @@
 # Triceratops
 
-Triceratops is a NURBS 3D modeller for Linux written in Rust. It follows the interaction
+[![CI](https://github.com/libano23/triceratops-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/libano23/triceratops-rs/actions/workflows/ci.yml)
+[![Build](https://github.com/libano23/triceratops-rs/actions/workflows/release.yml/badge.svg)](https://github.com/libano23/triceratops-rs/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Triceratops is a NURBS 3D modeller written in Rust, for Linux, Windows and macOS. It follows the interaction
 model of professional NURBS CAD tools: a command line with prompts and clickable options,
 object snaps, four synchronised viewports, a gumball, layers, and exact NURBS curves,
 surfaces and polysurfaces (B-reps).
@@ -15,6 +19,16 @@ surfaces and polysurfaces (B-reps).
   light, dark and Blender-style themes, persistent settings and window layouts.
 - **Files:** native `.3dm` through openNURBS, plus STEP, IGES, DXF/DWG, OBJ, STL, glTF and about
   twenty more formats.
+
+## Download
+
+Ready-to-run builds are attached to each [GitHub release](https://github.com/libano23/triceratops-rs/releases/latest):
+
+| Platform | File | How to start |
+|----------|------|--------------|
+| Linux (x86_64, glibc 2.35+) | `Triceratops-<version>-x86_64.AppImage` | `chmod +x Triceratops-*.AppImage`, then run it |
+| Windows 10/11 (x64) | `Triceratops-<version>-windows-x64.zip` | Unzip and run `triceratops.exe` |
+| macOS 11+ (Apple Silicon and Intel) | `Triceratops-<version>-macos-universal.dmg` | Drag Triceratops to Applications. The app is not notarized: the first time, right-click it and choose Open |
 
 ## Build and run
 
@@ -32,8 +46,29 @@ cargo test --workspace                 # run the test suites
 then starts the program with any arguments you pass (`./triceratops.sh model.3dm`,
 `./triceratops.sh --script s.txt`). Pass `--no-build` first to skip the build check.
 
-The first build compiles openNURBS and takes a few minutes. Triceratops has been tested on
-Arch Linux under Wayland (niri) with an AMD GPU.
+The first build compiles openNURBS and takes a few minutes. On Windows, install the Visual
+Studio Build Tools (C++ workload) and CMake; on macOS, the Xcode command line tools and CMake
+(`brew install cmake`). Triceratops is developed on Arch Linux under Wayland with an AMD GPU;
+the Windows and macOS builds are compiled and tested in CI.
+
+## Packaging
+
+Each script runs on its own OS and writes to `dist/`:
+
+| Platform | Command | Output |
+|----------|---------|--------|
+| Linux | `scripts/package-linux.sh` | `Triceratops-<version>-x86_64.AppImage` |
+| Windows | `pwsh scripts/package-windows.ps1` | `Triceratops-<version>-windows-x64.zip` |
+| macOS | `scripts/package-macos.sh` | `Triceratops-<version>-macos-universal.dmg` |
+
+The [Build workflow](.github/workflows/release.yml) runs all three on GitHub-hosted runners.
+Start it from the Actions tab, or push a version tag to publish a release:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Bump `version` in the root `Cargo.toml` first; the tag and the version should match.
 
 ## Using it
 
@@ -70,10 +105,13 @@ cannot be read (SKP, SAT, DGN, E57, binary FBX, ...) give a message naming an al
 
 | Path or variable | Purpose |
 |------------------|---------|
-| `~/.config/triceratops/options.json` | Settings, window layout, export memory |
-| `~/.config/triceratops/themes/*.json` | User themes |
+| `<config>/triceratops/options.json` | Settings, window layout, export memory |
+| `<config>/triceratops/themes/*.json` | User themes |
 | `TRICERATOPS_BACKEND=auto\|gl\|vulkan` | Graphics backend |
 | `TRICERATOPS_BOOL_DEBUG=1` | Diagnostics for Booleans, projections and trims |
+
+`<config>` is `~/.config` on Linux, `%APPDATA%` on Windows and
+`~/Library/Application Support` on macOS.
 
 ## Project layout
 
@@ -104,8 +142,14 @@ being followed. `docs/commands.json` is the command catalogue.
 - Shell works on solids with planar faces only.
 - FilletEdge works on planar faces only.
 - SubD objects are smoothed meshes.
-- Digitizer support, visual scripting, licensing and plug-in management are not available.
+- Digitizer support, licensing and plug-in management are not available.
   Those commands say so and name the closest alternative.
+
+## Contributing
+
+Bug reports and pull requests are welcome. Before opening a pull request, run
+`cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`; CI runs
+both on Linux, Windows and macOS.
 
 ## License
 
