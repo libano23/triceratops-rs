@@ -111,6 +111,8 @@ pub struct Listener {
     entry: PathBuf,
     stop: Arc<AtomicBool>,
     clients: Arc<AtomicUsize>,
+    /// Owns the OS listener: joined on drop so the socket (or named pipe) is gone by then.
+    accept: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Listener {
@@ -132,7 +134,7 @@ impl Listener {
         let stop = Arc::new(AtomicBool::new(false));
         let clients = Arc::new(AtomicUsize::new(0));
         let on_request = Arc::new(on_request);
-        {
+        let accept = {
             let (stop, clients) = (stop.clone(), clients.clone());
             std::thread::Builder::new().name("mcp-accept".into()).spawn(move || {
                 while !stop.load(Ordering::SeqCst) {
@@ -149,9 +151,9 @@ impl Listener {
                         Err(_) => std::thread::sleep(Duration::from_millis(40)),
                     }
                 }
-            })?;
-        }
-        Ok(Self { name, entry, stop, clients })
+            })?
+        };
+        Ok(Self { name, entry, stop, clients, accept: Some(accept) })
     }
 
     /// The socket name a [`Client`] connects to.
@@ -169,6 +171,11 @@ impl Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
+        // the accept loop polls every 40 ms; once it returns the OS listener is closed, so
+        // a window that switched assistants off stops answering at once (named pipes too)
+        if let Some(t) = self.accept.take() {
+            let _ = t.join();
+        }
         let _ = std::fs::remove_file(&self.entry);
         #[cfg(unix)]
         let _ = std::fs::remove_file(&self.name);
