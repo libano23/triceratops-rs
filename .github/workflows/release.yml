@@ -6,6 +6,14 @@ name: Build
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "scripts/**"
+      - "**/build.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
   workflow_dispatch:
 
 permissions:
