@@ -14,12 +14,29 @@ struct TitleMenu {
     pos: Pos2,
 }
 
-fn title_menu_id() -> egui::Id {
-    egui::Id::new("viewport_title_menu")
+/// Vertical wheel movement this frame, in points, without egui's smoothing: zooming
+/// should follow each notch at once. Lines and pages are converted as egui does.
+fn raw_scroll_y(i: &egui::InputState) -> f32 {
+    i.events
+        .iter()
+        .map(|e| match e {
+            egui::Event::MouseWheel { unit, delta, .. } => match unit {
+                egui::MouseWheelUnit::Point => delta.y,
+                egui::MouseWheelUnit::Line => 40.0 * delta.y,
+                egui::MouseWheelUnit::Page => i.viewport_rect().height() * delta.y,
+            },
+            _ => 0.0,
+        })
+        .sum()
 }
 
-pub fn show(app: &mut App, ctx: &egui::Context) {
-    egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+fn title_menu_id() -> egui::Id {
+    egui::Id::unique("viewport_title_menu")
+}
+
+pub fn show(app: &mut App, root: &mut egui::Ui) {
+    let ctx = &root.ctx().clone();
+    egui::CentralPanel::default().frame(egui::Frame::NONE).show(root, |ui| {
         let full = ui.available_rect_before_wrap();
         let tabs_h = if app.show_viewport_tabs { 22.0 } else { 0.0 };
         let area = Rect::from_min_max(full.min, Pos2::new(full.right(), full.bottom() - tabs_h));
@@ -77,7 +94,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         for (vp, rect) in &rects {
             let (vp, rect) = (*vp, *rect);
             app.viewports[vp].rect = ViewRect { x: rect.left() as f64, y: rect.top() as f64, w: rect.width() as f64, h: rect.height() as f64 };
-            let id = ui.id().with(("viewport", vp));
+            let id = ui.scope_id().with(("viewport", vp));
             let resp = ui.interact(rect, id, Sense::click_and_drag());
             let to_d = |p: Pos2| DVec2::new(p.x as f64, p.y as f64);
 
@@ -86,7 +103,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if app.window_drag.is_none() && app.drag_move.is_none() {
                         app.update_cursor(vp, to_d(pos));
                     }
-                    let scroll = ui.input(|i| i.raw_scroll_delta.y);
+                    let scroll = ui.input(raw_scroll_y);
                     if scroll.abs() > 0.0 {
                         app.zoom(vp, to_d(pos), scroll as f64);
                     }
@@ -275,7 +292,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let g = p.layout_no_wrap(name, egui::FontId::proportional(12.0), fg);
             let w = g.size().x + 18.0;
             let r = Rect::from_min_size(Pos2::new(x, tabs_rect.top() + 1.0), Vec2::new(w, tabs_h - 2.0));
-            let resp = ui.interact(r, ui.id().with(("vptab", vp)), Sense::click());
+            let resp = ui.interact(r, ui.scope_id().with(("vptab", vp)), Sense::click());
             let active = app.active == vp;
             let (fill_a, fill_i) = (c32(t.tab_active), c32(t.tab_inactive));
             let rr = egui::CornerRadius { nw: t.rounding, ne: t.rounding, sw: 0, se: 0 };
@@ -295,7 +312,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         }
         let plus = Rect::from_min_size(Pos2::new(x + 2.0, tabs_rect.top() + 1.0), Vec2::new(18.0, tabs_h - 2.0));
         p.text(plus.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::proportional(14.0), c32(t.text_dim));
-        let plus_resp = ui.interact(plus, ui.id().with("vptab_plus"), Sense::click());
+        let plus_resp = ui.interact(plus, ui.scope_id().with("vptab_plus"), Sense::click());
         if plus_resp.clicked() {
             app.layout_op("new:297;210;1", "");
         }
@@ -308,7 +325,7 @@ fn title_menu(app: &mut App, ctx: &egui::Context) {
     let Some(menu) = ctx.data(|d| d.get_temp::<TitleMenu>(title_menu_id())) else { return };
     let vp = menu.vp;
     let mut close = false;
-    let area = egui::Area::new(egui::Id::new("title_menu_area")).fixed_pos(menu.pos).order(egui::Order::Foreground).show(ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("title_menu_area")).fixed_pos(menu.pos).order(egui::Order::Foreground).show(ctx, |ui| {
         egui::Frame::menu(ui.style()).show(ui, |ui| {
             ui.set_min_width(190.0);
             let maximized = app.layout == Layout::Single;
@@ -395,7 +412,7 @@ fn selection_menu(app: &mut App, ctx: &egui::Context) {
     let pos = Pos2::new(menu.screen.x as f32, menu.screen.y as f32);
     let mut pick: Option<Option<tri_doc::ObjectId>> = None;
     let mut hovered = None;
-    let area = egui::Area::new(egui::Id::new("selection_menu")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("selection_menu")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
         egui::Frame::menu(ui.style()).show(ui, |ui| {
             ui.set_min_width(160.0);
             for id in &menu.candidates {

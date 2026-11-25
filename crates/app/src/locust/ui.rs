@@ -561,10 +561,10 @@ pub fn window(ed: &mut Editor, ctx: &egui::Context) -> bool {
     let mut open = true;
     let mut bake = false;
     let title = ed.breadcrumb();
-    let screen = ctx.screen_rect();
+    let screen = ctx.content_rect();
     let size = Vec2::new((screen.width() * 0.55).clamp(420.0, 1080.0), (screen.height() * 0.5).clamp(260.0, 740.0));
     let resp = egui::Window::new("Locust")
-        .id(egui::Id::new("locust_window"))
+        .id(egui::Id::unique("locust_window"))
         .title_bar(true)
         .open(&mut open)
         .default_size(size)
@@ -665,7 +665,7 @@ fn toolbar(ed: &mut Editor, ui: &mut egui::Ui, bake: &mut bool) {
 }
 
 fn shortcuts(ed: &mut Editor, ctx: &egui::Context) {
-    if ed.dialog.is_some() || ctx.wants_keyboard_input() {
+    if ed.dialog.is_some() || ctx.egui_wants_keyboard_input() {
         return;
     }
     let mut actions: Vec<&str> = Vec::new();
@@ -797,7 +797,7 @@ fn canvas_contents(ed: &mut Editor, ui: &mut egui::Ui) {
         y += step;
     }
     // rubber band selection on the background (primary drag)
-    let band_resp = ui.interact(view, ui.id().with("band"), Sense::click_and_drag());
+    let band_resp = ui.interact(view, ui.scope_id().with("band"), Sense::click_and_drag());
     if band_resp.drag_started_by(egui::PointerButton::Primary) {
         ed.band = pointer;
     }
@@ -904,7 +904,7 @@ fn groups(ed: &mut Editor, ui: &mut egui::Ui, _pointer: Option<Pos2>) {
         let head = Rect::from_min_size(r.min, Vec2::new(r.width(), 20.0));
         painter.rect_filled(head, 8.0, lighter(col, 1.5));
         painter.text(head.left_center() + Vec2::new(8.0, 0.0), Align2::LEFT_CENTER, &gr.name, FontId::proportional(12.0), TEXT);
-        let resp = ui.interact(head, ui.id().with(("group", &gr.uid)), Sense::click_and_drag());
+        let resp = ui.interact(head, ui.scope_id().with(("group", &gr.uid)), Sense::click_and_drag());
         if resp.drag_started() {
             ed.record(None);
         }
@@ -953,7 +953,7 @@ fn comments(ed: &mut Editor, ui: &mut egui::Ui) {
         painter.rect(r, 5.0, parse_color(&c.color, Color32::from_rgb(0x2b, 0x2c, 0x30)), Stroke::new(1.2_f32, if sel { ACCENT } else { NODE_BORDER }), egui::StrokeKind::Inside);
         let galley = painter.layout(c.text.clone(), FontId::proportional(12.0), TEXT, r.width() - 16.0);
         painter.galley(r.min + Vec2::new(8.0, 6.0), galley, TEXT);
-        let resp = ui.interact(r, ui.id().with(("comment", &c.uid)), Sense::click_and_drag());
+        let resp = ui.interact(r, ui.scope_id().with(("comment", &c.uid)), Sense::click_and_drag());
         if resp.drag_started() {
             ed.record(None);
         }
@@ -1029,7 +1029,7 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
     let painter = ui.painter().clone();
     let fill = if sel { NODE_SEL } else if n.disabled { NODE_DISABLED } else { NODE_BG };
     // body interaction first, so the ports and widgets drawn on top take precedence
-    let body = ui.interact(rect, ui.id().with(("node", uid)), Sense::click_and_drag());
+    let body = ui.interact(rect, ui.scope_id().with(("node", uid)), Sense::click_and_drag());
     painter.rect(rect, 6.0, fill, Stroke::new(1.4_f32, if sel { ACCENT } else { NODE_BORDER }), egui::StrokeKind::Inside);
     let head = Rect::from_min_size(rect.min, Vec2::new(NODE_W, HEADER_H));
     painter.rect_filled(head, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, if n.disabled { Color32::from_rgb(0x2a, 0x2b, 0x2f) } else { NODE_HEAD });
@@ -1066,7 +1066,7 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         for i in 0..k {
             let p = if out { Pos2::new(rect.max.x, rect.min.y + out_y(ports.inputs.len(), i)) } else { Pos2::new(rect.min.x, rect.min.y + in_y(i)) };
             let r = Rect::from_center_size(p, Vec2::splat(PORT_R * 2.0 + 8.0));
-            let pr = ui.interact(r, ui.id().with(("port", uid, out, i)), Sense::click_and_drag());
+            let pr = ui.interact(r, ui.scope_id().with(("port", uid, out, i)), Sense::click_and_drag());
             let hot = pr.hovered() || wire_target.as_ref().is_some_and(|(u, w)| u == uid && w.out == out && w.index == i);
             painter.circle(p, PORT_R, if hot { ACCENT } else if out { Color32::from_rgb(0xc8, 0xc9, 0xcc) } else { Color32::from_rgb(0x8f, 0x90, 0x94) }, Stroke::new(1.0_f32, NODE_BORDER));
             if pr.drag_started() {
@@ -1225,7 +1225,7 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
             let mut names: Vec<(&str, &str)> = registry().components.values().filter(|c| q.is_empty() || c.name.to_lowercase().contains(q.trim()) || c.category.to_lowercase().contains(q.trim())).map(|c| (c.category, c.name)).collect();
             names.sort();
             let mut chosen: Option<String> = None;
-            egui::Window::new("Add component").id(egui::Id::new("locust_search")).collapsible(false).resizable(false).default_width(340.0).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            egui::Window::new("Add component").id(egui::Id::unique("locust_search")).collapsible(false).resizable(false).default_width(340.0).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
                 let te = ui.add(egui::TextEdit::singleline(&mut text).hint_text("Search…").desired_width(320.0));
                 if focus {
                     te.request_focus();
@@ -1287,7 +1287,7 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                 Dialog::Search { .. } => unreachable!(),
             };
             let mut ok = false;
-            egui::Window::new(title).id(egui::Id::new("locust_text_dialog")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            egui::Window::new(title).id(egui::Id::unique("locust_text_dialog")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
                 let te = if multiline { ui.add(egui::TextEdit::multiline(&mut text).desired_rows(5).desired_width(320.0)) } else { ui.add(egui::TextEdit::singleline(&mut text).desired_width(260.0)) };
                 if !te.has_focus() && !te.lost_focus() {
                     te.request_focus();

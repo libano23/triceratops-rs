@@ -5018,9 +5018,10 @@ mod gumball_tests {
         assert!(app.gradient_for(0).is_some(), "Blender theme has a GPU gradient background");
         // the egui style follows the theme revision
         let ctx = egui::Context::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| crate::ui::draw(&mut app, ctx));
-        assert!(ctx.style().visuals.dark_mode);
-        assert_eq!(ctx.style().visuals.selection.bg_fill, egui::Color32::from_rgb(71, 114, 179));
+        let mut out = ctx.run_ui(egui::RawInput::default(), |root| crate::ui::draw(&mut app, root));
+        out.textures_delta.clear(); // no renderer here: drop the texture uploads on purpose
+        assert!(ctx.global_style().visuals.dark_mode);
+        assert_eq!(ctx.global_style().visuals.selection.bg_fill, egui::Color32::from_rgb(71, 114, 179));
         // unknown theme is reported, state unchanged
         assert!(!app.set_theme_by_name("Nope"));
         assert_eq!(app.theme.name, "Blender");

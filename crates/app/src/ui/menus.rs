@@ -46,8 +46,8 @@ fn items(ui: &mut egui::Ui, app: &mut App, entries: &[Entry]) {
     }
 }
 
-pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
-    egui::TopBottomPanel::top("menu").frame(app.theme.header_frame()).show(ctx, |ui| {
+pub fn menu_bar(app: &mut App, root: &mut egui::Ui) {
+    egui::Panel::top("menu").frame(app.theme.header_frame()).show(root, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| tree(ui, app, menu_tree::FILE));
             ui.menu_button("Edit", |ui| tree(ui, app, menu_tree::EDIT));

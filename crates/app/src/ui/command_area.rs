@@ -6,16 +6,17 @@ use crate::app::App;
 use crate::commands;
 use crate::theme::c32;
 
-pub fn show(app: &mut App, ctx: &egui::Context) {
+pub fn show(app: &mut App, root: &mut egui::Ui) {
+    let ctx = &root.ctx().clone();
     let bg = c32(app.colors.prompt_background);
     let fg = c32(app.colors.prompt_text);
     let hover = c32(app.colors.prompt_hover);
-    egui::TopBottomPanel::top("command_window")
+    egui::Panel::top("command_window")
         .resizable(true)
-        .default_height(62.0)
-        .min_height(40.0)
+        .default_size(62.0)
+        .min_size(40.0)
         .frame(app.theme.region_frame().fill(bg).inner_margin(egui::Margin::symmetric(6, 2)))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             let line_h = 18.0;
             let avail = (ui.available_height() - line_h - 6.0).max(line_h);
             // history
@@ -64,12 +65,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 if let Some(o) = clicked_option {
                     app.option_clicked(&o);
                 }
-                let edit_id = egui::Id::new("cmdline");
+                let edit_id = egui::Id::unique("cmdline");
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut app.cmd_text)
                         .id(edit_id)
                         .desired_width(f32::INFINITY)
-                        .frame(false)
+                        .frame(egui::Frame::NONE)
                         .text_color(fg)
                         .lock_focus(true),
                 );
@@ -92,7 +93,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 let mut run: Option<&'static str> = None;
                 if show_ac && total > 0 {
                     let pos = resp.rect.left_bottom();
-                    egui::Area::new(egui::Id::new("autocomplete")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
+                    egui::Area::new(egui::Id::unique("autocomplete")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
                         egui::Frame::popup(ui.style()).fill(c32(app.theme.ui.popup_bg)).show(ui, |ui| {
                             ui.set_min_width(220.0);
                             let mut idx = 0;

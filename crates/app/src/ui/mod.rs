@@ -16,8 +16,9 @@ use egui::{Key, Modifiers};
 
 use crate::app::App;
 
-pub fn draw(app: &mut App, ctx: &egui::Context) {
-    let theme_id = egui::Id::new("applied_theme_revision");
+pub fn draw(app: &mut App, root: &mut egui::Ui) {
+    let ctx = &root.ctx().clone();
+    let theme_id = egui::Id::unique("applied_theme_revision");
     let applied: Option<u64> = ctx.data(|d| d.get_temp(theme_id));
     if applied != Some(app.theme_revision) {
         crate::theme::apply_theme(ctx, &app.theme);
@@ -27,18 +28,18 @@ pub fn draw(app: &mut App, ctx: &egui::Context) {
     app.alt_down = ctx.input(|i| i.modifiers.alt);
     app.shift_down = ctx.input(|i| i.modifiers.shift);
     handle_shortcuts(app, ctx);
-    menus::menu_bar(app, ctx);
+    menus::menu_bar(app, root);
     if app.show_command_area {
-        command_area::show(app, ctx);
+        command_area::show(app, root);
     }
     if app.dock.show_status_bar {
-        status::status_bar(app, ctx);
+        status::status_bar(app, root);
     }
     if app.dock.show_osnap_bar {
-        status::osnap_bar(app, ctx);
+        status::osnap_bar(app, root);
     }
-    dock_ui::draw_docked(app, ctx);
-    viewports::show(app, ctx);
+    dock_ui::draw_docked(app, root);
+    viewports::show(app, root);
     dock_ui::draw_floating(app, ctx);
     toolbars::flyouts(app, ctx);
     app.locust.tick(&app.doc);

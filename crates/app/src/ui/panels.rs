@@ -440,9 +440,9 @@ fn help(app: &mut App, ui: &mut egui::Ui) {
     let all = crate::commands::registry::all_commands();
     let implemented = all.iter().filter(|c| crate::commands::registry::is_implemented(c.name)).count();
     ui.label(RichText::new(format!("{} Triceratops commands, {} implemented in triceratops", all.len(), implemented)).small());
-    let mut filter = ui.data(|d| d.get_temp::<String>(egui::Id::new("help_filter"))).unwrap_or_default();
+    let mut filter = ui.data(|d| d.get_temp::<String>(egui::Id::unique("help_filter"))).unwrap_or_default();
     if ui.text_edit_singleline(&mut filter).changed() {
-        ui.data_mut(|d| d.insert_temp(egui::Id::new("help_filter"), filter.clone()));
+        ui.data_mut(|d| d.insert_temp(egui::Id::unique("help_filter"), filter.clone()));
     }
     let f = filter.to_ascii_lowercase();
     egui::ScrollArea::vertical().show(ui, |ui| {

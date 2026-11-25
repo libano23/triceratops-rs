@@ -14,9 +14,10 @@ fn pane(ui: &mut egui::Ui, label: &str, on: bool, tooltip: &str) -> egui::Respon
     r.on_hover_text(tooltip)
 }
 
-pub fn status_bar(app: &mut App, ctx: &egui::Context) {
+pub fn status_bar(app: &mut App, root: &mut egui::Ui) {
+    let ctx = &root.ctx().clone();
     let gap = app.theme.ui.region_gap;
-    egui::TopBottomPanel::bottom("status_bar").frame(app.theme.region_frame().inner_margin(egui::Margin::symmetric(6, 2))).exact_height(22.0 + 2.0 * gap).show(ctx, |ui| {
+    egui::Panel::bottom("status_bar").frame(app.theme.region_frame().inner_margin(egui::Margin::symmetric(6, 2))).exact_size(22.0 + 2.0 * gap).show(root, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             if !app.status_hint.is_empty() {
@@ -57,7 +58,7 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
             // layer pane with popup
             let layer_text = app.status_layer_text();
             let lr = ui.add(egui::Button::new(layer_text).frame(false));
-            let popup_id = egui::Id::new("layer_popup");
+            let popup_id = egui::Id::unique("layer_popup");
             let mut popup_open: bool = ctx.data(|d| d.get_temp(popup_id).unwrap_or(false));
             if lr.clicked() {
                 popup_open = !popup_open;
@@ -137,9 +138,9 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
     });
 }
 
-pub fn osnap_bar(app: &mut App, ctx: &egui::Context) {
+pub fn osnap_bar(app: &mut App, root: &mut egui::Ui) {
     let gap = app.theme.ui.region_gap;
-    egui::TopBottomPanel::bottom("osnap_bar").frame(app.theme.region_frame().inner_margin(egui::Margin::symmetric(6, 2))).exact_height(24.0 + 2.0 * gap).show(ctx, |ui| {
+    egui::Panel::bottom("osnap_bar").frame(app.theme.region_frame().inner_margin(egui::Margin::symmetric(6, 2))).exact_size(24.0 + 2.0 * gap).show(root, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             let shift = ui.input(|i| i.modifiers.shift);

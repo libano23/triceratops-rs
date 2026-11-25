@@ -53,10 +53,11 @@ impl Runner {
             return;
         };
         let raw_input = state.take_egui_input(window);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| ui::draw(&mut self.app, ctx));
+        let mut full_output = self.egui_ctx.run_ui(raw_input, |root| ui::draw(&mut self.app, root));
         state.handle_platform_output(window, full_output.platform_output.clone());
         self.app.process_requests();
         if self.app.quit {
+            full_output.textures_delta.clear(); // closing: nothing left to upload them to
             event_loop.exit();
             return;
         }
@@ -127,14 +128,10 @@ impl Runner {
         }
         let repaint = full_output.viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.repaint_delay.is_zero());
         match renderer.render(&rects, ppp, &self.egui_ctx, full_output) {
-            Ok(()) => {}
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+            Ok(()) | Err(render::FrameError::Skip) => {}
+            Err(render::FrameError::Reconfigure) => {
                 let s = window.inner_size();
                 renderer.resize(s.width, s.height);
-            }
-            Err(wgpu::SurfaceError::OutOfMemory) => {
-                log::error!("out of GPU memory");
-                event_loop.exit();
             }
             Err(e) => log::warn!("render error: {e:?}"),
         }
