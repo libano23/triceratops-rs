@@ -19,7 +19,7 @@ const fn b(icon: &'static str, tip: &'static str, left: &'static str, right: &'s
     Btn { icon, tip, left, right, flyout }
 }
 
-pub const TAB_NAMES: [&str; 16] = [
+pub const TAB_NAMES: [&str; 15] = [
     "Standard",
     "CPlanes",
     "Set View",
@@ -35,8 +35,10 @@ pub const TAB_NAMES: [&str; 16] = [
     "Mesh Tools",
     "Render Tools",
     "Drafting",
-    "New",
 ];
+
+/// Toolbar tabs that older layouts may still list; they are dropped when a layout loads.
+pub const RETIRED_TABS: &[&str] = &["New"];
 
 /// Standard toolbar, in Triceratops' order (left command / right command).
 pub const STANDARD: &[Btn] = &[

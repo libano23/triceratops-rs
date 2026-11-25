@@ -732,7 +732,8 @@ impl App {
             if let Some(aids) = o.aids {
                 self.aids = aids;
             }
-            if let Some(dock) = o.dock {
+            if let Some(mut dock) = o.dock {
+                dock.drop_retired_tabs();
                 self.dock = dock;
             }
             self.show_command_area = o.show_command_area;

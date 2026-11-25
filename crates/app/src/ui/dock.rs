@@ -236,13 +236,40 @@ impl DockLayout {
 
     pub fn load(path: &std::path::Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&text).map_err(|e| e.to_string())
+        let mut layout: Self = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        layout.drop_retired_tabs();
+        Ok(layout)
+    }
+
+    /// Remove toolbar tabs that no longer exist (see `toolbars::RETIRED_TABS`) from a saved
+    /// layout, and any toolbar container left empty by that.
+    pub fn drop_retired_tabs(&mut self) {
+        let retired = crate::ui::toolbars::RETIRED_TABS;
+        for c in self.containers.iter_mut().filter(|c| matches!(c.kind, ContainerKind::Toolbars)) {
+            c.tabs.retain(|t| !retired.contains(&t.as_str()));
+            c.active = c.active.min(c.tabs.len().saturating_sub(1));
+        }
+        self.containers.retain(|c| !(matches!(c.kind, ContainerKind::Toolbars) && c.tabs.is_empty()));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_toolbar_tabs_are_dropped() {
+        let mut l = DockLayout::default_layout();
+        l.containers[0].tabs.push("New".into());
+        l.containers[0].active = l.containers[0].tabs.len() - 1;
+        let lone = l.detach(ContainerKind::Toolbars, "Drafting", 50.0, 50.0).expect("detached");
+        l.container_mut(lone).unwrap().tabs = vec!["New".into()];
+        l.drop_retired_tabs();
+        let top = l.container(1).unwrap();
+        assert!(!top.tabs.iter().any(|t| t == "New"));
+        assert!(top.active < top.tabs.len());
+        assert!(l.container(lone).is_none(), "a toolbar container left empty is removed");
+    }
 
     #[test]
     fn detach_dock_and_show() {
