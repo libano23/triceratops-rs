@@ -452,13 +452,19 @@ pub struct ClipPlane {
 }
 
 /// A view capture queued for the event loop.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CaptureRequest {
     pub path: String,
     pub clipboard: bool,
     pub whole_window: bool,
     /// Named view to restore before capturing.
     pub view: Option<String>,
+    /// Viewport to capture instead of the active one.
+    pub viewport: Option<usize>,
+    /// Keep the PNG in memory under this id (for an assistant) instead of saving it.
+    pub memory: Option<u64>,
+    /// Scale the image down to fit this size, keeping its proportions.
+    pub max_size: Option<(u32, u32)>,
 }
 
 /// One frame of an animation: optional camera and sun direction.
@@ -490,6 +496,9 @@ pub struct App {
     pub window_ops: Vec<String>,
     /// Pending view capture requests.
     pub capture_requests: Vec<CaptureRequest>,
+    /// Captures kept in memory for assistants: (id, PNG bytes or error).
+    pub finished_captures: Vec<(u64, Result<Vec<u8>, String>)>,
+    pub next_capture_id: u64,
     /// Sun light direction (towards the light) when enabled.
     pub sun: Option<DVec3>,
     /// Ground plane height when enabled.
@@ -608,6 +617,8 @@ impl App {
             mapping_widgets: false,
             window_ops: Vec::new(),
             capture_requests: Vec::new(),
+            finished_captures: Vec::new(),
+            next_capture_id: 1,
             sun: None,
             ground_plane: None,
             animation: Animation::default(),
@@ -3118,7 +3129,7 @@ impl App {
                 AppRequest::ViewCapture { path, clipboard } => {
                     let whole = path.starts_with("screen:");
                     let path = path.trim_start_matches("screen:").to_string();
-                    self.capture_requests.push(CaptureRequest { path, clipboard, whole_window: whole, view: None });
+                    self.capture_requests.push(CaptureRequest { path, clipboard, whole_window: whole, ..Default::default() });
                 }
                 AppRequest::BatchRenderNamedViews(dir) => {
                     if self.named_views.is_empty() {
@@ -3126,7 +3137,7 @@ impl App {
                     }
                     for (name, _) in self.named_views.clone() {
                         let path = std::path::Path::new(&dir).join(format!("{}.png", name.replace('/', "_"))).to_string_lossy().to_string();
-                        self.capture_requests.push(CaptureRequest { path, clipboard: false, whole_window: false, view: Some(name) });
+                        self.capture_requests.push(CaptureRequest { path, view: Some(name), ..Default::default() });
                     }
                 }
                 AppRequest::RefreshTextures => self.refresh_textures = true,
@@ -3519,9 +3530,24 @@ impl App {
     /// Save or copy a captured viewport image.
     pub fn finish_capture(&mut self, cr: &CaptureRequest, w: u32, h: u32, data: Vec<u8>) {
         let Some(img) = image::RgbaImage::from_raw(w, h, data) else {
+            if let Some(id) = cr.memory {
+                self.finished_captures.push((id, Err("the capture failed".into())));
+            }
             self.log.push("Capture failed.".into());
             return;
         };
+        if let Some(id) = cr.memory {
+            let img = match cr.max_size {
+                Some((mw, mh)) if img.width() > mw || img.height() > mh => {
+                    image::DynamicImage::ImageRgba8(img).resize(mw.max(1), mh.max(1), image::imageops::FilterType::Triangle).into_rgba8()
+                }
+                _ => img,
+            };
+            let mut png = Vec::new();
+            let result = img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map(|_| png).map_err(|e| format!("cannot encode the capture: {e}"));
+            self.finished_captures.push((id, result));
+            return;
+        }
         let path = if cr.clipboard {
             std::env::temp_dir().join("triceratops-capture.png")
         } else if cr.path.is_empty() {

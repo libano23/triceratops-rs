@@ -28,6 +28,7 @@ cadcraft-geom = { git = "https://github.com/storytold/cadcraft", package = "cadc
 serde = { workspace = true, features = ["derive"] }
 dirs = "6"
 image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 serde_json.workspace = true
 
 [build-dependencies]

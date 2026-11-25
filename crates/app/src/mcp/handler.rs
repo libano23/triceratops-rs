@@ -42,6 +42,7 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
             run_lines(app, &vec![cmd.to_string(); steps]);
             ok(json!({ "log": log_since(app, start) }))
         }
+        "capture_view" => capture_view(app, params),
         other => fail(format!("unknown method {other}")),
     }
 }
@@ -178,6 +179,52 @@ fn object_info(app: &App, params: &Value) -> Outcome {
         v["centroid"] = json!([c.x, c.y, c.z]);
     }
     ok(v)
+}
+
+/// Queue a capture of a viewport (the active one by default) into memory; the reply
+/// follows once a frame has rendered it.
+fn capture_view(app: &mut App, params: &Value) -> Outcome {
+    let viewport = match params["viewport"].as_str() {
+        None => None,
+        Some(name) => match app.viewports.iter().position(|v| v.name.eq_ignore_ascii_case(name)) {
+            Some(i) if !app.visible_viewports().contains(&i) => {
+                return fail(format!("viewport {} is not shown in the current layout; shown: {}", app.viewports[i].name, shown_names(app)));
+            }
+            Some(i) => Some(i),
+            None => {
+                let names: Vec<&str> = app.viewports.iter().map(|v| v.name.as_str()).collect();
+                return fail(format!("no viewport named {name}; viewports: {}", names.join(", ")));
+            }
+        },
+    };
+    let w = params["width"].as_u64().map(|v| v.clamp(16, 4096) as u32);
+    let h = params["height"].as_u64().map(|v| v.clamp(16, 4096) as u32);
+    let max_size = match (w, h) {
+        (None, None) => Some((1280, 1280)),
+        (w, h) => Some((w.unwrap_or(u32::MAX), h.unwrap_or(u32::MAX))),
+    };
+    let id = app.next_capture_id;
+    app.next_capture_id += 1;
+    app.capture_requests.push(crate::app::CaptureRequest { viewport, memory: Some(id), max_size, ..Default::default() });
+    Outcome::Deferred(id)
+}
+
+fn shown_names(app: &App) -> String {
+    app.visible_viewports().iter().map(|&i| app.viewports[i].name.clone()).collect::<Vec<_>>().join(", ")
+}
+
+/// The finished capture with this id, if it has been rendered: `{png_base64, width, height}`.
+pub fn take_capture(app: &mut App, id: u64) -> Option<Result<Value, String>> {
+    let i = app.finished_captures.iter().position(|(cid, _)| *cid == id)?;
+    let (_, result) = app.finished_captures.remove(i);
+    Some(result.and_then(|png| {
+        let img = image::load_from_memory(&png).map_err(|e| e.to_string())?;
+        Ok(json!({
+            "png_base64": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png),
+            "width": img.width(),
+            "height": img.height(),
+        }))
+    }))
 }
 
 /// Commands whose name, aliases or description contain every word of the query; name
@@ -329,5 +376,52 @@ mod tests {
         assert_eq!(serde_json::to_value(&ok).unwrap(), json!({"id": 7, "result": {"a": 1}}));
         let err = crate::mcp::protocol::Response::err(7, "boom");
         assert_eq!(serde_json::to_value(&err).unwrap(), json!({"id": 7, "error": "boom"}));
+    }
+
+    #[test]
+    fn capture_view_defers_and_returns_png() {
+        let mut app = App::new();
+        let vp = app.viewports.iter().position(|v| v.name == "Top").unwrap();
+        let Outcome::Deferred(id) = handle(&mut app, "capture_view", &json!({ "viewport": "top" })) else { panic!("expected deferred") };
+        let req = app.capture_requests.last().cloned().expect("a capture request");
+        assert_eq!(req.memory, Some(id));
+        assert_eq!(req.viewport, Some(vp));
+        assert!(take_capture(&mut app, id).is_none(), "nothing rendered yet");
+        app.finish_capture(&req, 4, 2, vec![255; 32]);
+        let v = take_capture(&mut app, id).expect("finished").expect("ok");
+        assert_eq!((v["width"].as_u64(), v["height"].as_u64()), (Some(4), Some(2)));
+        let png = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, v["png_base64"].as_str().unwrap()).unwrap();
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!((img.width(), img.height()), (4, 2));
+    }
+
+    #[test]
+    fn capture_view_scales_to_requested_width() {
+        let mut app = App::new();
+        // widths below 16 px are raised to 16
+        let Outcome::Deferred(id) = handle(&mut app, "capture_view", &json!({ "width": 2 })) else { panic!() };
+        let req = app.capture_requests.last().cloned().unwrap();
+        app.finish_capture(&req, 64, 32, vec![255; 64 * 32 * 4]);
+        let v = take_capture(&mut app, id).unwrap().unwrap();
+        assert_eq!((v["width"].as_u64(), v["height"].as_u64()), (Some(16), Some(8)));
+    }
+
+    #[test]
+    fn capture_view_unknown_viewport_lists_the_real_ones() {
+        match handle(&mut App::new(), "capture_view", &json!({ "viewport": "Bottom" })) {
+            Outcome::Reply(Err(e)) => assert!(e.starts_with("no viewport named Bottom; viewports:") && e.contains("Perspective"), "{e}"),
+            _ => panic!("expected an error"),
+        }
+    }
+
+    #[test]
+    fn capture_view_of_a_hidden_viewport_is_refused() {
+        let mut app = App::new();
+        run(&mut app, &["MaxViewport"]);
+        let hidden = app.viewports.iter().enumerate().find(|(i, _)| !app.visible_viewports().contains(i)).map(|(_, v)| v.name.clone()).expect("a hidden viewport");
+        match handle(&mut app, "capture_view", &json!({ "viewport": hidden })) {
+            Outcome::Reply(Err(e)) => assert!(e.contains("not shown"), "{e}"),
+            _ => panic!("expected an error"),
+        }
     }
 }

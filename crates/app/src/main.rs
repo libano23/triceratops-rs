@@ -86,7 +86,7 @@ impl Runner {
             self.app.apply_animation_frame(idx);
             if let Some(dir) = self.app.animation.record_dir.clone() {
                 let path = std::path::Path::new(&dir).join(format!("frame{idx:04}.png")).to_string_lossy().to_string();
-                self.app.capture_requests.push(app::CaptureRequest { path, clipboard: false, whole_window: false, view: None });
+                self.app.capture_requests.push(app::CaptureRequest { path, ..Default::default() });
             }
             if idx + 1 >= self.app.animation.frames.len() {
                 self.app.animation.playing = false;
@@ -106,7 +106,8 @@ impl Runner {
                 }
             }
             let active = self.app.active;
-            let rect = self.app.viewports[active].rect;
+            let target = cr.viewport.filter(|&v| v < self.app.viewports.len()).unwrap_or(active);
+            let rect = self.app.viewports[target].rect;
             let px = |v: f64| (v * ppp).round().max(0.0) as u32;
             renderer.capture = Some(if cr.whole_window { ((0, 0, renderer.config.width, renderer.config.height), true) } else { ((px(rect.x), px(rect.y), px(rect.w), px(rect.h)), false) });
             self.egui_ctx.request_repaint();

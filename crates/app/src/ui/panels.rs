@@ -667,6 +667,6 @@ fn rendering(app: &mut App, ui: &mut egui::Ui) {
     ui.separator();
     ui.label(RichText::new("Render writes a PNG of the active viewport (Render, ViewCaptureToFile).").small().color(Color32::GRAY));
     if ui.button("Render to file...").clicked() {
-        app.capture_requests.push(crate::app::CaptureRequest { path: String::new(), clipboard: false, whole_window: false, view: None });
+        app.capture_requests.push(crate::app::CaptureRequest::default());
     }
 }
