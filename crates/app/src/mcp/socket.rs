@@ -84,10 +84,6 @@ pub struct Listener {
 }
 
 impl Listener {
-    pub fn start(on_request: impl Fn(Request, Sender<Response>) + Send + Sync + 'static) -> io::Result<Self> {
-        Self::start_in(&socket_dir(), on_request)
-    }
-
     pub fn start_in(dir: &Path, on_request: impl Fn(Request, Sender<Response>) + Send + Sync + 'static) -> io::Result<Self> {
         std::fs::create_dir_all(dir)?;
         restrict(dir, 0o700);
@@ -125,6 +121,7 @@ impl Listener {
     }
 
     /// The socket name a [`Client`] connects to.
+    #[cfg(test)]
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -182,12 +179,8 @@ fn write_line<T: Serialize>(mut w: impl Write, v: &T) -> io::Result<()> {
     w.flush()
 }
 
-/// Registered windows that still answer, most recently started first. Entries nobody
-/// listens on any more (a crashed window) are deleted.
-pub fn live_sockets() -> Vec<String> {
-    live_sockets_in(&socket_dir())
-}
-
+/// Windows registered in `dir` that still answer, most recently started first. Entries
+/// nobody listens on any more (a crashed window) are deleted.
 pub fn live_sockets_in(dir: &Path) -> Vec<String> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut entries: Vec<(PathBuf, Entry)> = rd

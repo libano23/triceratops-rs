@@ -38,6 +38,7 @@ impl Host {
         Ok(Self { listener, queue, pending: Vec::new() })
     }
 
+    #[cfg(test)]
     pub fn name(&self) -> &str {
         self.listener.name()
     }

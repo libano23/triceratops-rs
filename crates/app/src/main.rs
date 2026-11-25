@@ -7,7 +7,6 @@ mod camera;
 mod commands;
 mod input;
 mod locust;
-#[allow(dead_code)] // TEMP: removed once the event loop (task 5) and the bridge (task 6) use it
 mod mcp;
 mod render;
 mod snap;
@@ -250,6 +249,10 @@ impl ApplicationHandler<UserEvent> for Runner {
 }
 
 fn main() -> anyhow::Result<()> {
+    // `triceratops mcp`: serve AI assistants over stdin/stdout, driving the open window
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return mcp::bridge::run();
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,triceratops=info")).init();
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);

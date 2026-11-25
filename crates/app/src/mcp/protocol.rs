@@ -6,9 +6,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Methods the running window answers.
-pub const METHODS: &[&str] = &["hello", "run_commands", "get_state", "list_objects", "object_info", "find_commands", "capture_view", "undo", "redo"];
-
 /// The version both halves must agree on.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

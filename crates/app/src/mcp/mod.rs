@@ -5,6 +5,7 @@
 //! it against the `App` between frames. [`protocol`] is the private JSON format between
 //! the two halves.
 
+pub mod bridge;
 pub mod handler;
 pub mod host;
 pub mod protocol;
