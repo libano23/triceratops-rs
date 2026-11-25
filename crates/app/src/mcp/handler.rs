@@ -235,8 +235,9 @@ pub fn take_capture(app: &mut App, id: u64) -> Option<Result<Value, String>> {
     }))
 }
 
-/// Commands whose name, aliases or description contain every word of the query; name
-/// matches first, implemented commands before placeholders.
+/// Commands whose name, aliases or description contain every word of the query: names
+/// starting with the query first, then names containing it, then descriptions;
+/// implemented commands before placeholders.
 fn find_commands(params: &Value) -> Value {
     let query = params["query"].as_str().unwrap_or("").to_ascii_lowercase();
     let words: Vec<&str> = query.split_whitespace().collect();
@@ -249,11 +250,18 @@ fn find_commands(params: &Value) -> Value {
             if words.is_empty() || !words.iter().all(|w| text.contains(w)) {
                 return None;
             }
-            let rank = if words.iter().all(|w| name.contains(w)) { 0 } else { 1 } + if commands::is_implemented(c.name) { 0 } else { 2 };
+            let place = if name.starts_with(words[0]) && words.iter().all(|w| name.contains(w)) {
+                0 // "boolean" → BooleanDifference, BooleanUnion, ...
+            } else if words.iter().all(|w| name.contains(w)) {
+                1
+            } else {
+                2
+            };
+            let rank = place + if commands::is_implemented(c.name) { 0 } else { 3 };
             Some((rank, c))
         })
         .collect();
-    hits.sort_by_key(|(rank, c)| (*rank, c.name.len(), c.name));
+    hits.sort_by_key(|(rank, c)| (*rank, c.name));
     let list: Vec<Value> = hits
         .into_iter()
         .take(limit)
@@ -468,5 +476,42 @@ mod tests {
         run(&mut app, &["Circle", "0,0,0"]);
         let r = run(&mut app, &["5"]);
         assert_eq!(ids(&r["added"]).len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod acceptance_tests {
+    use super::*;
+    use crate::app::App;
+    use serde_json::json;
+
+    /// Found by the acceptance run: the union result stayed selected, BooleanDifference took
+    /// it as preselection, and every explicit #id shifted to the following prompt.
+    #[test]
+    fn assistant_commands_ignore_leftover_selection() {
+        let mut app = App::new();
+        for lines in [
+            json!(["Box", "0,0,0", "60,40,0", "8"]),
+            json!(["Box", "10,32,8", "50,40,8", "30", "BooleanUnion", "#1,#2", ""]),
+            json!(["Cylinder", "10,16,-1", "3", "10", "Cylinder", "50,16,-1", "3", "10"]),
+            json!(["BooleanDifference", "#3", "#4,#5"]),
+        ] {
+            let _ = handle(&mut app, "run_commands", &json!({ "lines": lines }));
+        }
+        assert_eq!(app.doc.objects().count(), 1, "log: {:?}", app.log);
+        let vol = tri_doc::Document::volume_of(&app.doc.objects().next().unwrap().geometry).unwrap().0;
+        let expect = 60.0 * 40.0 * 8.0 + 40.0 * 8.0 * 30.0 - 2.0 * std::f64::consts::PI * 9.0 * 8.0;
+        assert!((vol - expect).abs() < expect * 0.02, "volume {vol} vs {expect}");
+    }
+
+    /// Found by the acceptance run: "boolean" listed CurveBoolean and Boolean2Objects
+    /// before BooleanDifference, which fell outside the first five.
+    #[test]
+    fn find_commands_puts_name_prefix_matches_first() {
+        let r = match handle(&mut App::new(), "find_commands", &json!({ "query": "boolean", "limit": 5 })) { Outcome::Reply(Ok(v)) => v, _ => panic!() };
+        let names: Vec<&str> = r["commands"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
+        for n in ["BooleanDifference", "BooleanUnion", "BooleanIntersection"] {
+            assert!(names.contains(&n), "{names:?}");
+        }
     }
 }

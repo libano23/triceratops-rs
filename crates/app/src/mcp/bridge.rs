@@ -28,7 +28,8 @@ Model with run_commands: each line is what a person would type on Triceratops' c
 BooleanUnion, BooleanDifference, Move, Copy, Rotate, Mirror, FilletEdge, Delete, Undo, ...). Use find_commands to \
 discover more by what they do.\n\
 - Then answer its prompts in order: points as x,y,z (document units, usually millimetres), numbers, option names, \
-or objects as #id, #id1,#id2 or last (the objects the last command made). #id@x,y,z picks an object at a point.\n\
+or objects as #id, #id1,#id2 or last (the objects the last command made). #id@x,y,z picks an object at a point. \
+Every command you start begins with nothing selected, so always name the objects it works on.\n\
 - An empty string \"\" presses Enter: it finishes point lists (Polyline, InterpCrv) and accepts defaults.\n\
 - The reply lists the log, the ids added, changed and deleted, and the prompt still waiting, if any. A waiting \
 prompt means the command wants more input: continue it with another run_commands call.\n\

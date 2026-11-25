@@ -1400,6 +1400,11 @@ impl App {
     fn start_command_typed(&mut self, name: &str, typed: &str) {
         // remember who started it, so an assistant never feeds input into the user's command
         self.assistant_owns_command = self.assistant_mode;
+        if self.assistant_mode {
+            // assistants name objects explicitly (#id, last): a leftover selection would be
+            // taken as preselection and shift every input to the following prompt
+            self.doc.clear_selection();
+        }
         let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
         self.pick_order = self.doc.selected_ids();
         self.constraints = Constraints::default();
