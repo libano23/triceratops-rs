@@ -16,7 +16,7 @@ anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
 winit = "0.30"
-wgpu = "25"
+wgpu = "30"
 egui = "0.32"
 egui-wgpu = { version = "0.32", features = ["winit"] }
 egui-winit = "0.32"
