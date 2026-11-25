@@ -35,6 +35,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: scripts/package-linux.sh
+      # the bridge ships inside the same executable: check it answers MCP over stdio
+      - run: python3 scripts/mcp-smoke.py target/release/triceratops
       - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
@@ -47,6 +49,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: pwsh scripts/package-windows.ps1
+      # release builds use the GUI subsystem: check stdin/stdout still reach `triceratops.exe mcp`
+      - run: python scripts/mcp-smoke.py target/release/triceratops.exe
       - uses: actions/upload-artifact@v7
         with:
           name: windows-zip
@@ -61,6 +65,7 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - run: scripts/package-macos.sh
+      - run: python3 scripts/mcp-smoke.py target/macos/Triceratops.app/Contents/MacOS/triceratops
       - uses: actions/upload-artifact@v7
         with:
           name: macos-dmg

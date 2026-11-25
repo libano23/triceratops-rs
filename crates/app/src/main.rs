@@ -7,6 +7,7 @@ mod camera;
 mod commands;
 mod input;
 mod locust;
+mod mcp;
 mod render;
 mod snap;
 mod theme;
@@ -16,11 +17,18 @@ use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 use app::App;
 use render::Renderer;
+
+/// Events sent to the event loop from other threads.
+#[derive(Debug)]
+enum UserEvent {
+    /// An assistant request is waiting to be served.
+    Mcp,
+}
 
 struct Runner {
     window: Option<Arc<Window>>,
@@ -28,10 +36,14 @@ struct Runner {
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
     app: App,
+    proxy: EventLoopProxy<UserEvent>,
+    /// Serves AI assistants (`triceratops mcp`) while `allow_assistants` is on.
+    mcp: Option<mcp::host::Host>,
+    mcp_failed: bool,
 }
 
 impl Runner {
-    fn new() -> Self {
+    fn new(proxy: EventLoopProxy<UserEvent>) -> Self {
         let mut app = App::new();
         // `triceratops model.3dm` opens a model; `triceratops --script file.txt` runs a command file at startup.
         let args: Vec<String> = std::env::args().skip(1).collect();
@@ -45,10 +57,31 @@ impl Runner {
                 i += 1;
             }
         }
-        Self { window: None, renderer: None, egui_ctx: egui::Context::default(), egui_state: None, app }
+        Self { window: None, renderer: None, egui_ctx: egui::Context::default(), egui_state: None, app, proxy, mcp: None, mcp_failed: false }
+    }
+
+    /// Start or stop serving assistants to follow the Options switch.
+    fn sync_mcp(&mut self) {
+        if self.app.allow_assistants && self.mcp.is_none() && !self.mcp_failed {
+            let proxy = self.proxy.clone();
+            match mcp::host::Host::start(move || {
+                let _ = proxy.send_event(UserEvent::Mcp);
+            }) {
+                Ok(host) => self.mcp = Some(host),
+                Err(e) => {
+                    self.mcp_failed = true;
+                    self.app.log.push(format!("AI assistants: cannot listen for connections ({e})."));
+                }
+            }
+        } else if !self.app.allow_assistants {
+            self.mcp = None;
+            self.mcp_failed = false;
+        }
+        self.app.assistant_connected = self.mcp.as_ref().is_some_and(|h| h.connected());
     }
 
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
+        self.sync_mcp();
         let (Some(window), Some(renderer), Some(state)) = (&self.window, &mut self.renderer, &mut self.egui_state) else {
             return;
         };
@@ -84,7 +117,7 @@ impl Runner {
             self.app.apply_animation_frame(idx);
             if let Some(dir) = self.app.animation.record_dir.clone() {
                 let path = std::path::Path::new(&dir).join(format!("frame{idx:04}.png")).to_string_lossy().to_string();
-                self.app.capture_requests.push(app::CaptureRequest { path, clipboard: false, whole_window: false, view: None });
+                self.app.capture_requests.push(app::CaptureRequest { path, ..Default::default() });
             }
             if idx + 1 >= self.app.animation.frames.len() {
                 self.app.animation.playing = false;
@@ -104,7 +137,8 @@ impl Runner {
                 }
             }
             let active = self.app.active;
-            let rect = self.app.viewports[active].rect;
+            let target = cr.viewport.filter(|&v| v < self.app.viewports.len()).unwrap_or(active);
+            let rect = self.app.viewports[target].rect;
             let px = |v: f64| (v * ppp).round().max(0.0) as u32;
             renderer.capture = Some(if cr.whole_window { ((0, 0, renderer.config.width, renderer.config.height), true) } else { ((px(rect.x), px(rect.y), px(rect.w), px(rect.h)), false) });
             self.egui_ctx.request_repaint();
@@ -135,8 +169,20 @@ impl Runner {
             }
             Err(e) => log::warn!("render error: {e:?}"),
         }
-        if let (Some(cr), Some((w, h, data))) = (capture, renderer.captured.take()) {
-            self.app.finish_capture(&cr, w, h, data);
+        match (capture, renderer.captured.take()) {
+            (Some(cr), Some((w, h, data))) => self.app.finish_capture(&cr, w, h, data),
+            (Some(cr), None) => {
+                // the frame was skipped (minimized, surface lost): try again on the next one
+                renderer.capture = None;
+                self.app.capture_requests.insert(0, cr);
+            }
+            _ => {}
+        }
+        let mut repaint = repaint;
+        if let Some(host) = &mut self.mcp {
+            host.finish_captures(&mut self.app);
+            // keep drawing until every requested capture has been rendered
+            repaint |= host.waiting_for_frame();
         }
         if repaint {
             window.request_redraw();
@@ -144,7 +190,7 @@ impl Runner {
     }
 }
 
-impl ApplicationHandler for Runner {
+impl ApplicationHandler<UserEvent> for Runner {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -166,6 +212,20 @@ impl ApplicationHandler for Runner {
         self.egui_state = Some(state);
         self.renderer = Some(renderer);
         self.window = Some(window);
+        self.sync_mcp();
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        match event {
+            UserEvent::Mcp => {
+                let served = self.mcp.as_mut().is_some_and(|h| h.serve(&mut self.app));
+                if served {
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
+            }
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -195,10 +255,14 @@ impl ApplicationHandler for Runner {
 }
 
 fn main() -> anyhow::Result<()> {
+    // `triceratops mcp`: serve AI assistants over stdin/stdout, driving the open window
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return mcp::bridge::run();
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,triceratops=info")).init();
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
-    let mut runner = Runner::new();
+    let mut runner = Runner::new(event_loop.create_proxy());
     event_loop.run_app(&mut runner)?;
     Ok(())
 }

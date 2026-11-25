@@ -63,7 +63,7 @@ fn loft_dialog(app: &mut App, ctx: &egui::Context) {
     }
 }
 
-const OPTION_PAGES: [&str; 4] = ["Appearance", "Colors", "Modeling Aids", "Mouse"];
+const OPTION_PAGES: [&str; 5] = ["Appearance", "Colors", "Modeling Aids", "Mouse", "AI Assistants"];
 
 fn options(app: &mut App, ctx: &egui::Context) {
     let Some(page) = app.options_page.clone() else { return };
@@ -83,6 +83,18 @@ fn options(app: &mut App, ctx: &egui::Context) {
             });
             ui.separator();
             ui.vertical(|ui| match page.as_str() {
+                "AI Assistants" => {
+                    ui.label(RichText::new("AI Assistants").strong());
+                    if ui.checkbox(&mut app.allow_assistants, "Allow AI assistants (MCP)").changed() {
+                        app.options_dirty = true;
+                    }
+                    ui.label(
+                        RichText::new("Claude, Codex and other MCP clients can model in this window through `triceratops mcp`. Only programs running as you on this computer can connect.")
+                            .small()
+                            .color(Color32::GRAY),
+                    );
+                    ui.label(if app.assistant_connected { "An assistant is connected." } else { "No assistant is connected." });
+                }
                 "Appearance" => {
                     ui.label(RichText::new("Appearance").strong());
                     ui.label("Language used for display: English");

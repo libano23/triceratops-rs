@@ -49,7 +49,7 @@ use glam::DVec3;
 use tri_doc::{Document, ObjectId};
 use tri_geom::{Brep, NurbsCurve, NurbsSurface, Plane};
 
-pub use registry::{command_info, find_command, lookup};
+pub use registry::{all_commands, command_info, find_command, is_implemented, lookup};
 #[allow(unused_imports)]
 pub use registry::CommandInfo;
 

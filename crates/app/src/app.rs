@@ -345,6 +345,8 @@ pub struct UserOptions {
     pub dock: Option<crate::ui::dock::DockLayout>,
     pub show_command_area: bool,
     pub show_viewport_tabs: bool,
+    /// AI assistants may drive this window through `triceratops mcp`.
+    pub allow_assistants: bool,
     /// Viewport arrangement ("Four", "Three", "Single", "Grid").
     pub viewport_layout: String,
     /// Display mode per viewport name.
@@ -379,6 +381,7 @@ impl Default for UserOptions {
             dock: None,
             show_command_area: true,
             show_viewport_tabs: true,
+            allow_assistants: true,
             viewport_layout: "Four".into(),
             display_modes: Vec::new(),
             zoom_border: 0.05,
@@ -452,13 +455,19 @@ pub struct ClipPlane {
 }
 
 /// A view capture queued for the event loop.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CaptureRequest {
     pub path: String,
     pub clipboard: bool,
     pub whole_window: bool,
     /// Named view to restore before capturing.
     pub view: Option<String>,
+    /// Viewport to capture instead of the active one.
+    pub viewport: Option<usize>,
+    /// Keep the PNG in memory under this id (for an assistant) instead of saving it.
+    pub memory: Option<u64>,
+    /// Scale the image down to fit this size, keeping its proportions.
+    pub max_size: Option<(u32, u32)>,
 }
 
 /// One frame of an animation: optional camera and sun direction.
@@ -490,6 +499,9 @@ pub struct App {
     pub window_ops: Vec<String>,
     /// Pending view capture requests.
     pub capture_requests: Vec<CaptureRequest>,
+    /// Captures kept in memory for assistants: (id, PNG bytes or error).
+    pub finished_captures: Vec<(u64, Result<Vec<u8>, String>)>,
+    pub next_capture_id: u64,
     /// Sun light direction (towards the light) when enabled.
     pub sun: Option<DVec3>,
     /// Ground plane height when enabled.
@@ -584,6 +596,14 @@ pub struct App {
     pub last_selection: Vec<ObjectId>,
     pub last_added: Vec<ObjectId>,
     pub message_box: Option<String>,
+    /// Commands are being run for an AI assistant: no modal dialogs, messages go to the log.
+    pub assistant_mode: bool,
+    /// The running command was started by an assistant.
+    pub assistant_owns_command: bool,
+    /// Assistants may connect (Options > General); saved with the options.
+    pub allow_assistants: bool,
+    /// A `triceratops mcp` bridge is attached right now (status bar).
+    pub assistant_connected: bool,
     scene_batches: Vec<Batch>,
     scene_keys: Vec<Option<u64>>,
     pub overlay_batches: Vec<Batch>,
@@ -606,6 +626,8 @@ impl App {
             mapping_widgets: false,
             window_ops: Vec::new(),
             capture_requests: Vec::new(),
+            finished_captures: Vec::new(),
+            next_capture_id: 1,
             sun: None,
             ground_plane: None,
             animation: Animation::default(),
@@ -689,6 +711,10 @@ impl App {
             last_selection: Vec::new(),
             last_added: Vec::new(),
             message_box: None,
+            assistant_mode: false,
+            assistant_owns_command: false,
+            allow_assistants: true,
+            assistant_connected: false,
             scene_batches: (0..n).map(|_| Batch::default()).collect(),
             scene_keys: vec![None; n],
             overlay_batches: (0..n).map(|_| Batch::default()).collect(),
@@ -738,6 +764,7 @@ impl App {
             }
             self.show_command_area = o.show_command_area;
             self.show_viewport_tabs = o.show_viewport_tabs;
+            self.allow_assistants = o.allow_assistants;
             self.layout = match o.viewport_layout.as_str() { "Three" => Layout::Three, "Single" => Layout::Single, "Grid" => Layout::Grid, _ => Layout::Four };
             for (name, mode) in &o.display_modes {
                 if let (Some(v), Some(m)) = (self.viewports.iter_mut().find(|v| &v.name == name), DisplayMode::from_name(mode)) {
@@ -787,6 +814,7 @@ impl App {
         match op {
             "save" => {
                 let p = if path.is_empty() {
+                    if self.file_dialog_blocked("SaveWindowLayout") { return; }
                     rfd::FileDialog::new().add_filter("Window layout (*.json)", &["json"]).set_file_name("layout.json").save_file()
                 } else {
                     Some(std::path::PathBuf::from(path))
@@ -801,6 +829,9 @@ impl App {
                 }
             }
             "load" => {
+                if path.is_empty() && self.file_dialog_blocked("LoadWindowLayout") {
+                    return;
+                }
                 let p = if path.is_empty() { rfd::FileDialog::new().add_filter("Window layout (*.json)", &["json"]).pick_file() } else { Some(std::path::PathBuf::from(path)) };
                 let Some(p) = p else { return };
                 match crate::ui::dock::DockLayout::load(&p) {
@@ -891,6 +922,7 @@ impl App {
             dock: Some(self.dock.clone()),
             show_command_area: self.show_command_area,
             show_viewport_tabs: self.show_viewport_tabs,
+            allow_assistants: self.allow_assistants,
             viewport_layout: match self.layout { Layout::Three => "Three", Layout::Single => "Single", Layout::Grid => "Grid", Layout::Four => "Four" }.into(),
             display_modes: self.viewports.iter().filter(|v| !v.is_detail() && !v.is_page()).map(|v| (v.name.clone(), v.display.name().to_string())).collect(),
             zoom_border: self.zoom_border,
@@ -1366,6 +1398,13 @@ impl App {
     }
 
     fn start_command_typed(&mut self, name: &str, typed: &str) {
+        // remember who started it, so an assistant never feeds input into the user's command
+        self.assistant_owns_command = self.assistant_mode;
+        if self.assistant_mode {
+            // assistants name objects explicitly (#id, last): a leftover selection would be
+            // taken as preselection and shift every input to the following prompt
+            self.doc.clear_selection();
+        }
         let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
         self.pick_order = self.doc.selected_ids();
         self.constraints = Constraints::default();
@@ -2963,7 +3002,12 @@ impl App {
                 AppRequest::RedoView => self.redo_view(),
                 AppRequest::LoftDialog(ids) => {
                     self.loft_dialog = Some(LoftDialog { ids, style: 0, closed: false, rebuild: 0, rebuild_count: 10, refit_tol: 0.001 });
+                    if self.assistant_mode {
+                        // nobody to click OK: loft with the default options
+                        self.finish_loft(true);
+                    }
                 }
+                AppRequest::Message(m) if self.assistant_mode => self.log.push(m),
                 AppRequest::Message(m) => self.message_box = Some(m),
                 AppRequest::PointsOn(ids) => {
                     for id in ids {
@@ -3083,6 +3127,7 @@ impl App {
                 }
                 AppRequest::ExportBlocks => self.export_blocks(),
                 AppRequest::Audit3dmFile => {
+                    if self.file_dialog_blocked("Audit3dmFile") { continue; }
                     if let Some(p) = rfd::FileDialog::new().add_filter("3D Models (*.3dm)", &["3dm"]).pick_file() {
                         match tri_doc::io3dm::load(&p) {
                             Ok((state, settings, skipped)) => self.log.push(format!("{}: {} objects, {} layers, {} block definitions, units {}, {} unsupported objects. File reads correctly.", p.display(), state.objects.len(), state.layers.len(), state.blocks.len(), settings.units, skipped)),
@@ -3093,6 +3138,7 @@ impl App {
                 AppRequest::SaveTemplate => {
                     if let Some(dir) = options_path().and_then(|p| p.parent().map(|d| d.join("templates"))) {
                         let _ = std::fs::create_dir_all(&dir);
+                        if self.file_dialog_blocked("SaveAsTemplate") { continue; }
                         if let Some(p) = rfd::FileDialog::new().set_directory(&dir).add_filter("3D Models (*.3dm)", &["3dm"]).set_file_name("Template.3dm").save_file() {
                             match tri_doc::io3dm::save(&self.doc, &p, false) {
                                 Ok(_) => self.log.push(format!("Template saved as {}", p.display())),
@@ -3101,10 +3147,14 @@ impl App {
                         }
                     }
                 }
+                AppRequest::ViewCapture { path, clipboard } if self.assistant_mode && !clipboard && path.trim_start_matches("screen:").is_empty() => {
+                    // the capture runs on a later frame, after assistant mode ends: refuse now
+                    self.log.push("Capture needs a file path when run by an assistant".into());
+                }
                 AppRequest::ViewCapture { path, clipboard } => {
                     let whole = path.starts_with("screen:");
                     let path = path.trim_start_matches("screen:").to_string();
-                    self.capture_requests.push(CaptureRequest { path, clipboard, whole_window: whole, view: None });
+                    self.capture_requests.push(CaptureRequest { path, clipboard, whole_window: whole, ..Default::default() });
                 }
                 AppRequest::BatchRenderNamedViews(dir) => {
                     if self.named_views.is_empty() {
@@ -3112,7 +3162,7 @@ impl App {
                     }
                     for (name, _) in self.named_views.clone() {
                         let path = std::path::Path::new(&dir).join(format!("{}.png", name.replace('/', "_"))).to_string_lossy().to_string();
-                        self.capture_requests.push(CaptureRequest { path, clipboard: false, whole_window: false, view: Some(name) });
+                        self.capture_requests.push(CaptureRequest { path, view: Some(name), ..Default::default() });
                     }
                 }
                 AppRequest::RefreshTextures => self.refresh_textures = true,
@@ -3357,6 +3407,7 @@ impl App {
     }
 
     fn file_open(&mut self) {
+        if self.file_dialog_blocked("Open") { return; }
         let Some(path) = Self::import_dialog(true).pick_file() else {
             return;
         };
@@ -3462,6 +3513,7 @@ impl App {
         let path = match (&self.doc.path, save_as || !native) {
             (Some(p), false) => p.clone(),
             _ => {
+                if self.file_dialog_blocked(if save_as { "SaveAs" } else { "Save" }) { return; }
                 let Some(p) = rfd::FileDialog::new()
                     .add_filter("3D Models (*.3dm)", &["3dm"])
                     .add_filter("Triceratops JSON Models (*.tri)", &[io::NATIVE_EXTENSION])
@@ -3503,12 +3555,28 @@ impl App {
     /// Save or copy a captured viewport image.
     pub fn finish_capture(&mut self, cr: &CaptureRequest, w: u32, h: u32, data: Vec<u8>) {
         let Some(img) = image::RgbaImage::from_raw(w, h, data) else {
+            if let Some(id) = cr.memory {
+                self.finished_captures.push((id, Err("the capture failed".into())));
+            }
             self.log.push("Capture failed.".into());
             return;
         };
+        if let Some(id) = cr.memory {
+            let img = match cr.max_size {
+                Some((mw, mh)) if img.width() > mw || img.height() > mh => {
+                    image::DynamicImage::ImageRgba8(img).resize(mw.max(1), mh.max(1), image::imageops::FilterType::Triangle).into_rgba8()
+                }
+                _ => img,
+            };
+            let mut png = Vec::new();
+            let result = img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map(|_| png).map_err(|e| format!("cannot encode the capture: {e}"));
+            self.finished_captures.push((id, result));
+            return;
+        }
         let path = if cr.clipboard {
             std::env::temp_dir().join("triceratops-capture.png")
         } else if cr.path.is_empty() {
+            if self.file_dialog_blocked("ViewCaptureToFile") { return; }
             match rfd::FileDialog::new().add_filter("PNG image (*.png)", &["png"]).set_file_name("capture.png").save_file() {
                 Some(p) => p,
                 None => return,
@@ -3923,6 +3991,7 @@ impl App {
     }
 
     fn export_with_origin(&mut self, ids: &[ObjectId], origin: DVec3) {
+        if self.file_dialog_blocked("ExportWithOrigin") { return; }
         let Some(p) = rfd::FileDialog::new().add_filter("3D Models (*.3dm)", &["3dm"]).set_file_name("Export.3dm").save_file() else { return };
         let mut tmp = Document::new();
         tmp.settings = self.doc.settings.clone();
@@ -3943,6 +4012,9 @@ impl App {
     }
 
     fn options_file(&mut self, export: bool) {
+        if self.file_dialog_blocked(if export { "OptionsExport" } else { "OptionsImport" }) {
+            return;
+        }
         let Some(src) = options_path() else { return };
         if export {
             self.save_options();
@@ -3968,6 +4040,7 @@ impl App {
             self.log.push("No block definitions in the document.".into());
             return;
         }
+        if self.file_dialog_blocked("ExportBlocks") { return; }
         let Some(dir) = rfd::FileDialog::new().pick_folder() else { return };
         for b in &self.doc.state.blocks {
             let mut tmp = Document::new();
@@ -4053,24 +4126,41 @@ impl App {
     }
 
     /// Run every non-empty line of a text file as command-line input (`//` starts a comment).
+    /// Run command-line entries as if typed: an empty line (or "_Enter") presses Enter in
+    /// the running command, "_Cancel" presses Esc, and lines starting with "//" are comments.
+    pub fn run_script_lines(&mut self, lines: &[String]) {
+        for line in lines.iter().map(|l| l.trim()).filter(|l| !l.starts_with("//")) {
+            if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
+                self.cancel();
+                continue;
+            }
+            if line.is_empty() || line.eq_ignore_ascii_case("_enter") {
+                if self.runner.is_active() {
+                    self.submit_enter();
+                    self.process_requests();
+                }
+                continue;
+            }
+            self.cmd_text = line.to_string();
+            self.submit();
+            self.process_requests();
+        }
+    }
+
+    /// In assistant mode a file picker would wait for a person: refuse instead.
+    fn file_dialog_blocked(&mut self, command: &str) -> bool {
+        if self.assistant_mode {
+            self.log.push(format!("{command} needs a file path when run by an assistant"));
+        }
+        self.assistant_mode
+    }
+
     pub fn run_command_file(&mut self, path: &str) {
         match std::fs::read_to_string(path) {
             Ok(text) => {
-                // an empty line (or "_Enter") presses Enter in the running command
-                let lines: Vec<String> = text.lines().map(|l| l.trim().to_string()).filter(|l| !l.starts_with("//")).collect();
+                let lines: Vec<String> = text.lines().map(|l| l.to_string()).collect();
                 self.log.push(format!("Reading command file {path} ({} lines)", lines.len()));
-                for line in lines {
-                    if line.is_empty() || line.eq_ignore_ascii_case("_enter") {
-                        if self.runner.is_active() {
-                            self.submit_enter();
-                            self.process_requests();
-                        }
-                        continue;
-                    }
-                    self.cmd_text = line;
-                    self.submit();
-                    self.process_requests();
-                }
+                self.run_script_lines(&lines);
             }
             Err(e) => self.log.push(format!("Unable to read command file {path}: {e}")),
         }
@@ -4095,6 +4185,7 @@ impl App {
                 n += 1;
             }
         } else {
+            if self.file_dialog_blocked("SaveACopy") { return; }
             let Some(p) = rfd::FileDialog::new().add_filter("3D Models (*.3dm)", &["3dm"]).add_filter("Triceratops JSON Models (*.tri)", &[io::NATIVE_EXTENSION]).set_file_name("Copy.3dm").save_file() else {
                 return;
             };
@@ -4110,6 +4201,7 @@ impl App {
     }
 
     fn file_import(&mut self) {
+        if self.file_dialog_blocked("Import") { return; }
         let Some(path) = Self::import_dialog(false).pick_file() else {
             return;
         };
@@ -4140,6 +4232,9 @@ impl App {
     }
 
     fn file_export(&mut self) {
+        if self.file_dialog_blocked("Export") {
+            return;
+        }
         use crate::file_dialog::{save_file, type_for_extension, with_type_extension, SaveRequest};
         let types = Self::export_types();
         let doc_path = self.doc.path.clone();
@@ -5240,4 +5335,50 @@ pub fn texture_uvs(geometry: &Geometry, m: &tri_geom::Mesh, bbox: BoundingBox, k
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod assistant_tests {
+    use super::*;
+
+    fn lines(l: &[&str]) -> Vec<String> {
+        l.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn script_lines_build_and_boolean() {
+        let mut app = App::new();
+        app.run_script_lines(&lines(&["Box", "0,0,0", "10,10,0", "5", "Cylinder", "5,5,-1", "2", "7", "BooleanDifference", "#1", "#2"]));
+        assert_eq!(app.doc.objects().count(), 1);
+        assert!(!app.runner.is_active());
+    }
+
+    #[test]
+    fn assistant_loft_uses_defaults_without_dialog() {
+        let mut app = App::new();
+        app.assistant_mode = true;
+        app.run_script_lines(&lines(&["InterpCrv", "0,0,0", "10,0,2", "20,0,0", "", "InterpCrv", "0,10,1", "10,10,4", "20,10,1", "", "Loft", "#1,#2"]));
+        assert!(app.loft_dialog.is_none(), "no dialog for an assistant");
+        let surfaces = app.doc.objects().filter(|o| matches!(o.geometry, Geometry::Surface(_) | Geometry::Brep(_))).count();
+        assert_eq!(surfaces, 1, "log: {:?}", app.log);
+    }
+
+    #[test]
+    fn assistant_open_without_path_fails_instead_of_dialog() {
+        let mut app = App::new();
+        app.assistant_mode = true;
+        app.run_script_lines(&lines(&["Open"]));
+        assert!(app.log.iter().any(|l| l == "Open needs a file path when run by an assistant"), "log: {:?}", app.log);
+        assert!(!app.runner.is_active());
+    }
+
+    #[test]
+    fn assistant_message_box_goes_to_log() {
+        let mut app = App::new();
+        app.assistant_mode = true;
+        app.requests.push(AppRequest::Message("hi".into()));
+        app.process_requests();
+        assert!(app.message_box.is_none());
+        assert_eq!(app.log.last().map(|s| s.as_str()), Some("hi"));
+    }
 }
