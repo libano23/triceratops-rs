@@ -18,7 +18,7 @@ env_logger.workspace = true
 winit = "0.30"
 wgpu = "25"
 egui = "0.32"
-egui-wgpu = { version = "0.32", features = ["winit"] }
+egui-wgpu = { version = "0.37", features = ["winit"] }
 egui-winit = "0.32"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
