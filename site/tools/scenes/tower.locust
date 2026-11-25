@@ -1,0 +1,343 @@
+{
+ "nodes": [
+  {
+   "uid": "floors",
+   "type": "Number",
+   "x": 20,
+   "y": 40,
+   "values": {
+    "Value": 10.0
+   },
+   "nickname": "Floors",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "height",
+   "type": "Number",
+   "x": 20,
+   "y": 135,
+   "values": {
+    "Value": 2.6
+   },
+   "nickname": "Floor height",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "radius",
+   "type": "Number",
+   "x": 20,
+   "y": 230,
+   "values": {
+    "Value": 6.0
+   },
+   "nickname": "Radius",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "sides",
+   "type": "Number",
+   "x": 20,
+   "y": 325,
+   "values": {
+    "Value": 5.0
+   },
+   "nickname": "Sides",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "twist",
+   "type": "Number",
+   "x": 20,
+   "y": 420,
+   "values": {
+    "Value": 3.5
+   },
+   "nickname": "Twist",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "taper",
+   "type": "Number",
+   "x": 20,
+   "y": 515,
+   "values": {
+    "Value": 0.55
+   },
+   "nickname": "Taper",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "series",
+   "type": "Series",
+   "x": 290,
+   "y": 60,
+   "values": {
+    "Start": 0.0
+   },
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "poly",
+   "type": "Polygon",
+   "x": 290,
+   "y": 260,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "range",
+   "type": "Range",
+   "x": 290,
+   "y": 470,
+   "values": {
+    "Start": 1.0
+   },
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "unitz",
+   "type": "Unit Z",
+   "x": 520,
+   "y": 60,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "mul",
+   "type": "Multiply",
+   "x": 520,
+   "y": 300,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "move",
+   "type": "Move",
+   "x": 750,
+   "y": 90,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "rot",
+   "type": "Rotate",
+   "x": 750,
+   "y": 280,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "scale",
+   "type": "Scale",
+   "x": 980,
+   "y": 120,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "loft",
+   "type": "Loft",
+   "x": 980,
+   "y": 330,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "place",
+   "type": "Move",
+   "x": 980,
+   "y": 460,
+   "values": {
+    "Vector": [
+     -16.0,
+     16.0,
+     0.0
+    ]
+   },
+   "nickname": "Place",
+   "group": null,
+   "disabled": false
+  },
+  {
+   "uid": "preview",
+   "type": "Preview",
+   "x": 980,
+   "y": 600,
+   "values": {},
+   "nickname": null,
+   "group": null,
+   "disabled": false
+  }
+ ],
+ "connections": [
+  {
+   "src": "floors",
+   "src_port": 0,
+   "dst": "series",
+   "dst_port": 2
+  },
+  {
+   "src": "height",
+   "src_port": 0,
+   "dst": "series",
+   "dst_port": 1
+  },
+  {
+   "src": "series",
+   "src_port": 0,
+   "dst": "unitz",
+   "dst_port": 0
+  },
+  {
+   "src": "radius",
+   "src_port": 0,
+   "dst": "poly",
+   "dst_port": 1
+  },
+  {
+   "src": "sides",
+   "src_port": 0,
+   "dst": "poly",
+   "dst_port": 2
+  },
+  {
+   "src": "poly",
+   "src_port": 0,
+   "dst": "move",
+   "dst_port": 0
+  },
+  {
+   "src": "unitz",
+   "src_port": 0,
+   "dst": "move",
+   "dst_port": 1
+  },
+  {
+   "src": "series",
+   "src_port": 0,
+   "dst": "mul",
+   "dst_port": 0
+  },
+  {
+   "src": "twist",
+   "src_port": 0,
+   "dst": "mul",
+   "dst_port": 1
+  },
+  {
+   "src": "move",
+   "src_port": 0,
+   "dst": "rot",
+   "dst_port": 0
+  },
+  {
+   "src": "mul",
+   "src_port": 0,
+   "dst": "rot",
+   "dst_port": 1
+  },
+  {
+   "src": "floors",
+   "src_port": 0,
+   "dst": "range",
+   "dst_port": 2
+  },
+  {
+   "src": "taper",
+   "src_port": 0,
+   "dst": "range",
+   "dst_port": 1
+  },
+  {
+   "src": "rot",
+   "src_port": 0,
+   "dst": "scale",
+   "dst_port": 0
+  },
+  {
+   "src": "unitz",
+   "src_port": 0,
+   "dst": "scale",
+   "dst_port": 1
+  },
+  {
+   "src": "range",
+   "src_port": 0,
+   "dst": "scale",
+   "dst_port": 2
+  },
+  {
+   "src": "scale",
+   "src_port": 0,
+   "dst": "loft",
+   "dst_port": 0
+  },
+  {
+   "src": "loft",
+   "src_port": 0,
+   "dst": "place",
+   "dst_port": 0
+  },
+  {
+   "src": "place",
+   "src_port": 0,
+   "dst": "preview",
+   "dst_port": 0
+  }
+ ],
+ "groups": [
+  {
+   "uid": "g1",
+   "name": "Parameters",
+   "color": "#3b82f6",
+   "nodes": [
+    "floors",
+    "height",
+    "radius",
+    "sides",
+    "twist",
+    "taper"
+   ],
+   "x": 0,
+   "y": 10,
+   "w": 240,
+   "h": 600
+  }
+ ],
+ "comments": [
+  {
+   "uid": "c1",
+   "text": "A twisted, tapering tower.\nDrag a slider: the surface follows.",
+   "x": 520,
+   "y": 520,
+   "w": 260,
+   "h": 60,
+   "color": "#fde68a"
+  }
+ ],
+ "clusters": {}
+}
