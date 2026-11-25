@@ -106,6 +106,7 @@ struct Entry {
 /// with the channel its reply goes back on. Dropping it unregisters the window and closes
 /// connections as they next send something.
 pub struct Listener {
+    #[cfg_attr(not(any(unix, test)), allow(dead_code))] // read by the Unix cleanup and the tests
     name: String,
     entry: PathBuf,
     stop: Arc<AtomicBool>,
@@ -137,6 +138,11 @@ impl Listener {
                 while !stop.load(Ordering::SeqCst) {
                     match listener.accept() {
                         Ok(stream) => {
+                            // on macOS and the BSDs an accepted socket inherits the listener's
+                            // non-blocking mode: reads would fail at once and drop the client
+                            if stream.set_nonblocking(false).is_err() {
+                                continue;
+                            }
                             let (stop, clients, on_request) = (stop.clone(), clients.clone(), on_request.clone());
                             let _ = std::thread::Builder::new().name("mcp-conn".into()).spawn(move || serve(stream, &stop, &clients, &*on_request));
                         }
