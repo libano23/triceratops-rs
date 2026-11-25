@@ -580,7 +580,7 @@ pub fn draw_icon(p: &egui::Painter, r: Rect, name: &str) {
             poly(p, r, &[(0.1, 0.3), (0.1, 0.8)], GRAY, 1.0);
             poly(p, r, &[(0.9, 0.3), (0.9, 0.8)], GRAY, 1.0);
         }
-        "grasshopper" => label(p, r, "GH", GREEN),
+        "locust" => label(p, r, "lc", GREEN),
         "help" => label(p, r, "?", BLUE),
         "extrudecrv" => {
             fill(p, r, &[(0.15, 0.85), (0.15, 0.4), (0.85, 0.4), (0.85, 0.85)], SURF, CURVE);

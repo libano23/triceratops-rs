@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="packaging/logo/logo.svg" alt="Triceratops logo" width="180">
+<img src="packaging/logo/head.png" alt="Triceratops logo: a 3D triceratops head" width="200">
 
 # Triceratops
 
@@ -122,18 +122,6 @@ git tag v0.2.0 && git push origin v0.2.0
 ```
 
 Bump `version` in the root `Cargo.toml` first; the tag and the version should match.
-
-## Website and logo
-
-The website in `site/` is a single static page, published to GitHub Pages by the
-[Website workflow](.github/workflows/pages.yml) whenever `site/` changes on `master`.
-
-- **Screenshots** are real Triceratops windows. `site/tools/shoot.sh <name> <script>` runs a
-  command script from `site/tools/scenes/` in a private Xwayland server at a fixed size, with a
-  throw-away configuration, and writes `target/shots/<name>.png`; convert it to WebP into
-  `site/assets/screenshots/`. Linux with Xwayland and ImageMagick is required.
-- **The logo** is generated: `python3 packaging/logo/generate_logo.py` writes the SVGs in
-  `packaging/logo/`, from which the Linux, macOS and Windows icons are rendered.
 
 ## Using it
 

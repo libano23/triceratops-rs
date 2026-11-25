@@ -913,7 +913,7 @@ pub const TOOLS: &[Node] = &[
     I("Import Options...", "OptionsImport"),
     I("Theme...", "Theme"),
     S,
-    I("Grasshopper", "Grasshopper"),
+    I("Locust", "Locust"),
     I("Package Manager", "PackageManager"),
     I("Plug-in Manager...", "PlugInManager"),
     S,
