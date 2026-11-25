@@ -11,7 +11,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use interprocess::local_socket::{prelude::*, ListenerNonblockingMode, ListenerOptions, Name, SendHalf, Stream};
+use interprocess::local_socket::{prelude::*, ListenerNonblockingMode, ListenerOptions, Name, Stream};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -146,8 +146,7 @@ impl Drop for Listener {
 
 fn serve(stream: Stream, stop: &AtomicBool, clients: &AtomicUsize, on_request: &(dyn Fn(Request, Sender<Response>) + Send + Sync)) {
     clients.fetch_add(1, Ordering::SeqCst);
-    let (recv, mut send) = stream.split();
-    let mut reader = BufReader::new(recv);
+    let mut reader = BufReader::new(&stream);
     let mut line = String::new();
     loop {
         line.clear();
@@ -169,14 +168,14 @@ fn serve(stream: Stream, stop: &AtomicBool, clients: &AtomicUsize, on_request: &
             }
             Err(e) => Response::err(0, format!("bad request: {e}")),
         };
-        if write_line(&mut send, &reply).is_err() {
+        if write_line(&stream, &reply).is_err() {
             break;
         }
     }
     clients.fetch_sub(1, Ordering::SeqCst);
 }
 
-fn write_line<T: Serialize>(w: &mut SendHalf, v: &T) -> io::Result<()> {
+fn write_line<T: Serialize>(mut w: impl Write, v: &T) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(v)?;
     bytes.push(b'\n');
     w.write_all(&bytes)?;
@@ -197,7 +196,7 @@ pub fn live_sockets_in(dir: &Path) -> Vec<String> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .filter_map(|p| std::fs::read(&p).ok().and_then(|b| serde_json::from_slice::<Entry>(&b).ok()).map(|e| (p, e)))
         .collect();
-    entries.sort_by(|a, b| (b.1.started_ms, b.1.seq).cmp(&(a.1.started_ms, a.1.seq)));
+    entries.sort_by_key(|(_, e)| std::cmp::Reverse((e.started_ms, e.seq)));
     let mut live = Vec::new();
     for (path, e) in entries {
         if to_name(&e.name).and_then(Stream::connect).is_ok() {
@@ -216,7 +215,7 @@ const BYE: &str = "bye";
 
 /// The bridge side of one connection to a window.
 pub struct Client {
-    send: SendHalf,
+    stream: Arc<Stream>,
     replies: Receiver<Response>,
     next_id: u64,
 }
@@ -224,11 +223,11 @@ pub struct Client {
 impl Client {
     /// Connect and check that the window runs the same version as this bridge.
     pub fn connect(name: &str) -> io::Result<Client> {
-        let stream = Stream::connect(to_name(name)?)?;
-        let (recv, send) = stream.split();
+        let stream = Arc::new(Stream::connect(to_name(name)?)?);
         let (tx, replies) = mpsc::channel();
+        let incoming = stream.clone();
         std::thread::Builder::new().name("mcp-replies".into()).spawn(move || {
-            let mut reader = BufReader::new(recv);
+            let mut reader = BufReader::new(&*incoming);
             let mut line = String::new();
             loop {
                 line.clear();
@@ -244,7 +243,7 @@ impl Client {
                 }
             }
         })?;
-        let mut client = Client { send, replies, next_id: 1 };
+        let mut client = Client { stream, replies, next_id: 1 };
         let hello = client.call("hello", json!({ "version": VERSION }), Duration::from_secs(10)).map_err(io::Error::other)?;
         let theirs = hello["version"].as_str().unwrap_or("unknown");
         if theirs != VERSION {
@@ -259,7 +258,7 @@ impl Client {
     pub fn call(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
         let id = self.next_id;
         self.next_id += 1;
-        if write_line(&mut self.send, &Request { id, method: method.into(), params }).is_err() {
+        if write_line(&*self.stream, &Request { id, method: method.into(), params }).is_err() {
             return Err("Triceratops was closed".into());
         }
         let deadline = Instant::now() + timeout;
@@ -279,7 +278,7 @@ impl Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
-        let _ = write_line(&mut self.send, &Request { id: 0, method: BYE.into(), params: Value::Null });
+        let _ = write_line(&*self.stream, &Request { id: 0, method: BYE.into(), params: Value::Null });
     }
 }
 
