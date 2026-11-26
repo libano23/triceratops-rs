@@ -2,7 +2,6 @@
 # Build every icon from the rendered head (packaging/logo/head.png):
 #   packaging/logo/icon.png            1024 px app icon (head on a dark rounded square)
 #   packaging/linux/triceratops.png    256 px
-#   packaging/macos/icon-1024.png      1024 px
 #   packaging/windows/triceratops.ico  16-256 px
 #   site/assets/{logo.png,favicon-32.png,apple-touch-icon.png}
 # The head is the artwork in site/assets/triceratops.png (transparent background), trimmed
@@ -24,7 +23,6 @@ magick "$L/head.png" -resize 880x880 "$tmp/head.png"
 magick "$tmp/plate.png" "$tmp/head.png" -gravity center -geometry +0+10 -compose over -composite "$L/icon.png"
 
 magick "$L/icon.png" -resize 256x256 packaging/linux/triceratops.png
-cp "$L/icon.png" packaging/macos/icon-1024.png
 for s in 16 24 32 48 64 128 256; do magick "$L/icon.png" -resize ${s}x${s} "$tmp/i$s.png"; done
 magick "$tmp"/i{16,24,32,48,64,128,256}.png packaging/windows/triceratops.ico
 

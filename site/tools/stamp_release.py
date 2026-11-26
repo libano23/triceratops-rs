@@ -62,7 +62,7 @@ def main():
                              f'{name}</a>{date} · <a href="https://github.com/{repo}/releases">all releases</a>{m.group(2)}'),
                   page, count=1, flags=re.S)
     page = re.sub(r'(<p class="cta-note" id="hero-note">).*?(</p>)',
-                  lambda m: f"{m.group(1)}{tag} · Linux · Windows · macOS{m.group(2)}", page, count=1, flags=re.S)
+                  lambda m: f"{m.group(1)}{tag} · Linux · Windows{m.group(2)}", page, count=1, flags=re.S)
     open(path, "w", encoding="utf-8").write(page)
     print(f"stamped {rel['tag_name']} into {path} ({n} download links)")
 

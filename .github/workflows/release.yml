@@ -1,6 +1,6 @@
 name: Build
 
-# Builds the Linux AppImage, the Windows zip and the macOS universal dmg.
+# Builds the Linux AppImage and the Windows zip.
 # Every run uploads them as workflow artifacts; pushing a `v*` tag also
 # attaches them to a GitHub release.
 on:
@@ -56,24 +56,9 @@ jobs:
           name: windows-zip
           path: dist/*.zip
 
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - run: scripts/package-macos.sh
-      - run: python3 scripts/mcp-smoke.py target/macos/Triceratops.app/Contents/MacOS/triceratops
-      - uses: actions/upload-artifact@v7
-        with:
-          name: macos-dmg
-          path: dist/*.dmg
-
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, macos]
+    needs: [linux, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
