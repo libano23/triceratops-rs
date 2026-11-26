@@ -9,6 +9,7 @@
 # own settings untouched). The command script runs, and after a few
 # seconds (so windows have faded in and Locust has solved) the X screen is
 # grabbed into target/shots/<name>.png. Needs Xwayland and ImageMagick.
+# SHOOT_OPTIONS=<options.json> starts it with those settings instead of the defaults.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 name="$1"; script="$2"; locust="${3:-}"; seconds="${4:-4}"
@@ -21,6 +22,7 @@ cfg="$(mktemp -d)"
 mkdir -p "$cfg/triceratops"
 [[ -n "$locust" ]] && cp "$locust" "$cfg/triceratops/locust.locust"
 cp "$script" "$cfg/script.txt"
+[[ -n "${SHOOT_OPTIONS:-}" ]] && cp "$SHOOT_OPTIONS" "$cfg/triceratops/options.json"
 
 display=":$(( 40 + RANDOM % 50 ))"
 Xwayland "$display" -geometry 1920x1200 -noreset >/dev/null 2>&1 &

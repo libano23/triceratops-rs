@@ -434,7 +434,7 @@ fn help(app: &mut App, ui: &mut egui::Ui) {
     ui.label("Right click or Space: Enter. Esc: cancel. Enter with no command: repeat last command.");
     ui.separator();
     ui.label(RichText::new("Coordinates").strong());
-    ui.label("x,y[,z]  r x,y (relative)  w x,y,z (world)  d<a (polar)  number = distance constraint  <a = angle constraint");
+    ui.label("x,y[,z]  r x,y (relative)  w x,y,z (world)  d<a (polar)  number = distance constraint  <a = angle constraint  XY= DL= DX= DI= (MicroStation)");
     ui.label("Ctrl+click: elevator mode. Tab: lock direction. Alt: suspend object snaps. Shift: toggle Ortho.");
     ui.separator();
     let all = crate::commands::registry::all_commands();

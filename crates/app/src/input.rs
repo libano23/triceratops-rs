@@ -16,6 +16,8 @@ pub enum PointInput {
     Angle(f64),
     /// Both distance and angle (polar) relative to the base point.
     Polar { distance: f64, angle_deg: f64 },
+    /// A relative MicroStation key-in (`DL=`, `DX=`, `DI=`) typed with no previous point.
+    NeedsBase(&'static str),
 }
 
 /// Evaluate a small arithmetic expression: numbers, + - * / ^, parentheses,
@@ -184,10 +186,16 @@ pub fn parse_number(text: &str) -> Option<f64> {
 /// * `w` prefix: world, `r` or `@` prefix: relative to `base`, `wr`: world relative
 /// * `d<a` polar (optionally `d<a,z`), `@d<a` relative polar
 /// * a single number: distance constraint; `<a`: angle constraint
+/// * MicroStation key-ins: `XY=x,y[,z]` absolute world, `DL=dx,dy[,dz]` world offset from
+///   `base`, `DX=dx,dy[,dz]` offset along the construction plane's axes, `DI=d,a` polar
+///   from `base` in the construction plane
 pub fn parse_point_input(text: &str, cplane: &Plane, base: Option<DVec3>) -> Option<PointInput> {
     let mut t = text.trim().to_ascii_lowercase();
     if t.is_empty() {
         return None;
+    }
+    if let Some(r) = microstation_keyin(&t, cplane, base) {
+        return r;
     }
     let mut world = false;
     let mut relative = false;
@@ -253,6 +261,47 @@ pub fn parse_point_input(text: &str, cplane: &Plane, base: Option<DVec3>) -> Opt
     }
 }
 
+/// Whether `text` has the shape of a MicroStation key-in (`XY=`, `DL=`, `DX=`, `DI=`), so
+/// that at a point prompt it is read as one even when an option name starts the same way.
+pub fn is_keyin(text: &str) -> bool {
+    let t: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    matches!(t.split_once('='), Some(("xy" | "dl" | "dx" | "di", _)))
+}
+
+/// A MicroStation precision key-in: `None` when the text is not one, `Some(None)` when
+/// it is one but malformed, `Some(Some(_))` otherwise.
+fn microstation_keyin(text: &str, cplane: &Plane, base: Option<DVec3>) -> Option<Option<PointInput>> {
+    let t: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let (key, rest) = t.split_once('=')?;
+    let name = match key {
+        "xy" => "XY=",
+        "dl" => "DL=",
+        "dx" => "DX=",
+        "di" => "DI=",
+        _ => return None,
+    };
+    let nums: Option<Vec<f64>> = rest.split(',').map(parse_number).collect();
+    let Some(n) = nums else { return Some(None) };
+    let ok = if name == "DI=" { n.len() == 2 } else { n.len() == 2 || n.len() == 3 };
+    if !ok {
+        return Some(None);
+    }
+    let z = n.get(2).copied().unwrap_or(0.0);
+    if name == "XY=" {
+        return Some(Some(PointInput::Point(DVec3::new(n[0], n[1], z))));
+    }
+    let Some(b) = base else { return Some(Some(PointInput::NeedsBase(name))) };
+    let p = match name {
+        "DL=" => b + DVec3::new(n[0], n[1], z),
+        "DX=" => b + cplane.x_axis * n[0] + cplane.y_axis * n[1] + cplane.z_axis * z,
+        _ => {
+            let (s, c) = n[1].to_radians().sin_cos();
+            b + cplane.x_axis * (n[0] * c) + cplane.y_axis * (n[0] * s)
+        }
+    };
+    Some(Some(PointInput::Point(p)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +336,32 @@ mod tests {
             panic!();
         }
         assert_eq!(parse_point_input("x", &cp, None), None);
+    }
+
+    #[test]
+    fn microstation_keyins() {
+        let cp = Plane::world_xz();
+        let o = DVec3::new(5.0, 5.0, 5.0);
+        let b = Some(o);
+        let near = |got: Option<PointInput>, want: DVec3| match got {
+            Some(PointInput::Point(p)) => assert!((p - want).length() < 1e-12, "{p} != {want}"),
+            other => panic!("{other:?} != {want}"),
+        };
+        near(parse_point_input("XY=1,2,3", &cp, None), DVec3::new(1.0, 2.0, 3.0));
+        near(parse_point_input("xy = 1 , 2", &cp, None), DVec3::new(1.0, 2.0, 0.0));
+        near(parse_point_input("dl=1,2,3", &cp, b), DVec3::new(6.0, 7.0, 8.0));
+        near(parse_point_input("DX=1,0", &cp, b), o + cp.x_axis);
+        near(parse_point_input("dx=0,1,2", &cp, b), o + cp.y_axis + cp.z_axis * 2.0);
+        near(parse_point_input("di=2,90", &cp, b), o + cp.y_axis * 2.0);
+        near(parse_point_input("Di=2,180", &cp, b), o - cp.x_axis * 2.0);
+        near(parse_point_input("dl=10/2,0", &cp, b), DVec3::new(10.0, 5.0, 5.0));
+        // a key-in at a prompt with a base is a point even when it would read as one number
+        near(parse_point_input("xy=3,4", &cp, b), DVec3::new(3.0, 4.0, 0.0));
+        for (k, name) in [("dl=1,2", "DL="), ("dx=1,2", "DX="), ("di=3,0", "DI=")] {
+            assert_eq!(parse_point_input(k, &cp, None), Some(PointInput::NeedsBase(name)), "{k}");
+        }
+        for bad in ["dl=", "dl=1", "xy=1,2,3,4", "di=5", "di=1,2,3", "zz=1,2", "xy=a,b", "xy=1,,2"] {
+            assert_eq!(parse_point_input(bad, &cp, b), None, "{bad}");
+        }
     }
 }

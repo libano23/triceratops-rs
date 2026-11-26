@@ -3,7 +3,15 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
-pub const ICON: f32 = 24.0;
+/// Toolbar icon size: default, smallest and largest (Options › Appearance).
+pub const ICON_DEFAULT: f32 = 24.0;
+pub const ICON_MIN: f32 = 16.0;
+pub const ICON_MAX: f32 = 40.0;
+
+/// A saved icon size brought into range (a missing or broken value gives the default).
+pub fn clamp_icon_size(size: f32) -> f32 {
+    if size.is_finite() { size.clamp(ICON_MIN, ICON_MAX) } else { ICON_DEFAULT }
+}
 
 const CURVE: Color32 = Color32::from_rgb(20, 20, 20);
 const BLUE: Color32 = Color32::from_rgb(60, 110, 200);

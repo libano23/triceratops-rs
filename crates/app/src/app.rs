@@ -334,6 +334,8 @@ pub struct UserOptions {
     pub colors: AppearanceColors,
     pub osnap: OsnapSettings,
     pub sidebar_width: f32,
+    /// Toolbar icon size in px (16–40).
+    pub icon_size: f32,
     pub panels_visible: bool,
     pub panel_tab: String,
     pub grid_snap: bool,
@@ -372,6 +374,7 @@ impl Default for UserOptions {
             colors: AppearanceColors::default(),
             osnap: OsnapSettings::default(),
             sidebar_width: 70.0,
+            icon_size: crate::ui::icons::ICON_DEFAULT,
             panels_visible: true,
             panel_tab: "Properties".into(),
             grid_snap: false,
@@ -566,6 +569,8 @@ pub struct App {
     pub theme_revision: u64,
     pub backend: String,
     pub sidebar_width: f32,
+    /// Toolbar icon size in px, always within `ICON_MIN..=ICON_MAX`.
+    pub icon_size: f32,
     pub doc: Document,
     pub viewports: Vec<Viewport>,
     pub active: usize,
@@ -691,6 +696,7 @@ impl App {
             theme_revision: 0,
             backend: "auto".into(),
             sidebar_width: 70.0,
+            icon_size: crate::ui::icons::ICON_DEFAULT,
             doc: Document::new(),
             viewports,
             active: 1,
@@ -754,7 +760,16 @@ impl App {
         let Some(p) = options_path() else { return };
         let Ok(text) = std::fs::read_to_string(&p) else { return };
         if let Ok(o) = serde_json::from_str::<UserOptions>(&text) {
+            self.apply_options(o);
+        }
+        self.last_saved_options = Some(self.options_snapshot());
+    }
+
+    /// Take over every option read from an options file.
+    pub fn apply_options(&mut self, o: UserOptions) {
+        {
             self.dark_mode = o.dark_mode;
+            self.icon_size = crate::ui::icons::clamp_icon_size(o.icon_size);
             self.backend = if o.backend.is_empty() { "auto".into() } else { o.backend.clone() };
             if !o.theme.is_empty() {
                 if let Some(t) = crate::theme::Theme::by_name(&o.theme) {
@@ -799,7 +814,6 @@ impl App {
             self.export_memory = ExportMemory { last_dir: o.last_export_dir, last_format: o.last_export_format, dirs: o.export_dirs };
             self.memory.insert("RecordHistory".into(), if self.aids.record_history { "Yes".into() } else { "No".into() });
         }
-        self.last_saved_options = Some(self.options_snapshot());
     }
 
     /// Show a panel (unhide its container and activate its tab).
@@ -884,6 +898,7 @@ impl App {
                 self.theme_revision += 1;
                 self.backend = d.backend;
                 self.sidebar_width = d.sidebar_width;
+                self.icon_size = d.icon_size;
                 self.zoom_border = d.zoom_border;
                 self.drag_mode = d.drag_mode;
                 self.drag_strength = d.drag_strength;
@@ -933,6 +948,7 @@ impl App {
             colors: self.colors.clone(),
             osnap: self.aids.osnap,
             sidebar_width: self.sidebar_width,
+            icon_size: self.icon_size,
             panels_visible: self.panels.visible,
             panel_tab: self.panels.tab.clone(),
             grid_snap: self.aids.grid_snap,
@@ -1813,7 +1829,10 @@ impl App {
             Some((n, v)) => (n.trim(), Some(v.trim())),
             None => (text, None),
         };
-        if let Some(o) = match_option(&prompt.options, oname) {
+        // a MicroStation key-in at a point prompt wins over an option that starts the same
+        // way ("di=5,0" is not "Diameter=5,0")
+        let keyin = matches!(prompt.kind, PromptKind::Point | PromptKind::PointOrNumber) && crate::input::is_keyin(text);
+        if let Some(o) = match_option(&prompt.options, oname).filter(|_| !keyin) {
             let n = o.name.clone();
             self.with_ctx(|r, ctx| r.feed_option(&n, ovalue, ctx));
             self.after_command_step(&before);
@@ -1853,6 +1872,10 @@ impl App {
                         let b = base.unwrap_or(cplane.origin);
                         let (s, c) = angle_deg.to_radians().sin_cos();
                         Some(Input::Point(b + cplane.x_axis * (distance * c) + cplane.y_axis * (distance * s)))
+                    }
+                    Some(PointInput::NeedsBase(k)) => {
+                        self.log.push(format!("{k} needs a previous point"));
+                        None
                     }
                     None => {
                         self.log.push(format!("Unknown command: {text}"));
@@ -5047,6 +5070,71 @@ mod tests {
         app.layout = Layout::Single;
         app.active = 0; // Top view
         app
+    }
+
+    #[test]
+    fn icon_size_round_trips() {
+        let mut app = App::new();
+        assert_eq!(app.icon_size, 24.0);
+        app.icon_size = 32.0;
+        let json = serde_json::to_string(&app.options_snapshot()).unwrap();
+        let mut other = App::new();
+        other.apply_options(serde_json::from_str(&json).unwrap());
+        assert_eq!(other.icon_size, 32.0);
+    }
+
+    #[test]
+    fn reset_all_restores_the_icon_size() {
+        let mut app = App::new();
+        app.icon_size = 36.0;
+        app.layout_file("reset_all", "");
+        assert_eq!(app.icon_size, crate::ui::icons::ICON_DEFAULT);
+    }
+
+    #[test]
+    fn icon_size_defaults_and_clamps() {
+        for (json, want) in [("{}", 24.0), (r#"{"icon_size": 0}"#, 16.0), (r#"{"icon_size": 500}"#, 40.0), (r#"{"icon_size": 20}"#, 20.0)] {
+            let mut app = App::new();
+            app.apply_options(serde_json::from_str(json).unwrap());
+            assert_eq!(app.icon_size, want, "{json}");
+        }
+    }
+
+    fn type_line(app: &mut App, text: &str) {
+        app.cmd_text = text.to_string();
+        app.submit();
+    }
+
+    #[test]
+    fn microstation_keyins_draw_a_polyline() {
+        let mut app = app_with_rect();
+        type_line(&mut app, "Polyline");
+        for t in ["xy=0,0,0", "dl=10,0", "dx=0,10", "di=10,180", ""] {
+            type_line(&mut app, t);
+        }
+        assert!(!app.runner.is_active(), "Polyline finished");
+        let c = app.doc.get(*app.last_added.first().expect("a curve")).and_then(|o| o.geometry.as_curve().cloned()).expect("curve");
+        let want = [DVec3::ZERO, DVec3::new(10.0, 0.0, 0.0), DVec3::new(10.0, 10.0, 0.0), DVec3::new(0.0, 10.0, 0.0)];
+        assert_eq!(c.control_points.len(), want.len());
+        for (p, w) in c.control_points.iter().zip(want) {
+            assert!((*p - w).length() < 1e-9, "{p} != {w}");
+        }
+    }
+
+    #[test]
+    fn relative_keyin_without_a_previous_point_is_refused() {
+        let mut app = app_with_rect();
+        type_line(&mut app, "Polyline");
+        type_line(&mut app, "dl=1,1");
+        assert_eq!(app.log.last().map(String::as_str), Some("DL= needs a previous point"));
+        assert!(app.runner.is_active() && app.runner.base_point().is_none(), "still waiting for the first point");
+        // "Ellipse center" has a Diameter option: "di=" is still a key-in, not that option
+        app.cancel();
+        type_line(&mut app, "Ellipse");
+        type_line(&mut app, "di=5,0");
+        assert_eq!(app.log.last().map(String::as_str), Some("DI= needs a previous point"));
+        type_line(&mut app, "xy=1,2");
+        assert!(app.runner.base_point().is_some_and(|b| (b - DVec3::new(1.0, 2.0, 0.0)).length() < 1e-9), "{:?}", app.runner.base_point());
     }
 
     fn run(app: &mut App, name: &str, inputs: &[Input]) {
