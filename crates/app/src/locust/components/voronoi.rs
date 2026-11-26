@@ -53,7 +53,7 @@ pub fn cells_2d(sites: &[DVec2], boundary: &[DVec2]) -> Vec<Vec<DVec2>> {
     sites
         .iter()
         .enumerate()
-        .take_while(|(i, _)| i % 16 != 0 || tri_geom::job::checkpoint(*i as u64).is_ok())
+        .take_while(|(i, _)| !i.is_multiple_of(16) || tri_geom::job::checkpoint(*i as u64).is_ok())
         .map(|(i, &s)| {
             let mut cell = boundary.to_vec();
             for (j, &o) in sites.iter().enumerate() {

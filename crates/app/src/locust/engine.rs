@@ -71,7 +71,7 @@ fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx
     let mut panics = Vec::new();
     for (n, combo) in combos.into_iter().enumerate() {
         // a cancelled solve (Esc, a newer edit) stops here too, not only in the kernels
-        if n % 64 == 0 && tri_geom::job::check().is_err() {
+        if n.is_multiple_of(64) && tri_geom::job::check().is_err() {
             break;
         }
         let mut args = vec![Value::Null; trees.len()];
