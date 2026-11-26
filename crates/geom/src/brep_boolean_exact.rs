@@ -561,8 +561,12 @@ fn c0_knots(knots: &[f64], degree: usize) -> Vec<f64> {
 }
 
 /// An interior point of a (u, v) region: the sample farthest from the boundary.
-fn interior_uv(loops: &[Vec<DVec2>]) -> Option<DVec2> {
-    let outer = loops.first()?;
+/// Up to `k` points well inside the loops (outer loop first, holes after), farthest from
+/// every border first and apart from one another. Distances are measured with `scale`, the
+/// surface length of one unit of u and of v, so a thin band in a long domain is sampled down
+/// its middle.
+fn interior_uv_samples(loops: &[Vec<DVec2>], scale: DVec2, k: usize) -> Vec<DVec2> {
+    let Some(outer) = loops.first() else { return Vec::new() };
     let (mut lo, mut hi) = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
     for p in outer {
         lo = lo.min(*p);
@@ -574,33 +578,44 @@ fn interior_uv(loops: &[Vec<DVec2>]) -> Option<DVec2> {
         for l in loops {
             let n = l.len();
             for i in 0..n {
-                let (a, b) = (l[i], l[(i + 1) % n]);
+                let (a, b) = (l[i] * scale, l[(i + 1) % n] * scale);
+                let q = p * scale;
                 let e = b - a;
-                let t = ((p - a).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
-                d = d.min((a + e * t - p).length());
+                let t = ((q - a).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
+                d = d.min((a + e * t - q).length());
             }
         }
         d
     };
-    let mut best: Option<(f64, DVec2)> = None;
-    for n in [9usize, 17, 33] {
+    let mut found: Vec<(f64, DVec2)> = Vec::new();
+    for n in [33usize, 65, 129] {
+        found.clear();
         for i in 0..n {
             for j in 0..n {
                 let p = DVec2::new(lo.x + (hi.x - lo.x) * (i as f64 + 0.5) / n as f64, lo.y + (hi.y - lo.y) * (j as f64 + 0.5) / n as f64);
                 if inside(p) {
-                    let d = dist(p);
-                    if best.is_none_or(|b| d > b.0) {
-                        best = Some((d, p));
-                    }
+                    found.push((dist(p), p));
                 }
             }
         }
-        if best.is_some() && n >= 17 {
+        if found.len() >= 4 * k {
             break;
         }
     }
-    best.map(|b| b.1)
+    found.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut out: Vec<DVec2> = Vec::new();
+    let Some(&(best, _)) = found.first() else { return out };
+    for (_, p) in &found {
+        if out.iter().all(|q| ((*q - *p) * scale).length() > best) {
+            out.push(*p);
+            if out.len() == k {
+                break;
+            }
+        }
+    }
+    out
 }
+
 
 /// Point-in-mesh by ray parity, majority of three directions.
 fn inside_mesh(m: &Mesh, p: DVec3) -> bool {
@@ -704,14 +719,34 @@ enum Class {
 }
 
 fn classify(piece: &Face, other_mesh: &Mesh, on_tol: f64) -> Option<Class> {
-    let uv = interior_uv(&piece.effective_loops())?;
-    let (p, su, sv) = piece.surface.evaluate(uv.x, uv.y);
-    let n = su.cross(sv).normalize_or(DVec3::Z);
-    let (d, on) = nearest_on_mesh(other_mesh, p);
-    if d < on_tol {
-        return Some(if n.dot(on) > 0.0 { Class::OnSame } else { Class::OnOpposite });
+    // the surface length of one unit of u and of v, so samples avoid thin pieces' borders
+    let s = &piece.surface;
+    let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+    let length = |f: &dyn Fn(f64) -> DVec3| (0..16).map(|i| (f((i + 1) as f64 / 16.0) - f(i as f64 / 16.0)).length()).sum::<f64>();
+    let (vm, um) = ((v0 + v1) * 0.5, (u0 + u1) * 0.5);
+    let lu = length(&|t| s.point_at(u0 + (u1 - u0) * t, vm)) / (u1 - u0).abs().max(1e-12);
+    let lv = length(&|t| s.point_at(um, v0 + (v1 - v0) * t)) / (v1 - v0).abs().max(1e-12);
+    let samples = interior_uv_samples(&piece.effective_loops(), DVec2::new(lu.max(1e-12), lv.max(1e-12)), 5);
+    // several samples vote: one sample next to the other solid could go either way
+    let mut classes = Vec::with_capacity(samples.len());
+    for uv in samples {
+        let (p, su, sv) = s.evaluate(uv.x, uv.y);
+        let n = su.cross(sv).normalize_or(DVec3::Z);
+        let (d, on) = nearest_on_mesh(other_mesh, p);
+        classes.push(if d < on_tol {
+            if n.dot(on) > 0.0 { Class::OnSame } else { Class::OnOpposite }
+        } else if inside_mesh(other_mesh, p) {
+            Class::Inside
+        } else {
+            Class::Outside
+        });
     }
-    Some(if inside_mesh(other_mesh, p) { Class::Inside } else { Class::Outside })
+    let count = |c: Class| classes.iter().filter(|x| **x == c).count();
+    let (inside, outside) = (count(Class::Inside), count(Class::Outside));
+    if inside + outside > 0 {
+        return Some(if inside > outside { Class::Inside } else { Class::Outside });
+    }
+    classes.first().copied()
 }
 
 fn keep(class: Class, op: BooleanOp, from_b: bool) -> bool {
@@ -941,6 +976,27 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
 
 #[cfg(test)]
 mod tests {
+
+    /// A thin diagonal band in a long domain (a thread's strip on its sweep): the sample
+    /// points must sit well inside the band, measured with the surface's own scale, or the
+    /// piece is classified from a point next to the other solid.
+    #[test]
+    fn interior_samples_sit_inside_thin_bands() {
+        // u in [0, 1] is 2 units long on the surface, v in [0, 4] is 60 units long
+        let scale = DVec2::new(2.0, 15.0);
+        let w = 0.06; // band width in u
+        let band = vec![DVec2::new(0.1, 0.0), DVec2::new(0.1 + w, 0.0), DVec2::new(0.9 + w, 4.0), DVec2::new(0.9, 4.0)];
+        let samples = interior_uv_samples(&[band.clone()], scale, 5);
+        assert!(samples.len() >= 3, "{samples:?}");
+        for p in samples {
+            // distance across the band, on the surface: half the width is 0.06 units
+            let t = p.y / 4.0;
+            let left = 0.1 + 0.8 * t;
+            let across = ((p.x - left).min(left + w - p.x)) * scale.x;
+            assert!(across > 0.4 * w * scale.x / 2.0, "sample {p:?} only {across} from the band's side");
+        }
+    }
+
 
     /// A cut piece's border along the original outline gets a vertex wherever it crosses a
     /// corner of the surface (a knot of a straight-sided profile): without it the border cut
