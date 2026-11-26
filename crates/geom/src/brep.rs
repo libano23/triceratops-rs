@@ -160,34 +160,19 @@ impl Face {
         let metric = |p: DVec2| DVec2::new((p.x - u0) / du * lu, (p.y - v0) / dv * lv);
         let loops_m: Vec<Vec<DVec2>> = loops.iter().map(|l| l.iter().map(|p| metric(*p)).collect()).collect();
         let mut pts: Vec<DVec2> = loops.iter().flatten().copied().collect();
-        let inside = |p: DVec2| loops_m.first().is_some_and(|o| point_in_polygon(p, o)) && !loops_m.iter().skip(1).any(|h| point_in_polygon(p, h));
         // interior grid samples, kept away from the outline so the outline edges stay Delaunay
         let grid_step = {
             let gu = if us.len() > 1 { lu / (us.len() - 1) as f64 } else { lu };
             let gv = if vs.len() > 1 { lv / (vs.len() - 1) as f64 } else { lv };
             gu.min(gv)
         };
+        // the loops' segments bucketed in space: both tests below look only at nearby ones
+        let index = LoopIndex::new(&loops_m, grid_step.max(1e-9));
+        let inside = |p: DVec2| index.inside(p);
         for &u in us {
             for &v in vs {
                 let p = metric(DVec2::new(u, v));
-                if !inside(p) {
-                    continue;
-                }
-                let mut ok = true;
-                'outer: for l in &loops_m {
-                    for k in 0..l.len() {
-                        let (a, bq) = (l[k], l[(k + 1) % l.len()]);
-                        let d = bq - a;
-                        let len2 = d.length_squared();
-                        let t = if len2 < 1e-24 { 0.0 } else { ((p - a).dot(d) / len2).clamp(0.0, 1.0) };
-                        let dist = (a + d * t - p).length();
-                        if dist < 0.6 * len2.sqrt().min(grid_step).max(1e-9) {
-                            ok = false;
-                            break 'outer;
-                        }
-                    }
-                }
-                if ok {
+                if inside(p) && !index.near_outline(p, grid_step) {
                     pts.push(DVec2::new(u, v));
                 }
             }
@@ -443,6 +428,100 @@ pub fn polygon_centroid(poly: &[DVec2]) -> (DVec2, f64) {
         return (poly.iter().fold(DVec2::ZERO, |s, p| s + *p) / n, 0.0);
     }
     (c / (3.0 * a), a * 0.5)
+}
+
+/// Trim-loop segments in a uniform grid of cells (for "is this point near the outline") and
+/// in horizontal bands (for even-odd inside tests), so meshing a face whose loops have
+/// thousands of points does not test every sample against every segment.
+struct LoopIndex {
+    /// (start, end, loop index)
+    segs: Vec<(DVec2, DVec2, usize)>,
+    loops: usize,
+    min: DVec2,
+    cell: f64,
+    nx: usize,
+    ny: usize,
+    /// segments touching each cell (row-major)
+    cells: Vec<Vec<u32>>,
+    /// segments whose y-range overlaps each band of rows
+    bands: Vec<Vec<u32>>,
+}
+
+impl LoopIndex {
+    fn new(loops: &[Vec<DVec2>], cell: f64) -> Self {
+        let mut segs = Vec::new();
+        for (li, l) in loops.iter().enumerate() {
+            for k in 0..l.len() {
+                segs.push((l[k], l[(k + 1) % l.len()], li));
+            }
+        }
+        let (mut min, mut max) = (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN));
+        for (a, _, _) in &segs {
+            min = min.min(*a);
+            max = max.max(*a);
+        }
+        if segs.is_empty() {
+            (min, max) = (DVec2::ZERO, DVec2::ONE);
+        }
+        // at most about a million cells
+        let span = (max - min).max(DVec2::splat(1e-12));
+        let cell = cell.max((span.x * span.y / 1e6).sqrt());
+        let (nx, ny) = (((span.x / cell) as usize + 1).max(1), ((span.y / cell) as usize + 1).max(1));
+        let mut cells = vec![Vec::new(); nx * ny];
+        let mut bands = vec![Vec::new(); ny];
+        let ix = |x: f64| (((x - min.x) / cell) as isize).clamp(0, nx as isize - 1) as usize;
+        let iy = |y: f64| (((y - min.y) / cell) as isize).clamp(0, ny as isize - 1) as usize;
+        for (si, (a, b, _)) in segs.iter().enumerate() {
+            let (x0, x1) = (ix(a.x.min(b.x)), ix(a.x.max(b.x)));
+            let (y0, y1) = (iy(a.y.min(b.y)), iy(a.y.max(b.y)));
+            for y in y0..=y1 {
+                bands[y].push(si as u32);
+                for x in x0..=x1 {
+                    cells[y * nx + x].push(si as u32);
+                }
+            }
+        }
+        Self { segs, loops: loops.len(), min, cell, nx, ny, cells, bands }
+    }
+
+    fn row(&self, y: f64) -> Option<usize> {
+        let r = ((y - self.min.y) / self.cell).floor();
+        (r >= 0.0 && (r as usize) < self.ny).then_some(r as usize)
+    }
+
+    /// Inside the first loop and outside every other (even-odd per loop).
+    fn inside(&self, p: DVec2) -> bool {
+        let Some(row) = self.row(p.y) else { return false };
+        let mut parity = vec![false; self.loops];
+        for &si in &self.bands[row] {
+            let (a, b, li) = self.segs[si as usize];
+            if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+                parity[li] = !parity[li];
+            }
+        }
+        parity.first().copied().unwrap_or(false) && !parity.iter().skip(1).any(|x| *x)
+    }
+
+    /// Closer to some segment than 0.6 × min(segment length, `step`).
+    fn near_outline(&self, p: DVec2, step: f64) -> bool {
+        let reach = 0.6 * step;
+        let (cx0, cx1) = (((p.x - reach - self.min.x) / self.cell).floor() as isize, ((p.x + reach - self.min.x) / self.cell).floor() as isize);
+        let (cy0, cy1) = (((p.y - reach - self.min.y) / self.cell).floor() as isize, ((p.y + reach - self.min.y) / self.cell).floor() as isize);
+        for y in cy0.max(0)..=cy1.min(self.ny as isize - 1) {
+            for x in cx0.max(0)..=cx1.min(self.nx as isize - 1) {
+                for &si in &self.cells[y as usize * self.nx + x as usize] {
+                    let (a, b, _) = self.segs[si as usize];
+                    let d = b - a;
+                    let len2 = d.length_squared();
+                    let t = if len2 < 1e-24 { 0.0 } else { ((p - a).dot(d) / len2).clamp(0.0, 1.0) };
+                    if (a + d * t - p).length() < 0.6 * len2.sqrt().min(step).max(1e-9) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 pub fn point_in_polygon(p: DVec2, poly: &[DVec2]) -> bool {
@@ -864,6 +943,33 @@ mod tests {
         }
         assert_eq!(b.tessellate(1, 1).triangle_count(), 12);
         assert!(b.compute_closed());
+    }
+
+    /// A curved face trimmed by loops of thousands of points (a threaded nut's bore) must
+    /// mesh for display in well under a second, not minutes.
+    #[test]
+    fn finely_trimmed_face_meshes_quickly() {
+        let grid: Vec<Vec<DVec3>> = (0..200).map(|i| (0..80).map(|j| DVec3::new(i as f64, j as f64, (i as f64 * 0.3).sin() * (j as f64 * 0.2).cos() * 3.0)).collect()).collect();
+        let s = NurbsSurface::interpolate_grid(&grid, 3, 3).unwrap();
+        let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+        let c = DVec2::new((u0 + u1) / 2.0, (v0 + v1) / 2.0);
+        let (ru, rv) = ((u1 - u0) * 0.45, (v1 - v0) * 0.45);
+        let wavy = |n: usize, f: f64, k: f64| -> Vec<DVec2> {
+            (0..n).map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / n as f64;
+                let r = f * (1.0 + 0.05 * (k * t).sin());
+                c + DVec2::new(ru * r * t.cos(), rv * r * t.sin())
+            }).collect()
+        };
+        let mut hole = wavy(3000, 0.4, 13.0);
+        hole.reverse();
+        let face = Face { surface: s, loops: vec![wavy(8000, 1.0, 40.0), hole] };
+        let d = crate::display_mesh::MeshDensity::for_size(200.0);
+        let t = std::time::Instant::now();
+        let m = face.display_mesh(&d);
+        let took = t.elapsed();
+        assert!(m.triangle_count() > 1000, "{}", m.triangle_count());
+        assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
     }
 
     #[test]

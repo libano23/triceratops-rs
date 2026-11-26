@@ -1054,3 +1054,40 @@ mod voronoi {
         }
     }
 }
+
+/// A loft of closed sections is closed around but open at the ends: Cap must close it.
+#[test]
+fn cap_closes_a_loft_of_closed_sections() {
+    let mut g = Graph::new();
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!("a = cap(loft([circle(point(0,0,0), 5), circle(point(0,0,10), 5)]));")), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let out = run(&g);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface") };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    assert!(close(v, PI * 25.0 * 10.0, 0.02), "volume {v}");
+}
+
+/// A long loft (a screw's 200 sections) can pass the closed test with its ends open: Cap
+/// still closes it.
+#[test]
+fn cap_closes_a_long_loft() {
+    let mut g = Graph::new();
+    let code = "let s = []; for k in 0..=200 { let p = []; for i in 0..72 { let t = 2.0 * PI * i / 72; let r = 5.0 + 0.5 * sin(3.0 * t + k * 0.3); p.push(point(r * cos(t), r * sin(t), k * 0.2)); } s.push(polyline(p, true)); } a = cap(loft(s));";
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!(code)), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let out = run(&g);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface") };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+}
+
+/// The same with polyline sections, as a screw's are.
+#[test]
+fn cap_closes_a_loft_of_polylines() {
+    let mut g = Graph::new();
+    let code = "let ring = |z| { let p = []; for i in 0..36 { let t = 2.0 * PI * i / 36; p.push(point(5.0 * cos(t), 5.0 * sin(t), z)); } polyline(p, true) }; \
+                let s = []; for k in 0..=10 { s.push(ring.call(k * 1.0)); } a = cap(loft(s));";
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!(code)), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface: {:?}", ctx.diagnostics) };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+}

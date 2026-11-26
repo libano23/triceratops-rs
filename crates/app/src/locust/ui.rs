@@ -133,6 +133,8 @@ struct SolveResult {
     /// Outputs and messages of the nested graph on screen, inside a cluster.
     nested: Option<(Outputs, HashMap<String, Vec<Diagnostic>>)>,
     elapsed: Duration,
+    /// The MCP report, measured here (volumes can take a while) rather than on the GUI thread.
+    report: serde_json::Value,
 }
 
 /// Solve a definition (and the nested graph on screen, if any) — runs on the worker thread.
@@ -144,7 +146,9 @@ fn solve_definition(root: &Graph, nested: Option<&Graph>, objects: super::compon
         let mut inner = Ctx::with_objects(objects);
         (engine::solve(g, &mut inner), inner.diagnostics)
     });
-    SolveResult { root_out, preview: ctx.preview, bake: ctx.bake, diagnostics: ctx.diagnostics, nested, elapsed: started.elapsed() }
+    let elapsed = started.elapsed();
+    let report = super::report::solve_report(root, &root_out, &ctx.diagnostics, ctx.preview.len(), ctx.bake.len(), elapsed);
+    SolveResult { root_out, preview: ctx.preview, bake: ctx.bake, diagnostics: ctx.diagnostics, nested, elapsed, report }
 }
 
 /// The editor state, kept by the application.
@@ -184,6 +188,7 @@ pub struct Editor {
     forced_busy: bool,
     /// The solve running on a worker thread, if any.
     solve_job: Option<SolveJob>,
+    last_report: Option<serde_json::Value>,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -224,6 +229,7 @@ impl Default for Editor {
             last_solve: std::time::Duration::ZERO,
             forced_busy: false,
             solve_job: None,
+            last_report: None,
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -302,7 +308,17 @@ impl Editor {
     pub fn set_inputs(&mut self, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<String>, String> {
         self.ensure_loaded();
         let mut plan = Vec::new();
+        let mut texts = Vec::new();
         for (key, v) in values {
+            // an Expression's formula or a Script's code, by "Node.Expression" / "Node.code"
+            if let Some((node, field)) = key.rsplit_once('.').filter(|(_, f)| *f == "Expression" || *f == "code") {
+                if let Ok((uid, _)) = super::authoring::resolve_input(&self.root, node) {
+                    if self.root.node(&uid).is_some_and(|n| super::graph::is_dynamic(&n.kind) && (field == "code") == (n.kind == "Script")) {
+                        texts.push((uid, field.to_string(), v.clone()));
+                        continue;
+                    }
+                }
+            }
             let (uid, index) = super::authoring::resolve_input(&self.root, key)?;
             if self.root.source_of(&uid, index).is_some() {
                 return Err(format!("input \"{key}\" is wired to another node; set that one instead"));
@@ -318,13 +334,19 @@ impl Editor {
                 n.values.insert(name.clone(), v.clone());
             }
         }
+        for (uid, field, v) in texts {
+            if let Some(n) = self.root.node_mut(&uid) {
+                n.values.insert(field, v);
+            }
+        }
         self.changed();
         Ok(values.keys().cloned().collect())
     }
 
-    /// The solve report of the whole definition (see `report::solve_report`).
+    /// The solve report of the whole definition (see `report::solve_report`), as the last
+    /// finished solve measured it.
     pub fn report(&self) -> serde_json::Value {
-        super::report::solve_report(&self.root, &self.root_outputs, &self.root_diagnostics, self.preview.len(), self.bake.len(), self.last_solve)
+        self.last_report.clone().unwrap_or_else(|| super::report::solve_report(&self.root, &self.root_outputs, &self.root_diagnostics, self.preview.len(), self.bake.len(), self.last_solve))
     }
 
     // ------------------------------------------------------------ graphs
@@ -684,6 +706,7 @@ impl Editor {
 
     fn install(&mut self, r: SolveResult) {
         self.last_solve = r.elapsed;
+        self.last_report = Some(r.report);
         self.root_outputs = r.root_out.clone();
         self.preview = r.preview;
         self.bake = r.bake;

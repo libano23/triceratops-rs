@@ -368,54 +368,11 @@ pub fn delaunay(points: &[DVec3], plane: &Plane) -> Mesh {
         return m;
     }
     let uv: Vec<DVec2> = points.iter().map(|p| { let (u, v, _) = plane.closest_parameters(*p); DVec2::new(u, v) }).collect();
-    let (mut min, mut max) = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
-    for p in &uv {
-        min = min.min(*p);
-        max = max.max(*p);
-    }
-    let d = (max - min).max_element().max(1e-9) * 20.0;
-    let mid = (min + max) * 0.5;
-    let mut pts = uv.clone();
-    let n = pts.len();
-    pts.push(DVec2::new(mid.x - d, mid.y - d));
-    pts.push(DVec2::new(mid.x + d, mid.y - d));
-    pts.push(DVec2::new(mid.x, mid.y + d));
-    let mut tris: Vec<[usize; 3]> = vec![[n, n + 1, n + 2]];
-    let circum = |t: &[usize; 3]| -> (DVec2, f64) {
-        let (a, b, c) = (pts[t[0]], pts[t[1]], pts[t[2]]);
-        let dd = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
-        if dd.abs() < 1e-18 {
-            return (a, f64::INFINITY);
-        }
-        let ux = ((a.x * a.x + a.y * a.y) * (b.y - c.y) + (b.x * b.x + b.y * b.y) * (c.y - a.y) + (c.x * c.x + c.y * c.y) * (a.y - b.y)) / dd;
-        let uy = ((a.x * a.x + a.y * a.y) * (c.x - b.x) + (b.x * b.x + b.y * b.y) * (a.x - c.x) + (c.x * c.x + c.y * c.y) * (b.x - a.x)) / dd;
-        let c2 = DVec2::new(ux, uy);
-        (c2, (a - c2).length())
-    };
-    for i in 0..n {
-        let p = pts[i];
-        let bad: Vec<usize> = tris.iter().enumerate().filter(|(_, t)| { let (c, r) = circum(t); (p - c).length() < r }).map(|(k, _)| k).collect();
-        let mut poly: Vec<(usize, usize)> = Vec::new();
-        for &k in &bad {
-            let t = tris[k];
-            for e in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                let shared = bad.iter().any(|&o| o != k && { let u = tris[o]; [(u[0], u[1]), (u[1], u[2]), (u[2], u[0])].iter().any(|f| (f.0 == e.1 && f.1 == e.0) || (f.0 == e.0 && f.1 == e.1)) });
-                if !shared {
-                    poly.push(e);
-                }
-            }
-        }
-        let mut keep: Vec<[usize; 3]> = tris.iter().enumerate().filter(|(k, _)| !bad.contains(k)).map(|(_, t)| *t).collect();
-        for e in poly {
-            keep.push([e.0, e.1, i]);
-        }
-        tris = keep;
-    }
+    // O(n log n) sweep-hull Delaunay (a naive Bowyer–Watson took 32 s on 50k points)
+    let pts: Vec<delaunator::Point> = uv.iter().map(|p| delaunator::Point { x: p.x, y: p.y }).collect();
+    let tri = delaunator::triangulate(&pts);
     m.vertices = points.to_vec();
-    for t in tris {
-        if t.iter().any(|v| *v >= n) {
-            continue;
-        }
+    for t in tri.triangles.chunks(3) {
         // orient counter-clockwise in the plane
         let (a, b, c) = (uv[t[0]], uv[t[1]], uv[t[2]]);
         if (b - a).perp_dot(c - a) >= 0.0 {

@@ -142,7 +142,7 @@ pub struct LocustSetGraphParams {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct LocustSetValuesParams {
-    /// Input values by "Node" (its first input, e.g. a Number slider) or "Node.Input": {"Radius": 3, "Extrude.Cap": false}.
+    /// Input values by "Node" (its first input, e.g. a Number slider) or "Node.Input": {"Radius": 3, "Extrude.Cap": false}; also "Node.Expression" (an Expression's formula) and "Node.code" (a Script's code).
     pub values: serde_json::Map<String, Value>,
 }
 

@@ -860,6 +860,19 @@ mod acceptance_tests {
     }
 
     #[test]
+    fn locust_set_values_sets_formula_and_code() {
+        let mut app = App::new();
+        let g = json!({
+            "nodes": [{ "type": "Expression", "nickname": "F", "values": { "Expression": "x", "x": 2 } }, { "type": "Script", "nickname": "S", "values": { "code": "a = 1;" } }, { "type": "Panel", "nickname": "P" }, { "type": "Panel", "nickname": "Q" }],
+            "connections": [{ "from": "F", "to": "P.Data" }, { "from": "S", "to": "Q.Data" }]
+        });
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": g }));
+        let r = ok_settled(&mut app, "locust_set_values", &json!({ "values": { "F.Expression": "x * 10", "S.code": "a = 7;" } }));
+        let panels = r["panels"].to_string();
+        assert!(panels.contains("20") && panels.contains('7'), "{r}");
+    }
+
+    #[test]
     fn locust_bad_graph_leaves_canvas() {
         let mut app = App::new();
         ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));

@@ -53,8 +53,7 @@ mod tests {
     }
 
     /// Male and female: a closed screw and a closed nut whose thread is the screw's grown
-    /// by the clearance. (Sizes are checked on the surfaces: the volume measure under-samples
-    /// a loft of this many sections.)
+    /// by the clearance.
     #[test]
     fn thread_makes_screw_and_nut() {
         let bake = solve_example("Screw thread");
@@ -80,6 +79,13 @@ mod tests {
         assert!(lo > rmin - 0.05 && hi < rmaj + 0.05 && hi - lo > 0.5 * (rmaj - rmin), "radii {lo}..{hi}");
         let corner = s / 2.0 / (std::f64::consts::PI / 6.0).cos();
         assert!((diameter_xy(nut) - 2.0 * corner).abs() < 0.05, "nut across corners {}", diameter_xy(nut));
+        let pi = std::f64::consts::PI;
+        let v = volume(screw);
+        assert!(v > pi * rmin * rmin * l && v < pi * rmaj * rmaj * l, "screw volume {v}");
+        let hex = 3.0f64.sqrt() / 2.0 * s * s * h;
+        let c = 0.1;
+        let v = volume(nut);
+        assert!(v > hex - pi * (rmaj + c).powi(2) * h && v < hex - pi * (rmin + c).powi(2) * h, "nut volume {v}");
     }
 
     fn diameter_xy(g: &Geometry) -> f64 {
