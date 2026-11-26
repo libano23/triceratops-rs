@@ -79,6 +79,7 @@ impl Host {
             }
         }
         any |= app.poll_job();
+        any |= app.locust.poll();
         self.finish_runs(app);
         any
     }

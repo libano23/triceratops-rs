@@ -109,10 +109,65 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// Document objects a solve may read, by reference (`object_key`): taken on the GUI thread
+/// so the solve can run on another one.
+pub type Objects = Arc<HashMap<String, Arc<Geometry>>>;
+
+/// How a reference to a document object (an id, `#id` or a name) is looked up.
+pub fn object_key(r: &Value) -> Option<String> {
+    match r {
+        Value::Int(_) | Value::Number(_) => Some(format!("#{}", as_int(r).max(0))),
+        Value::Text(t) => {
+            let t = t.trim();
+            Some(match t.trim_start_matches('#').parse::<u64>() {
+                Ok(id) => format!("#{id}"),
+                Err(_) => t.to_string(),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Every object of `doc`, by id and by name.
+pub fn all_objects(doc: &Document) -> HashMap<String, Arc<Geometry>> {
+    let mut m = HashMap::new();
+    for o in doc.objects() {
+        let g = Arc::new(o.geometry.clone());
+        if let Some(name) = o.attributes.name.as_deref() {
+            m.entry(name.to_string()).or_insert_with(|| g.clone());
+        }
+        m.insert(format!("#{}", o.id), g);
+    }
+    m
+}
+
+/// The objects a definition reads: those named in its Geometry parameters, or the whole
+/// document when a reference is computed (wired) or hidden in a cluster.
+pub fn objects_for(graph: &super::graph::Graph, doc: &Document) -> HashMap<String, Arc<Geometry>> {
+    let geometry_nodes: Vec<&super::graph::Node> = graph.nodes.iter().filter(|n| n.kind == "Geometry").collect();
+    if !graph.clusters.is_empty() || geometry_nodes.iter().any(|n| graph.source_of(&n.uid, 0).is_some()) {
+        return all_objects(doc);
+    }
+    let mut m = HashMap::new();
+    for n in geometry_nodes {
+        let Some(v) = n.values.get("Objects").or_else(|| n.values.get("0")) else { continue };
+        let refs = match super::data::Value::from_json(v) {
+            Value::List(items) => items,
+            one => vec![one],
+        };
+        for r in refs {
+            if let (Some(k), Some(g)) = (object_key(&r), geo::find_object(doc, &r)) {
+                m.insert(k, Arc::new(g));
+            }
+        }
+    }
+    m
+}
+
 /// Where previews and bakes go during a solve, and the document geometry parameters read.
 #[derive(Default)]
-pub struct Ctx<'a> {
-    pub doc: Option<&'a Document>,
+pub struct Ctx {
+    pub objects: Objects,
     /// Geometry to show in the viewport, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Geometry waiting for the Bake button.
@@ -123,9 +178,20 @@ pub struct Ctx<'a> {
     pub current: Option<String>,
 }
 
-impl<'a> Ctx<'a> {
-    pub fn with_doc(doc: &'a Document) -> Self {
-        Self { doc: Some(doc), ..Default::default() }
+impl Ctx {
+    /// A context that can read every object of `doc`.
+    #[cfg(test)]
+    pub fn with_doc(doc: &Document) -> Self {
+        Self::with_objects(Arc::new(all_objects(doc)))
+    }
+
+    pub fn with_objects(objects: Objects) -> Self {
+        Self { objects, ..Default::default() }
+    }
+
+    /// The document object `r` refers to.
+    pub fn object(&self, r: &Value) -> Option<Arc<Geometry>> {
+        self.objects.get(&object_key(r)?).cloned()
     }
 
     fn note(&mut self, level: Level, message: String) {

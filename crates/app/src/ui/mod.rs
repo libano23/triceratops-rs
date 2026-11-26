@@ -27,7 +27,7 @@ pub fn draw(app: &mut App, root: &mut egui::Ui) {
     app.status_hint.clear();
     // a background job: apply it when it ends, and keep the status bar's clock moving
     app.poll_job();
-    if app.runner.job().is_some() {
+    if app.runner.job().is_some() || app.locust.solving().is_some() {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     app.alt_down = ctx.input(|i| i.modifiers.alt);

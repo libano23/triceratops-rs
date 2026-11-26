@@ -14,13 +14,12 @@ pub fn register(r: &mut Registry) {
     r.elem("Vector", "Params", vec![num("X", 0.0), num("Y", 0.0), num("Z", 1.0)], &["Vector"], |_, a| one(p(DVec3::new(a.num(0), a.num(1), a.num(2)))));
     r.elem("Plane", "Params", vec![pt("Origin", 0.0, 0.0, 0.0), pt("Normal", 0.0, 0.0, 1.0)], &["Plane"], |_, a| one(Value::Plane(a.pt(0), a.pt_or(1, DVec3::Z))));
     r.elem("Geometry", "Params", vec![any("Objects")], &["Geometry"], |ctx, a| {
-        let doc = ctx.doc?;
         let refs: Vec<Value> = match a.get(0) {
             Value::Null => return None,
             Value::List(items) => items.clone(),
             v => vec![v.clone()],
         };
-        let shapes: Vec<Value> = refs.iter().filter_map(|r| geo::find_object(doc, r)).map(Value::geometry).collect();
+        let shapes: Vec<Value> = refs.iter().filter_map(|r| ctx.object(r)).map(Value::Geometry).collect();
         match shapes.len() {
             0 => None,
             1 => one(shapes.into_iter().next().unwrap()),

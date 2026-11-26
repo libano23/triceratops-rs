@@ -19,10 +19,18 @@ pub enum Outcome {
     Run(RunState),
 }
 
-/// A `run_commands` waiting for its job: what the document looked like before it.
+/// A request waiting for a job: a `run_commands` (with what the document looked like
+/// before it) or a Locust solve.
 pub struct RunState {
     before: HashMap<ObjectId, u64>,
     start: usize,
+    locust: bool,
+}
+
+impl RunState {
+    fn locust() -> Self {
+        RunState { before: HashMap::new(), start: 0, locust: true }
+    }
 }
 
 /// Methods that change the model, refused while a job runs.
@@ -48,6 +56,11 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
     }
     if changes_model(method) && busy_with_user(app) {
         return fail("the user is running a command in Triceratops");
+    }
+    if method == "locust_bake" {
+        if let Some(t) = app.locust.solving() {
+            return fail(format!("busy: Locust solve running for {} s (wait for it, or call cancel)", t.as_secs()));
+        }
     }
     if matches!(method, "locust_set_graph" | "locust_set_values" | "locust_bake") && app.locust.busy() {
         return fail("the user is working in Locust — try again shortly");
@@ -80,20 +93,20 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
         "locust_set_graph" => match crate::locust::authoring::prepare(&params["graph"]) {
             Ok(g) => {
                 app.locust.replace_root(g);
-                ok(locust_solve(app))
+                locust_solve(app)
             }
             Err(e) => fail(e),
         },
         "locust_set_values" => {
             let Some(values) = params["values"].as_object() else { return fail("locust_set_values needs \"values\": an object of input → value") };
             match app.locust.set_inputs(values) {
-                Ok(_) => ok(locust_solve(app)),
+                Ok(_) => locust_solve(app),
                 Err(e) => fail(e),
             }
         }
         "locust_solve" => {
             app.locust.ensure_loaded();
-            ok(locust_solve(app))
+            locust_solve(app)
         }
         "locust_bake" => {
             let before: std::collections::HashSet<ObjectId> = app.doc.objects().map(|o| o.id).collect();
@@ -106,7 +119,7 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
             added.sort_unstable();
             ok(json!({ "added": added }))
         }
-        "cancel" => ok(json!({ "cancelled": app.assistant_owns_command && app.cancel_job("cancelled") })),
+        "cancel" => ok(json!({ "cancelled": (app.assistant_owns_command && app.cancel_job("cancelled")) || app.locust.cancel_solve() })),
         other => fail(format!("unknown method {other}")),
     }
 }
@@ -143,7 +156,7 @@ fn fingerprints(app: &App) -> HashMap<ObjectId, u64> {
 fn run_commands(app: &mut App, params: &Value) -> Outcome {
     let Some(lines) = params["lines"].as_array() else { return fail("run_commands needs \"lines\": an array of strings") };
     let lines: Vec<String> = lines.iter().map(|l| l.as_str().map(str::to_string).unwrap_or_else(|| l.to_string())).collect();
-    let state = RunState { before: fingerprints(app), start: app.log.len() };
+    let state = RunState { before: fingerprints(app), start: app.log.len(), locust: false };
     run_lines(app, &lines);
     match finish_run(app, &state) {
         Some(v) => ok(v),
@@ -153,6 +166,9 @@ fn run_commands(app: &mut App, params: &Value) -> Outcome {
 
 /// The `run_commands` reply once no job runs and no script lines wait for one; `None` before.
 pub fn finish_run(app: &mut App, state: &RunState) -> Option<Value> {
+    if state.locust {
+        return app.locust.solving().is_none().then(|| app.locust.report());
+    }
     if app.runner.job().is_some() || !app.pending_lines.is_empty() {
         return None;
     }
@@ -173,10 +189,10 @@ pub fn finish_run(app: &mut App, state: &RunState) -> Option<Value> {
     }))
 }
 
-/// Solve the Locust definition now and report on it.
-fn locust_solve(app: &mut App) -> Value {
+/// Start solving the Locust definition; the report follows when the solve ends.
+fn locust_solve(app: &mut App) -> Outcome {
     app.locust.solve(&app.doc);
-    app.locust.report()
+    Outcome::Run(RunState::locust())
 }
 
 /// The Locust component catalogue, filtered by words (all must appear in the name, category
@@ -220,8 +236,11 @@ fn locust_components(params: &Value) -> Value {
 
 /// The running job for `get_state` and progress frames, or null.
 pub fn busy_json(app: &App) -> Value {
-    match app.job_status() {
-        Some(j) => json!({ "label": j.label, "elapsed_s": j.elapsed.as_secs(), "stage": j.stage, "count": j.count, "cancelling": j.cancelling }),
+    if let Some(j) = app.job_status() {
+        return json!({ "label": j.label, "elapsed_s": j.elapsed.as_secs(), "stage": j.stage, "count": j.count, "cancelling": j.cancelling });
+    }
+    match app.locust.solve_progress() {
+        Some((t, stage, count)) => json!({ "label": "Locust solve", "elapsed_s": t.as_secs(), "stage": stage, "count": count, "cancelling": false }),
         None => Value::Null,
     }
 }
@@ -760,6 +779,29 @@ mod acceptance_tests {
         }
     }
 
+    /// A request as the host answers it: a solve that runs as a job is waited for.
+    fn ok_settled(app: &mut App, method: &str, params: &Value) -> Value {
+        match handle(app, method, params) {
+            Outcome::Run(state) => {
+                app.settle();
+                finish_run(app, &state).expect("finished")
+            }
+            o => ok_reply(o),
+        }
+    }
+
+    #[test]
+    fn mcp_locust_set_graph_deferred_answer() {
+        let mut app = App::new();
+        let Outcome::Run(state) = handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })) else { panic!("the solve runs as a job") };
+        assert_eq!(busy_json(&app)["label"], "Locust solve");
+        let e = err_reply(handle(&mut app, "locust_bake", &json!({})));
+        assert!(e.starts_with("busy: Locust solve running"), "{e}");
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("answered once solved");
+        assert_eq!(r["errors"], 0, "{r}");
+    }
+
     fn err_reply(o: Outcome) -> String {
         match o {
             Outcome::Reply(Err(e)) => e,
@@ -795,7 +837,7 @@ mod acceptance_tests {
     #[test]
     fn locust_set_graph_solves_and_reports() {
         let mut app = App::new();
-        let r = ok_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })));
+        let r = ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
         assert_eq!(r["errors"], 0, "{r}");
         assert!(r["results"].as_array().unwrap().iter().any(|x| x["kinds"]["brep"] == 1), "{r}");
         let v = volume_of(&r);
@@ -807,8 +849,8 @@ mod acceptance_tests {
     #[test]
     fn locust_set_values_by_nickname() {
         let mut app = App::new();
-        ok_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })));
-        let r = ok_reply(handle(&mut app, "locust_set_values", &json!({ "values": { "Radius": 3, "Extrude.Cap": true } })));
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let r = ok_settled(&mut app, "locust_set_values", &json!({ "values": { "Radius": 3, "Extrude.Cap": true } }));
         let expect = std::f64::consts::PI * 9.0 * 12.0;
         assert!((volume_of(&r) - expect).abs() < expect * 0.01, "{r}");
         let e = err_reply(handle(&mut app, "locust_set_values", &json!({ "values": { "Nope": 3 } })));
@@ -820,11 +862,11 @@ mod acceptance_tests {
     #[test]
     fn locust_bad_graph_leaves_canvas() {
         let mut app = App::new();
-        ok_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })));
-        let before = ok_reply(handle(&mut app, "locust_get_graph", &json!({})));
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let before = ok_settled(&mut app, "locust_get_graph", &json!({}));
         let e = err_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": { "nodes": [{ "type": "Extrud" }] } })));
         assert!(e.contains("did you mean"), "{e}");
-        assert_eq!(ok_reply(handle(&mut app, "locust_get_graph", &json!({}))), before);
+        assert_eq!(ok_settled(&mut app, "locust_get_graph", &json!({})), before);
     }
 
     #[test]
@@ -838,8 +880,8 @@ mod acceptance_tests {
     #[test]
     fn locust_bake_adds_objects() {
         let mut app = App::new();
-        ok_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })));
-        let r = ok_reply(handle(&mut app, "locust_bake", &json!({})));
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let r = ok_settled(&mut app, "locust_bake", &json!({}));
         assert_eq!(r["added"].as_array().unwrap().len(), 1, "{r}");
         assert_eq!(app.doc.objects().count(), 1);
         run(&mut app, &["Undo"]);

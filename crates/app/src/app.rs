@@ -1419,8 +1419,9 @@ impl App {
     /// Wait for the running job and the script lines queued behind it (tests and headless use).
     #[cfg(test)]
     pub fn settle(&mut self) {
-        while self.runner.job().is_some() || !self.pending_lines.is_empty() {
-            if !self.poll_job() {
+        while self.runner.job().is_some() || !self.pending_lines.is_empty() || self.locust.solving().is_some() {
+            let polled = self.poll_job() | self.locust.poll();
+            if !polled {
                 std::thread::sleep(std::time::Duration::from_millis(2));
             }
         }
@@ -1860,6 +1861,8 @@ impl App {
         if self.runner.job().is_some() {
             let reason = if self.assistant_mode { "cancelled" } else { "cancelled by the user" };
             self.cancel_job(reason);
+        } else if self.locust.cancel_solve() {
+            // Esc stopped the Locust solve
         } else if self.runner.is_active() {
             self.with_ctx(|r, ctx| r.cancel(ctx));
             self.constraints = Constraints::default();

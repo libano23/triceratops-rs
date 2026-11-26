@@ -112,6 +112,37 @@ struct PortRef {
     index: usize,
 }
 
+/// A solve running on a worker thread.
+struct SolveJob {
+    token: tri_geom::job::Token,
+    started: Instant,
+    handle: std::thread::JoinHandle<SolveResult>,
+    cancelled: bool,
+}
+
+/// Everything a solve produces, handed back to the GUI thread.
+struct SolveResult {
+    root_out: Outputs,
+    preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
+    bake: Vec<Arc<Geometry>>,
+    diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// Outputs and messages of the nested graph on screen, inside a cluster.
+    nested: Option<(Outputs, HashMap<String, Vec<Diagnostic>>)>,
+    elapsed: Duration,
+}
+
+/// Solve a definition (and the nested graph on screen, if any) — runs on the worker thread.
+fn solve_definition(root: &Graph, nested: Option<&Graph>, objects: super::components::Objects) -> SolveResult {
+    let started = Instant::now();
+    let mut ctx = Ctx::with_objects(objects.clone());
+    let root_out = engine::solve(root, &mut ctx);
+    let nested = nested.map(|g| {
+        let mut inner = Ctx::with_objects(objects);
+        (engine::solve(g, &mut inner), inner.diagnostics)
+    });
+    SolveResult { root_out, preview: ctx.preview, bake: ctx.bake, diagnostics: ctx.diagnostics, nested, elapsed: started.elapsed() }
+}
+
 /// The editor state, kept by the application.
 pub struct Editor {
     pub open: bool,
@@ -147,6 +178,8 @@ pub struct Editor {
     last_solve: std::time::Duration,
     /// Tests stand in for a person busy on the canvas.
     forced_busy: bool,
+    /// The solve running on a worker thread, if any.
+    solve_job: Option<SolveJob>,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -186,6 +219,7 @@ impl Default for Editor {
             root_outputs: Outputs::new(),
             last_solve: std::time::Duration::ZERO,
             forced_busy: false,
+            solve_job: None,
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -548,8 +582,12 @@ impl Editor {
     /// Solve when something changed (debounced) or when the document changed under a
     /// Geometry parameter. Returns true when the preview changed.
     pub fn tick(&mut self, doc: &Document) -> bool {
+        let finished = self.poll();
+        if let Some(t) = self.solving().filter(|_| !self.solve_job.as_ref().is_some_and(|j| j.cancelled)) {
+            self.status = format!("Solving… {} s · Esc to cancel", t.as_secs());
+        }
         if !self.open {
-            return false;
+            return finished;
         }
         let refs_doc = self.root.nodes.iter().any(|n| n.kind == "Geometry") || !self.root.clusters.is_empty();
         if refs_doc && self.doc_revision != Some(doc.revision) && self.dirty.is_none() {
@@ -568,27 +606,95 @@ impl Editor {
         self.dirty.is_some()
     }
 
+    /// Start solving the definition on a worker thread (a solve still running is cancelled:
+    /// the newest edit wins). `poll` installs the result when it is ready.
     pub fn solve(&mut self, doc: &Document) {
         self.dirty = None;
         self.doc_revision = Some(doc.revision);
         self.sync();
-        let started = Instant::now();
-        let mut ctx = Ctx::with_doc(doc);
-        let root_out = engine::solve(&self.root, &mut ctx);
-        self.last_solve = started.elapsed();
-        self.root_outputs = root_out.clone();
-        self.preview = ctx.preview;
-        self.bake = ctx.bake;
-        self.root_diagnostics = ctx.diagnostics;
+        if let Some(old) = self.solve_job.take() {
+            old.token.cancel();
+        }
+        let root = self.root.clone();
+        let nested = (!self.stack.is_empty()).then(|| self.graph().clone());
+        let objects: super::components::Objects = std::sync::Arc::new(super::components::objects_for(&self.root, doc));
+        let token = tri_geom::job::Token::new();
+        let worker = token.clone();
+        let handle = std::thread::Builder::new()
+            .name("locust-solve".into())
+            .stack_size(64 << 20)
+            .spawn(move || {
+                let _guard = tri_geom::job::install(worker);
+                solve_definition(&root, nested.as_ref(), objects)
+            })
+            .expect("spawn the Locust solve");
+        self.solve_job = Some(SolveJob { token, started: Instant::now(), handle, cancelled: false });
+    }
+
+    /// Solve now and wait for the result (tests).
+    #[cfg(test)]
+    pub fn solve_blocking(&mut self, doc: &Document) {
+        self.solve(doc);
+        while self.solving().is_some() {
+            if !self.poll() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+
+    /// Install the result of a finished solve. True when one ended (or was cancelled).
+    pub fn poll(&mut self) -> bool {
+        if !self.solve_job.as_ref().is_some_and(|j| j.handle.is_finished()) {
+            return false;
+        }
+        let job = self.solve_job.take().expect("checked");
+        match (job.cancelled, job.handle.join()) {
+            (true, _) => self.status = "Solve cancelled — the preview shows the last finished solve.".into(),
+            (false, Err(_)) => self.status = "The solve failed (internal error).".into(),
+            (false, Ok(r)) => self.install(r),
+        }
+        true
+    }
+
+    /// How long the running solve has taken, if one runs.
+    pub fn solving(&self) -> Option<Duration> {
+        self.solve_job.as_ref().map(|j| j.started.elapsed())
+    }
+
+    /// The running solve's stage and counter (for the MCP `busy` state).
+    pub fn solve_progress(&self) -> Option<(Duration, &'static str, u64)> {
+        self.solve_job.as_ref().map(|j| {
+            let (stage, count) = j.token.snapshot();
+            (j.started.elapsed(), stage, count)
+        })
+    }
+
+    /// Stop the running solve (Esc). False when none runs.
+    pub fn cancel_solve(&mut self) -> bool {
+        let Some(j) = self.solve_job.as_mut() else { return false };
+        j.token.cancel();
+        j.cancelled = true;
+        self.status = "Cancelling the solve…".into();
+        true
+    }
+
+    fn install(&mut self, r: SolveResult) {
+        self.last_solve = r.elapsed;
+        self.root_outputs = r.root_out.clone();
+        self.preview = r.preview;
+        self.bake = r.bake;
+        self.root_diagnostics = r.diagnostics;
         self.preview_rev += 1;
         // what the canvas shows: the nested graph solves on its own inside a cluster
-        if self.stack.is_empty() {
-            self.outputs = root_out;
-            self.diagnostics = self.root_diagnostics.clone();
-        } else {
-            let mut inner = Ctx::with_doc(doc);
-            self.outputs = engine::solve(self.graph(), &mut inner);
-            self.diagnostics = inner.diagnostics;
+        match r.nested {
+            None => {
+                self.outputs = r.root_out;
+                self.diagnostics = self.root_diagnostics.clone();
+            }
+            Some((outputs, diagnostics)) => {
+                self.outputs = outputs;
+                self.diagnostics = diagnostics;
+            }
         }
         self.displays = self.graph().nodes.iter().filter(|n| n.kind == "Panel").map(|n| {
             let tree = engine::input_preview(self.graph(), &n.uid, 0, &self.outputs);
@@ -772,6 +878,9 @@ fn shortcuts(ed: &mut Editor, ctx: &egui::Context) {
     }
     let mut actions: Vec<&str> = Vec::new();
     ctx.input_mut(|i| {
+        if ed.solve_job.is_some() && i.consume_key(Modifiers::NONE, Key::Escape) {
+            actions.push("cancel_solve");
+        }
         if i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace) {
             actions.push("delete");
         }
@@ -787,6 +896,9 @@ fn shortcuts(ed: &mut Editor, ctx: &egui::Context) {
     for a in actions {
         match a {
             "delete" => ed.delete_selected(),
+            "cancel_solve" => {
+                ed.cancel_solve();
+            }
             "fit" => ed.fit_pending = true,
             "dup" => ed.duplicate_selected(),
             "copy" => ed.copy(),
@@ -1541,7 +1653,7 @@ mod tests {
         let node = ed.root.node(&cl).unwrap().clone();
         let inner = Graph::from_json(&ed.root.cluster_of(&node).unwrap()["graph"]);
         assert!(inner.nodes.iter().any(|n| n.kind == "Text"));
-        ed.solve(&doc);
+        ed.solve_blocking(&doc);
         assert!(ed.status.contains("components"));
     }
 
@@ -1551,7 +1663,7 @@ mod tests {
         ed.root = build_example();
         let mut doc = Document::new();
         ed.open = true;
-        ed.solve(&doc);
+        ed.solve_blocking(&doc);
         assert_eq!(ed.preview.len(), 1);
         let panel = ed.root.nodes.iter().find(|n| n.kind == "Panel").unwrap().uid.clone();
         assert!(ed.displays[&panel].starts_with("{}  "), "{:?}", ed.displays[&panel]);
@@ -1569,5 +1681,90 @@ mod tests {
         let hit = port_at(&ports, p + Vec2::new(10.0, 6.0), None, 24.0).unwrap();
         assert_eq!(hit, (a, r));
         assert!(port_at(&ports, p + Vec2::new(60.0, 0.0), None, 24.0).is_none());
+    }
+}
+
+#[cfg(test)]
+mod solve_job_tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn graph(radius: f64) -> Graph {
+        super::super::authoring::prepare(&json!({
+            "nodes": [
+                { "type": "Number", "nickname": "Radius", "values": { "Value": radius } },
+                { "type": "Circle" }, { "type": "Extrude" }, { "type": "Preview" }
+            ],
+            "connections": [
+                { "from": "Radius", "to": "Circle.Radius" }, { "from": "Circle", "to": "Extrude.Curve" }, { "from": "Extrude", "to": "Preview.Geometry" }
+            ]
+        }))
+        .unwrap()
+    }
+
+    fn wait(ed: &mut Editor, limit: Duration) {
+        let t = Instant::now();
+        while ed.solving().is_some() {
+            ed.poll();
+            assert!(t.elapsed() < limit, "still solving after {limit:?}");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    fn volume(ed: &Editor) -> f64 {
+        ed.preview.iter().find_map(|(g, _)| tri_doc::Document::volume_of(g).map(|v| v.0)).expect("a solid in the preview")
+    }
+
+    #[test]
+    fn solve_runs_in_background_and_installs() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve(&doc);
+        assert!(ed.solving().is_some(), "the solve is a job");
+        wait(&mut ed, Duration::from_secs(30));
+        assert_eq!(ed.preview.len(), 1);
+        assert!((volume(&ed) - std::f64::consts::PI * 36.0 * 10.0).abs() < 10.0);
+    }
+
+    /// A newer solve wins even if an older one finishes after it started.
+    #[test]
+    fn edit_during_solve_restarts() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve(&doc);
+        let mut v = serde_json::Map::new();
+        v.insert("Radius".into(), json!(3.0));
+        ed.set_inputs(&v).unwrap();
+        ed.solve(&doc);
+        wait(&mut ed, Duration::from_secs(30));
+        assert!((volume(&ed) - std::f64::consts::PI * 9.0 * 10.0).abs() < 5.0, "the last edit is what shows");
+    }
+
+    #[test]
+    fn esc_cancels_solve() {
+        let mut app = crate::app::App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let g = super::super::authoring::prepare(&json!({
+            "nodes": [
+                { "type": "Geometry", "nickname": "A", "values": { "Objects": 1 } },
+                { "type": "Geometry", "nickname": "B", "values": { "Objects": 2 } },
+                { "type": "Union" }, { "type": "Preview" }
+            ],
+            "connections": [{ "from": "A", "to": "Union.A" }, { "from": "B", "to": "Union.B" }, { "from": "Union", "to": "Preview.Geometry" }]
+        }))
+        .unwrap();
+        app.locust.replace_root(g);
+        app.locust.solve(&app.doc);
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(app.locust.solving().is_some(), "still on the Boolean");
+        app.cancel(); // what Esc does
+        let t = Instant::now();
+        wait(&mut app.locust, Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_millis(1500), "took {:?}", t.elapsed());
+        assert!(app.locust.preview.is_empty());
+        assert!(app.locust.status.contains("cancelled"), "{}", app.locust.status);
     }
 }
