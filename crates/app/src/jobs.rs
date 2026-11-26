@@ -191,4 +191,21 @@ mod tests {
             assert!(!app.runner.is_active(), "{label}");
         }
     }
+
+    /// Review: the user starting a command while an assistant's job runs must not take the
+    /// job away from the assistant.
+    #[test]
+    fn user_command_during_assistant_job_keeps_ownership() {
+        let mut app = App::new();
+        super::testing::heavy_spheres(&mut app);
+        app.assistant_mode = true;
+        run(&mut app, &["BooleanUnion", "#1,#2", ""]);
+        app.assistant_mode = false;
+        assert!(app.job_status().is_some());
+        app.start_command("Undo");
+        assert!(app.assistant_owns_command, "still the assistant's job");
+        assert!(app.log.last().is_some_and(|l| l.contains("is running")), "{:?}", app.log.last());
+        app.cancel_job("cancelled");
+        wait(&mut app, Duration::from_secs(5));
+    }
 }

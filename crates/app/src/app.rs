@@ -1458,6 +1458,12 @@ impl App {
     }
 
     fn start_command_typed(&mut self, name: &str, typed: &str) {
+        if let Some(j) = self.runner.job() {
+            // the running job keeps its owner (an assistant's stays the assistant's)
+            let msg = format!("{} is running — wait for it or press Esc to cancel it.", j.label);
+            self.log.push(msg);
+            return;
+        }
         // remember who started it, so an assistant never feeds input into the user's command
         self.assistant_owns_command = self.assistant_mode;
         if self.assistant_mode {

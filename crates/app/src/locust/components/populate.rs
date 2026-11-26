@@ -63,8 +63,13 @@ pub fn points_in(poly: &[DVec2], count: usize, seed: i64) -> Vec<DVec2> {
     let mut rng = SplitMix64::new(seed);
     let mut out = Vec::with_capacity(count);
     let mut tries = 0usize;
-    while out.len() < count && tries < count.saturating_mul(1000).max(1000) {
+    // a thin region rejects nearly everything: give up after a fixed number of tries
+    let max_tries = count.saturating_mul(1000).clamp(1000, 20_000_000);
+    while out.len() < count && tries < max_tries {
         tries += 1;
+        if tries % 4096 == 0 && tri_geom::job::checkpoint(tries as u64).is_err() {
+            break;
+        }
         let p = DVec2::new(lo.x + (hi.x - lo.x) * rng.next_f64(), lo.y + (hi.y - lo.y) * rng.next_f64());
         if inside(p, poly) {
             out.push(p);
@@ -89,6 +94,7 @@ pub fn points_on(g: &Geometry, count: usize, seed: i64) -> Vec<DVec3> {
     let mut rng = SplitMix64::new(seed);
     let snap = matches!(g, Geometry::Surface(_) | Geometry::Brep(_));
     (0..count)
+        .take_while(|i| i % 1024 != 0 || tri_geom::job::checkpoint(*i as u64).is_ok())
         .map(|_| {
             let k = cumulative.partition_point(|&c| c < rng.next_f64() * total).min(tris.len() - 1);
             let (a, b, c) = tris[k];

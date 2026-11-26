@@ -159,15 +159,16 @@ fn run_commands(app: &mut App, params: &Value) -> Outcome {
     let state = RunState { before: fingerprints(app), start: app.log.len(), locust: false };
     run_lines(app, &lines);
     match finish_run(app, &state) {
-        Some(v) => ok(v),
+        Some(r) => Outcome::Reply(r),
         None => Outcome::Run(state),
     }
 }
 
 /// The `run_commands` reply once no job runs and no script lines wait for one; `None` before.
-pub fn finish_run(app: &mut App, state: &RunState) -> Option<Value> {
+pub fn finish_run(app: &mut App, state: &RunState) -> Option<Result<Value, String>> {
     if state.locust {
-        return app.locust.solving().is_none().then(|| app.locust.report());
+        // a cancelled or failed solve is an error: its report would be the previous one
+        return app.locust.solving().is_none().then(|| app.locust.last_outcome().map(|_| app.locust.report()));
     }
     if app.runner.job().is_some() || !app.pending_lines.is_empty() {
         return None;
@@ -180,13 +181,13 @@ pub fn finish_run(app: &mut App, state: &RunState) -> Option<Value> {
     added.sort_unstable();
     changed.sort_unstable();
     deleted.sort_unstable();
-    Some(json!({
+    Some(Ok(json!({
         "log": log_since(app, start),
         "added": added,
         "changed": changed,
         "deleted": deleted,
         "prompt": prompt_json(app.runner.prompt()),
-    }))
+    })))
 }
 
 /// Start solving the Locust definition; the report follows when the solve ends.
@@ -643,7 +644,7 @@ mod acceptance_tests {
             Outcome::Deferred(_) => panic!("deferred"),
             Outcome::Run(state) => {
                 app.settle();
-                finish_run(app, &state).expect("finished")
+                finish_run(app, &state).expect("finished").unwrap()
             }
         }
     }
@@ -742,7 +743,7 @@ mod acceptance_tests {
         let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("expected a deferred run") };
         assert!(finish_run(&mut app, &state).is_none(), "still running");
         app.settle();
-        let r = finish_run(&mut app, &state).expect("finished");
+        let r = finish_run(&mut app, &state).expect("finished").unwrap();
         assert_eq!(r["added"].as_array().unwrap().len(), 1, "{r}");
         assert_eq!(r["deleted"].as_array().unwrap().len(), 2, "{r}");
     }
@@ -760,7 +761,7 @@ mod acceptance_tests {
         let Outcome::Reply(Ok(c)) = handle(&mut app, "cancel", &json!({})) else { panic!() };
         assert_eq!(c["cancelled"], true);
         app.settle();
-        let r = finish_run(&mut app, &state).expect("finished");
+        let r = finish_run(&mut app, &state).expect("finished").unwrap();
         assert!(r["log"].to_string().contains("BooleanUnion cancelled"), "{r}");
         assert_eq!(r["added"].as_array().unwrap().len(), 0);
         let Outcome::Reply(Ok(st)) = handle(&mut app, "get_state", &json!({})) else { panic!() };
@@ -784,7 +785,7 @@ mod acceptance_tests {
         match handle(app, method, params) {
             Outcome::Run(state) => {
                 app.settle();
-                finish_run(app, &state).expect("finished")
+                finish_run(app, &state).expect("finished").unwrap()
             }
             o => ok_reply(o),
         }
@@ -798,7 +799,7 @@ mod acceptance_tests {
         let e = err_reply(handle(&mut app, "locust_bake", &json!({})));
         assert!(e.starts_with("busy: Locust solve running"), "{e}");
         app.settle();
-        let r = finish_run(&mut app, &state).expect("answered once solved");
+        let r = finish_run(&mut app, &state).expect("answered once solved").unwrap();
         assert_eq!(r["errors"], 0, "{r}");
     }
 

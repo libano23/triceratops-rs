@@ -1091,3 +1091,26 @@ fn cap_closes_a_loft_of_polylines() {
     let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface: {:?}", ctx.diagnostics) };
     assert_eq!(b.faces.len(), 3, "side and two caps");
 }
+
+/// Review: Surface Voronoi says when it clamps the count, like Populate.
+#[test]
+fn surface_voronoi_count_warnings() {
+    for (count, warning) in [(0, "count is 0"), (100_000, "count limited to 5000")] {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Sphere", &[]);
+        let sv = node(&mut g, "Surface Voronoi", &[("Count", json!(count))]);
+        g.connect(&s, 0, &sv, 0);
+        let mut ctx = Ctx::default();
+        let token = tri_geom::job::Token::new();
+        let _guard = tri_geom::job::install(token.clone());
+        // only the warning matters here: stop the big solve once it is under way
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            token.cancel();
+        });
+        solve(&g, &mut ctx);
+        canceller.join().unwrap();
+        let warnings: Vec<String> = ctx.diagnostics.get(&sv).map(|d| d.iter().map(|x| x.message.clone()).collect()).unwrap_or_default();
+        assert!(warnings.iter().any(|w| w == warning), "{count}: {warnings:?}");
+    }
+}

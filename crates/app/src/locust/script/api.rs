@@ -85,10 +85,10 @@ fn run_component(name: &str, args: Array) -> Result<Vec<Dynamic>, Box<EvalAltRes
     let mut ctx = Ctx::with_objects(OBJECTS.with(|o| o.borrow().clone()));
     ctx.current = Some("run".into());
     let outs: Vec<DataTree> = match comp.func {
-        Func::Tree(f) => f(&mut ctx, &trees),
+        Func::Tree(f) => crate::locust::engine::catch_panic(|| f(&mut ctx, &trees)).map_err(|e| format!("{}: {e}", comp.name))?,
         Func::Element(f) => {
             let values: Vec<Value> = trees.iter().zip(&comp.inputs).map(|(t, spec)| if t.is_empty() { Value::Null } else { cast_tree(t, spec.kind).first().cloned().unwrap_or(Value::Null) }).collect();
-            let res = f(&mut ctx, &Args(&values)).unwrap_or_default();
+            let res = crate::locust::engine::catch_panic(|| f(&mut ctx, &Args(&values))).map_err(|e| format!("{}: {e}", comp.name))?.unwrap_or_default();
             res.into_iter()
                 .map(|o| match o {
                     Out::Skip => DataTree::empty(),

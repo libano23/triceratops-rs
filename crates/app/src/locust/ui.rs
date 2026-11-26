@@ -189,6 +189,8 @@ pub struct Editor {
     /// The solve running on a worker thread, if any.
     solve_job: Option<SolveJob>,
     last_report: Option<serde_json::Value>,
+    /// How the last solve ended: Err when it was cancelled or failed (its report is stale).
+    last_outcome: Result<(), String>,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -230,6 +232,7 @@ impl Default for Editor {
             forced_busy: false,
             solve_job: None,
             last_report: None,
+            last_outcome: Ok(()),
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -675,11 +678,25 @@ impl Editor {
         }
         let job = self.solve_job.take().expect("checked");
         match (job.cancelled, job.handle.join()) {
-            (true, _) => self.status = "Solve cancelled — the preview shows the last finished solve.".into(),
-            (false, Err(_)) => self.status = "The solve failed (internal error).".into(),
-            (false, Ok(r)) => self.install(r),
+            (true, _) => {
+                self.status = "Solve cancelled — the preview shows the last finished solve.".into();
+                self.last_outcome = Err("the solve was cancelled".into());
+            }
+            (false, Err(_)) => {
+                self.status = "The solve failed (internal error).".into();
+                self.last_outcome = Err("the solve failed (internal error)".into());
+            }
+            (false, Ok(r)) => {
+                self.install(r);
+                self.last_outcome = Ok(());
+            }
         }
         true
+    }
+
+    /// How the last solve ended (`Err` with the reason when it was cancelled or failed).
+    pub fn last_outcome(&self) -> Result<(), String> {
+        self.last_outcome.clone()
     }
 
     /// How long the running solve has taken, if one runs.
@@ -1865,5 +1882,43 @@ mod solve_job_tests {
         assert!(t.elapsed() < Duration::from_millis(1500), "took {:?}", t.elapsed());
         assert!(app.locust.preview.is_empty());
         assert!(app.locust.status.contains("cancelled"), "{}", app.locust.status);
+    }
+
+    fn slow_voronoi() -> Graph {
+        super::super::authoring::prepare(&json!({
+            "nodes": [{ "type": "Populate 2D", "nickname": "P", "values": { "Count": 5000 } }, { "type": "Voronoi" }, { "type": "Preview" }],
+            "connections": [{ "from": "P", "to": "Voronoi.Points" }, { "from": "Voronoi", "to": "Preview.Geometry" }]
+        }))
+        .unwrap()
+    }
+
+    /// Review: a cancelled solve must stop even in components that never call the kernel.
+    #[test]
+    fn cancel_stops_a_slow_component() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(ed.solving().is_some(), "still on the Voronoi");
+        ed.cancel_solve();
+        let t = Instant::now();
+        wait(&mut ed, Duration::from_secs(10));
+        assert!(t.elapsed() < Duration::from_millis(500), "took {:?}", t.elapsed());
+    }
+
+    /// Review: after a cancelled solve the report says so instead of showing the last one.
+    #[test]
+    fn report_after_cancel_says_cancelled() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve_blocking(&doc);
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        std::thread::sleep(Duration::from_millis(50));
+        ed.cancel_solve();
+        wait(&mut ed, Duration::from_secs(10));
+        assert_eq!(ed.last_outcome(), Err("the solve was cancelled".to_string()));
     }
 }

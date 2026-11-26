@@ -53,6 +53,7 @@ pub fn cells_2d(sites: &[DVec2], boundary: &[DVec2]) -> Vec<Vec<DVec2>> {
     sites
         .iter()
         .enumerate()
+        .take_while(|(i, _)| i % 16 != 0 || tri_geom::job::checkpoint(*i as u64).is_ok())
         .map(|(i, &s)| {
             let mut cell = boundary.to_vec();
             for (j, &o) in sites.iter().enumerate() {
@@ -188,12 +189,20 @@ pub fn register(r: &mut Registry) {
             _ => None,
         }).collect();
         let mut pts = if given.is_empty() {
-            let count = first_int(&t[2], 50).clamp(0, MAX_SITES as i64) as usize;
-            points_on(&Geometry::Surface(s.clone()), count, first_int(&t[3], 1))
+            let count = first_int(&t[2], 50);
+            if count <= 0 {
+                ctx.warn("count is 0");
+            } else if count > MAX_SITES as i64 {
+                ctx.warn(format!("count limited to {MAX_SITES}"));
+            }
+            points_on(&Geometry::Surface(s.clone()), count.clamp(0, MAX_SITES as i64) as usize, first_int(&t[3], 1))
         } else {
             given
         };
-        pts.truncate(MAX_SITES);
+        if pts.len() > MAX_SITES {
+            ctx.warn(format!("sites limited to {MAX_SITES}"));
+            pts.truncate(MAX_SITES);
+        }
         let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
         let (lu, lv) = (length_along(&s, true), length_along(&s, false));
         let to_scaled = |(u, v): (f64, f64)| DVec2::new((u - u0) / (u1 - u0) * lu, (v - v0) / (v1 - v0) * lv);

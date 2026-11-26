@@ -87,8 +87,11 @@ impl Host {
     /// Answer the runs whose job has ended; tell the others how far it got, once a second.
     pub fn finish_runs(&mut self, app: &mut App) {
         self.runs.retain_mut(|(state, id, reply, last)| match finish_run(app, state) {
-            Some(v) => {
-                let _ = reply.send(Response::ok(*id, v));
+            Some(r) => {
+                let _ = reply.send(match r {
+                    Ok(v) => Response::ok(*id, v),
+                    Err(e) => Response::err(*id, e),
+                });
                 false
             }
             None => {
