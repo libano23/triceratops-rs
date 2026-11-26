@@ -142,6 +142,11 @@ pub struct Editor {
     /// Messages of the nodes on screen, and of the whole definition (the MCP report).
     diagnostics: HashMap<String, Vec<Diagnostic>>,
     pub root_diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// Outputs of the whole definition (what the MCP report summarises) and how long it took.
+    root_outputs: Outputs,
+    last_solve: std::time::Duration,
+    /// Tests stand in for a person busy on the canvas.
+    forced_busy: bool,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -178,6 +183,9 @@ impl Default for Editor {
             displays: HashMap::new(),
             diagnostics: HashMap::new(),
             root_diagnostics: HashMap::new(),
+            root_outputs: Outputs::new(),
+            last_solve: std::time::Duration::ZERO,
+            forced_busy: false,
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -216,6 +224,69 @@ impl Editor {
                 let _ = self.root.save(&p);
             }
         }
+    }
+
+    // ------------------------------------------------------------ assistants
+
+    /// Load the canvas of the last session (if not yet), without opening the window.
+    pub fn ensure_loaded(&mut self) {
+        if !self.loaded {
+            self.loaded = true;
+            let saved = autosave_path().and_then(|p| Graph::load(&p).ok()).filter(|g| !g.nodes.is_empty());
+            self.root = saved.unwrap_or_else(build_example);
+        }
+    }
+
+    /// A person is working on the canvas (a dialog, a wire or a selection band in progress).
+    pub fn busy(&self) -> bool {
+        self.forced_busy || self.dialog.is_some() || self.wire.is_some() || self.band.is_some()
+    }
+
+    #[cfg(test)]
+    pub fn set_busy_for_test(&mut self, busy: bool) {
+        self.forced_busy = busy;
+    }
+
+    /// Replace the whole definition (one undo step) and show it.
+    pub fn replace_root(&mut self, g: Graph) {
+        self.ensure_loaded();
+        self.record(None);
+        self.stack.clear();
+        self.clear_selection();
+        self.root = g;
+        self.open = true;
+        self.fit_pending = true;
+        self.changed();
+    }
+
+    /// Set inline input values: `"Node"` sets its first input, `"Node.Input"` a named one
+    /// (nodes by nickname, uid or unique type). One undo step; returns the keys set.
+    pub fn set_inputs(&mut self, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<String>, String> {
+        self.ensure_loaded();
+        let mut plan = Vec::new();
+        for (key, v) in values {
+            let (uid, index) = super::authoring::resolve_input(&self.root, key)?;
+            if self.root.source_of(&uid, index).is_some() {
+                return Err(format!("input \"{key}\" is wired to another node; set that one instead"));
+            }
+            let n = self.root.node(&uid).expect("resolved");
+            let name = self.root.node_ports(n).0.get(index).map(|p| p.0.clone()).ok_or_else(|| format!("node \"{}\" has no inputs", n.label()))?;
+            plan.push((uid, index, name, v.clone()));
+        }
+        self.record(None);
+        for (uid, index, name, v) in &plan {
+            if let Some(n) = self.root.node_mut(uid) {
+                n.values.remove(&index.to_string());
+                n.values.insert(name.clone(), v.clone());
+            }
+        }
+        self.changed();
+        Ok(values.keys().cloned().collect())
+    }
+
+    /// The solve report of the whole definition (see `report::solve_report`).
+    pub fn report(&self) -> serde_json::Value {
+        super::report::solve_report(&self.root, &self.root_outputs, &self.root_diagnostics, self.preview.len(), self.bake.len(), self.last_solve)
     }
 
     // ------------------------------------------------------------ graphs
@@ -501,8 +572,11 @@ impl Editor {
         self.dirty = None;
         self.doc_revision = Some(doc.revision);
         self.sync();
+        let started = Instant::now();
         let mut ctx = Ctx::with_doc(doc);
         let root_out = engine::solve(&self.root, &mut ctx);
+        self.last_solve = started.elapsed();
+        self.root_outputs = root_out.clone();
         self.preview = ctx.preview;
         self.bake = ctx.bake;
         self.root_diagnostics = ctx.diagnostics;

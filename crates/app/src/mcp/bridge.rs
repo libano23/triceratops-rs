@@ -25,6 +25,11 @@ const LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
 const INSTRUCTIONS: &str = "Triceratops is a NURBS 3D modeller. You drive the window the user has open; they watch \
 every change and can undo it.\n\
 \n\
+Two ways to model, and the user chooses: direct commands (run_commands) make fixed geometry; a Locust definition \
+(locust_set_graph) makes a live, parametric model the user can adjust with sliders in Locust, Triceratops' node \
+editor. Model the way the user asks. If they want something adjustable or parametric, use Locust; if they have not \
+said and it matters, ask them briefly. The two mix: locust_bake turns a definition's result into ordinary objects.\n\
+\n\
 Model with run_commands: each line is what a person would type on Triceratops' command line.\n\
 - A command name starts a command (Box, Cylinder, Sphere, Line, Polyline, InterpCrv, ExtrudeCrv, Revolve, Loft, \
 BooleanUnion, BooleanDifference, Move, Copy, Rotate, Mirror, FilletEdge, Delete, Undo, ...). Use find_commands to \
@@ -40,6 +45,17 @@ prompt means the command wants more input: continue it with another run_commands
 Check your work with list_objects, object_info (volume, area) and capture_view, which returns an image of a \
 viewport (Perspective, Top, Front, Right). Commands that need a file (Open, Save, Export) are not available. \
 If the user is typing or running a command of their own, requests are refused: wait and try again.\n\
+\n\
+Locust: find components with locust_components (inputs, outputs, defaults), send a whole definition with \
+locust_set_graph, read the report (errors per node, panels, a summary of what is previewed or baked), adjust sliders \
+by name with locust_set_values, and look at the preview with capture_view. A definition is JSON: \
+{\"nodes\": [{\"type\": \"Number\", \"nickname\": \"Radius\", \"values\": {\"Value\": 6}}, {\"type\": \"Circle\"}, \
+{\"type\": \"Extrude\", \"values\": {\"Distance\": 12}}, {\"type\": \"Preview\"}, {\"type\": \"Bake\"}], \
+\"connections\": [{\"from\": \"Radius\", \"to\": \"Circle.Radius\"}, {\"from\": \"Circle\", \"to\": \"Extrude.Curve\"}, \
+{\"from\": \"Extrude\", \"to\": \"Preview.Geometry\"}, {\"from\": \"Extrude\", \"to\": \"Bake.Geometry\"}]}. \
+Nodes are named by nickname (or type when unique), ports by name; \"from\": \"Node\" means its first output. \
+Unwired inputs take \"values\" by input name. Positions are optional. Give sliders (Number, Integer) nicknames \
+so they are easy to set later.\n\
 \n\
 Long operations (Booleans above all) run in the background while the window stays responsive: run_commands \
 answers when they end and sends progress notifications meanwhile; get_state shows what is running under \"busy\", \
@@ -106,6 +122,28 @@ pub struct CaptureViewParams {
     pub width: Option<u32>,
     /// Maximum height in pixels (default 1280).
     pub height: Option<u32>,
+}
+
+#[derive(Default, Deserialize, JsonSchema)]
+pub struct LocustComponentsParams {
+    /// Words that must all appear in the name, category or description.
+    pub query: Option<String>,
+    /// Only this category (Params, Math, Sets, Vector, Curve, Surface, Solid, Mesh, Transform, Analysis, Output, ...).
+    pub category: Option<String>,
+    /// At most this many (default 40).
+    pub limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct LocustSetGraphParams {
+    /// The definition: {"nodes": [{"type", "nickname"?, "values"?, "x"?, "y"?}], "connections": [{"from": "Node[.Output]", "to": "Node.Input"}], "groups"?, "comments"?}.
+    pub graph: Value,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct LocustSetValuesParams {
+    /// Input values by "Node" (its first input, e.g. a Number slider) or "Node.Input": {"Radius": 3, "Extrude.Cap": false}.
+    pub values: serde_json::Map<String, Value>,
 }
 
 #[derive(Default, Deserialize, JsonSchema)]
@@ -239,6 +277,36 @@ impl Bridge {
     #[tool(description = "Run Triceratops command-line entries in the open window, as if typed. Returns the command log, the ids of objects added, changed and deleted, and the prompt still waiting for input (null when the command finished).")]
     async fn run_commands(&self, Parameters(p): Parameters<RunCommandsParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
         self.run_lines(p.lines, Some(&ctx)).await
+    }
+
+    #[tool(description = "Search Locust's components (the node editor's building blocks) by words and category: name, description, inputs with kinds and defaults, outputs.")]
+    async fn locust_components(&self, Parameters(p): Parameters<LocustComponentsParams>) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_components", json!({ "query": p.query, "category": p.category, "limit": p.limit })).await
+    }
+
+    #[tool(description = "The current Locust definition as JSON (nodes with uid, type, nickname and values; connections by uid and port index).")]
+    async fn locust_get_graph(&self) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_get_graph", json!({})).await
+    }
+
+    #[tool(description = "Replace the Locust definition with this one (the user can undo it in Locust), open the editor, solve it and report: errors and warnings per node, panel contents, and a summary (kinds, bounding box, volume or area) of what goes to Preview and Bake. A definition with a mistake is refused with the reason and the canvas stays as it was.")]
+    async fn locust_set_graph(&self, Parameters(p): Parameters<LocustSetGraphParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_set_graph", json!({ "graph": p.graph }), Some(&ctx)).await
+    }
+
+    #[tool(description = "Set Locust inputs by name, like moving sliders, then solve and report as locust_set_graph does.")]
+    async fn locust_set_values(&self, Parameters(p): Parameters<LocustSetValuesParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_set_values", json!({ "values": p.values }), Some(&ctx)).await
+    }
+
+    #[tool(description = "Solve the Locust definition again (after the model changed) and report.")]
+    async fn locust_solve(&self, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_solve", json!({}), Some(&ctx)).await
+    }
+
+    #[tool(description = "Bake: add what the definition sends to its Bake components to the model as ordinary objects (one undo step). Returns the new object ids.")]
+    async fn locust_bake(&self) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_bake", json!({})).await
     }
 
     #[tool(description = "Stop the long operation the window is running for you (a Boolean, a Locust solve), like pressing Esc. Returns whether anything was running.")]
@@ -428,11 +496,11 @@ mod tests {
     }
 
     #[test]
-    fn lists_the_nine_tools() {
+    fn lists_the_tools() {
         let b = Bridge::new(Target::Discover { dir: temp_dir("list"), launch: None });
         let mut names: Vec<String> = b.tool_router.list_all().into_iter().map(|t| t.name.to_string()).collect();
         names.sort();
-        assert_eq!(names, ["cancel", "capture_view", "find_commands", "get_state", "list_objects", "object_info", "redo", "run_commands", "undo"]);
+        assert_eq!(names, ["cancel", "capture_view", "find_commands", "get_state", "list_objects", "locust_bake", "locust_components", "locust_get_graph", "locust_set_graph", "locust_set_values", "locust_solve", "object_info", "redo", "run_commands", "undo"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]

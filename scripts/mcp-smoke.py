@@ -4,7 +4,7 @@
     TRICERATOPS_SOCKET=none python3 scripts/mcp-smoke.py target/release/triceratops
 
 Sends initialize, notifications/initialized and tools/list, and fails unless the
-eight Triceratops tools come back. TRICERATOPS_SOCKET points at a socket that does not
+Triceratops tools come back. TRICERATOPS_SOCKET points at a socket that does not
 exist, so no window is started. Exits non-zero on any problem.
 """
 import json
@@ -13,7 +13,10 @@ import subprocess
 import sys
 import threading
 
-EXPECTED = {"run_commands", "get_state", "list_objects", "object_info", "find_commands", "capture_view", "undo", "redo"}
+EXPECTED = {
+    "cancel", "capture_view", "find_commands", "get_state", "list_objects", "object_info", "redo", "run_commands", "undo",
+    "locust_bake", "locust_components", "locust_get_graph", "locust_set_graph", "locust_set_values", "locust_solve",
+}
 
 
 def main() -> int:

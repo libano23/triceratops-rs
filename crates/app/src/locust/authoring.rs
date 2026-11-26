@@ -77,6 +77,15 @@ pub fn prepare(input: &J) -> Result<Graph, String> {
     })))
 }
 
+/// An input named `node.input` (or `node` alone: its first input) → (uid, input index).
+pub fn resolve_input(g: &Graph, text: &str) -> Result<(String, usize), String> {
+    let h = Handles::new(g);
+    match h.lookup(text) {
+        Some(uid) => Ok((uid?, 0)),
+        None => h.port(g, text, false),
+    }
+}
+
 /// How connections may name nodes: uid, nickname, or type when only one node has it.
 struct Handles {
     by_uid: HashSet<String>,
