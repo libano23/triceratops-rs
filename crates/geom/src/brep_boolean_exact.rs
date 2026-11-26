@@ -705,8 +705,10 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     }
     // intersection curves
     let mut curves: Vec<Curve> = Vec::new();
+    crate::job::stage("intersecting faces");
     for (i, fa) in a.faces.iter().enumerate() {
         for (j, fb) in b.faces.iter().enumerate() {
+            crate::job::checkpoint((i * b.faces.len() + j) as u64).map_err(|e| e.to_string())?;
             curves.extend(face_face_curves(i, fa, &ma[i], j, fb, &mb[j], tol, diag));
         }
     }
@@ -827,8 +829,10 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     let on_tol = diag * 1e-3;
     let mut faces: Vec<Face> = Vec::new();
     let mut touched = false;
+    crate::job::stage("splitting faces");
     for (src, paths, other_mesh, from_b) in [(a, &paths_a, &mesh_b, false), (b, &paths_b, &mesh_a, true)] {
         for (fi, f) in src.faces.iter().enumerate() {
+            crate::job::checkpoint(fi as u64).map_err(|e| e.to_string())?;
             if debug && !paths[fi].is_empty() {
                 for p in &paths[fi] {
                     eprintln!("  {}{} path: {}", if from_b { "B" } else { "A" }, fi, p.iter().map(|q| format!("({:.17e},{:.17e})", q.x, q.y)).collect::<Vec<_>>().join(" "));

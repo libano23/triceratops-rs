@@ -68,6 +68,7 @@ pub fn brep_boolean_verbose(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Resu
         Ok(r) => return Ok(r),
         Err(e) => e,
     };
+    crate::job::check().map_err(|e| e.to_string())?;
     if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() {
         eprintln!("exact boolean failed ({exact_err}); falling back to the mesh-CSG rebuild");
     }
@@ -93,7 +94,9 @@ pub fn brep_boolean_verbose(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Resu
     keys.sort();
     let mut faces = Vec::new();
     let mut from_b: Vec<bool> = Vec::new();
-    for tag in keys {
+    crate::job::stage("rebuilding faces");
+    for (k, tag) in keys.into_iter().enumerate() {
+        crate::job::checkpoint(k as u64).map_err(|e| e.to_string())?;
         let (src, fi) = if tag & TAG_B != 0 { (b, (tag & !TAG_B) as usize) } else { (a, tag as usize) };
         let face = src.faces.get(fi).ok_or_else(|| format!("bad tag {tag}"))?;
         let group = &groups[&tag];

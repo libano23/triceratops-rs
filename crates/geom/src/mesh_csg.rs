@@ -434,12 +434,25 @@ fn boolean_budgeted(a: &Mesh, b: &Mesh, op: BooleanOp, budget: Budget) -> Result
 /// every other), so the Booleans run on a thread with a large stack. `None` when that thread
 /// panicked.
 pub fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Option<T> {
-    std::thread::scope(|s| std::thread::Builder::new().stack_size(256 << 20).spawn_scoped(s, f).expect("spawn boolean thread").join().ok())
+    // the caller's job token goes along, so the Boolean can be cancelled and report progress
+    let token = crate::job::current();
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn_scoped(s, move || {
+                let _guard = token.map(crate::job::install);
+                f()
+            })
+            .expect("spawn boolean thread")
+            .join()
+            .ok()
+    })
 }
 
 /// Build both trees and combine them; everything (including dropping the deep trees) happens
 /// on the caller's thread, which `with_big_stack` provides.
 fn polygons_boolean(pa: Vec<Polygon>, pb: Vec<Polygon>, op: BooleanOp, budget: Budget) -> Result<Vec<Polygon>, BooleanError> {
+    crate::job::stage("mesh Boolean");
     let mut t = Tracker::new(pa.len() + pb.len(), budget);
     let na = Node::new(pa, &mut t)?;
     let nb = Node::new(pb, &mut t)?;
@@ -544,6 +557,27 @@ mod tests {
         let r = mesh_boolean(&a, &b, BooleanOp::Union);
         eprintln!("dense spheres: {:?} in {:?}", r.as_ref().map(|m| m.triangle_count()), t.elapsed());
         assert!(matches!(r, Err(BooleanError::TooComplex { .. }) | Ok(_)), "{r:?}");
+    }
+
+    #[test]
+    fn cancelled_boolean_returns_quickly() {
+        let a = uv_sphere(DVec3::ZERO, 10.0, 100);
+        let b = uv_sphere(DVec3::new(5.0, 0.0, 0.0), 10.0, 100);
+        let t = crate::job::Token::new();
+        let _g = crate::job::install(t.clone());
+        let canceller = {
+            let t = t.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                t.cancel();
+                std::time::Instant::now()
+            })
+        };
+        let r = mesh_boolean(&a, &b, BooleanOp::Union);
+        let done = std::time::Instant::now();
+        let cancelled_at = canceller.join().unwrap();
+        assert_eq!(r.err(), Some(BooleanError::Cancelled));
+        assert!(done.duration_since(cancelled_at) < std::time::Duration::from_millis(500), "took {:?} after cancel", done.duration_since(cancelled_at));
     }
 
     #[test]
