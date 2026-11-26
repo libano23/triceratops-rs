@@ -61,6 +61,16 @@ pub fn prepare(input: &J) -> Result<Graph, String> {
     }
     layout(&mut nodes, &wires);
     let connections: Vec<J> = wires.iter().map(|(s, sp, d, dp)| json!({ "src": s, "src_port": sp, "dst": d, "dst_port": dp })).collect();
+    // comments without a place go under the nodes, one after another
+    let mut comments = input.get("comments").and_then(|c| c.as_array()).cloned().unwrap_or_default();
+    let mut below = nodes.iter().filter_map(|n| n.get("y").and_then(|y| y.as_f64())).fold(0.0f64, f64::max) + 220.0;
+    for c in comments.iter_mut() {
+        if c.get("x").and_then(|v| v.as_f64()).is_none() || c.get("y").and_then(|v| v.as_f64()).is_none() {
+            c["x"] = json!(40.0);
+            c["y"] = json!(below);
+            below += 100.0;
+        }
+    }
     let mut groups = input.get("groups").and_then(|g| g.as_array()).cloned().unwrap_or_default();
     for g in groups.iter_mut() {
         if let Some(members) = g.get("nodes").and_then(|m| m.as_array()).cloned() {
@@ -72,7 +82,7 @@ pub fn prepare(input: &J) -> Result<Graph, String> {
         "nodes": nodes,
         "connections": connections,
         "groups": groups,
-        "comments": input.get("comments").cloned().unwrap_or(J::Array(Vec::new())),
+        "comments": comments,
         "clusters": clusters,
     })))
 }

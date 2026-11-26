@@ -57,13 +57,47 @@ fn summary(tree: &DataTree) -> J {
         out["bbox"] = json!([[bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]]);
     }
     if let Some(Value::Geometry(g)) = items.first() {
-        if let Some((v, _)) = Document::volume_of(g) {
-            out["volume"] = json!(v);
-        } else if let Some(a) = Document::area_of(g) {
-            out["area"] = json!(a);
+        match measure(g) {
+            Some(Measure::Volume(v)) => out["volume"] = json!(v),
+            Some(Measure::Area(a)) => out["area"] = json!(a),
+            None => {}
         }
     }
     out
+}
+
+enum Measure {
+    Volume(f64),
+    Area(f64),
+}
+
+/// Volume of a closed solid or area of a surface, from the display mesh: as accurate as what
+/// is drawn and quick even for a screw of hundreds of sections (`Document::volume_of`
+/// meshes every span 16×16).
+fn measure(g: &Geometry) -> Option<Measure> {
+    let d = tri_geom::display_mesh::MeshDensity::for_size(g.bounding_box().diagonal().max(1e-9));
+    let (mesh, closed) = match g {
+        Geometry::Brep(b) => (b.faces.iter().fold(tri_geom::Mesh::new(), |mut m, f| {
+            m.append(&f.display_mesh(&d));
+            m
+        }), b.closed),
+        Geometry::Surface(s) => (s.display_mesh(&d), false),
+        Geometry::Mesh(m) => (m.clone(), m.is_closed()),
+        Geometry::Curve(_) => return Document::area_of(g).map(Measure::Area),
+        _ => return None,
+    };
+    if closed {
+        let v: f64 = (0..mesh.triangle_count()).map(|t| {
+            let (a, b, c) = mesh.triangle(t);
+            a.dot(b.cross(c)) / 6.0
+        }).sum();
+        return Some(Measure::Volume(v.abs()));
+    }
+    let a: f64 = (0..mesh.triangle_count()).map(|t| {
+        let (a, b, c) = mesh.triangle(t);
+        (b - a).cross(c - a).length() / 2.0
+    }).sum();
+    (a > 0.0).then_some(Measure::Area(a))
 }
 
 /// The report of a solve of `graph`.
@@ -81,16 +115,25 @@ pub fn solve_report(graph: &Graph, outputs: &Outputs, diags: &HashMap<String, Ve
     }
     let count = |l: Level| diags.values().flatten().filter(|d| d.level == l).count();
     let panels: Vec<J> = graph.nodes.iter().filter(|n| n.kind == "Panel").map(|n| json!({ "label": n.label(), "text": input_preview(graph, &n.uid, 0, outputs).format(6, 5) })).collect();
-    let mut results = Vec::new();
+    // one entry per output that goes to the viewport or Bake, saying where it goes
+    let mut sources: Vec<((String, usize), Vec<String>)> = Vec::new();
     for c in &graph.connections {
         let Some(dst) = graph.node(&c.dst).filter(|n| SINKS.contains(&n.kind.as_str()) && c.dst_port == 0) else { continue };
-        let Some(src) = graph.node(&c.src) else { continue };
-        let tree = outputs.get(&c.src).and_then(|o| o.get(c.src_port)).cloned().unwrap_or_default();
-        let port = graph.node_ports(src).1.get(c.src_port).map(|p| p.0.clone()).unwrap_or_default();
+        let key = (c.src.clone(), c.src_port);
+        match sources.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, to)) => to.push(dst.kind.clone()),
+            None => sources.push((key, vec![dst.kind.clone()])),
+        }
+    }
+    let mut results = Vec::new();
+    for ((src_uid, port_index), to) in sources {
+        let Some(src) = graph.node(&src_uid) else { continue };
+        let tree = outputs.get(&src_uid).and_then(|o| o.get(port_index)).cloned().unwrap_or_default();
+        let port = graph.node_ports(src).1.get(port_index).map(|p| p.0.clone()).unwrap_or_default();
         let mut r = summary(&tree);
         r["label"] = json!(src.label());
         r["port"] = json!(port);
-        r["to"] = json!(dst.kind);
+        r["to"] = json!(to);
         results.push(r);
     }
     json!({
@@ -104,4 +147,39 @@ pub fn solve_report(graph: &Graph, outputs: &Outputs, diags: &HashMap<String, Ve
         "panels": panels,
         "results": results,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::locust::components::Ctx;
+    use crate::locust::engine::solve;
+    use serde_json::json;
+
+    #[test]
+    fn results_once_per_output_with_fast_measures() {
+        let g = crate::locust::authoring::prepare(&json!({
+            "nodes": [{ "type": "Box", "nickname": "B" }, { "type": "Preview" }, { "type": "Bake" }],
+            "connections": [{ "from": "B", "to": "Preview.Geometry" }, { "from": "B", "to": "Bake.Geometry" }]
+        }))
+        .unwrap();
+        let mut ctx = Ctx::default();
+        let out = solve(&g, &mut ctx);
+        let r = solve_report(&g, &out, &ctx.diagnostics, ctx.preview.len(), ctx.bake.len(), Duration::ZERO);
+        let results = r["results"].as_array().unwrap();
+        assert_eq!(results.len(), 1, "{r}");
+        assert_eq!(results[0]["to"], json!(["Preview", "Bake"]));
+        assert!((results[0]["volume"].as_f64().unwrap() - 1000.0).abs() < 1.0, "{r}");
+    }
+
+    #[test]
+    fn comments_without_a_place_go_under_the_nodes() {
+        let g = crate::locust::authoring::prepare(&json!({
+            "nodes": [{ "type": "Number" }, { "type": "Number" }, { "type": "Number" }],
+            "comments": [{ "text": "hello" }]
+        }))
+        .unwrap();
+        let bottom = g.nodes.iter().map(|n| n.y).fold(f64::MIN, f64::max);
+        assert!(g.comments[0].y > bottom + 100.0, "comment at {} under nodes down to {bottom}", g.comments[0].y);
+    }
 }
