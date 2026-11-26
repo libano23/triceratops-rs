@@ -602,6 +602,18 @@ pub fn split_region(loops: &[Vec<DVec2>], paths: &[Vec<DVec2>]) -> Vec<Vec<Vec<D
     if dbg {
         eprintln!("split_region: {} positive cycles, {} negative", positive.len(), negative.len());
     }
+    // TEMPORARY: exact inputs of a suspicious split, for replay elsewhere
+    if dbg && negative.len() > 10 {
+        let enc = |v: &[DVec2]| v.iter().map(|p| format!("{:016x}{:016x}", p.x.to_bits(), p.y.to_bits())).collect::<String>();
+        for (kind, list) in [("L", loops), ("P", paths)] {
+            for (i, l) in list.iter().enumerate() {
+                let e = enc(l);
+                for (c, chunk) in e.as_bytes().chunks(4096).enumerate() {
+                    eprintln!("SPLITDUMP {kind} {i} {c} {}", std::str::from_utf8(chunk).unwrap());
+                }
+            }
+        }
+    }
     if positive.is_empty() {
         return vec![loops.to_vec()];
     }
