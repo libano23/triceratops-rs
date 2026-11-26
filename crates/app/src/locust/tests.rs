@@ -1145,3 +1145,36 @@ fn helical_sweep_unites_with_its_core() {
     assert!(v > core && v < PI * 25.0 * 21.0, "volume {v}");
 }
 
+
+/// The female thread the same way: a hex nut body minus the swept screw is one closed solid.
+#[test]
+fn hex_nut_minus_a_swept_screw() {
+    let g = crate::locust::authoring::prepare(&json!({
+        "nodes": [
+            { "type": "Script", "nickname": "Prof", "values": { "_inputs": [], "_outputs": ["profile"], "code": "let rc = 5.0 - 0.6134 * 1.5; let inner = rc - 0.15; let w = 2.0 * (5.0 - inner) * 0.57735; profile = polyline([point(inner, 0, -w / 2), point(5.0, 0, -0.06), point(5.0, 0, 0.06), point(inner, 0, w / 2)], true);" } },
+            { "type": "Helix", "nickname": "Rail", "values": { "Radius": 4.08, "Pitch": 1.5, "End": [0, 0, 20] } },
+            { "type": "Extrude Along Curve", "nickname": "Thread" },
+            { "type": "Circle", "nickname": "C", "values": { "Radius": 4.08 } },
+            { "type": "Extrude", "nickname": "Core", "values": { "Distance": 20 } },
+            { "type": "Union", "nickname": "Screw" },
+            { "type": "Polygon", "nickname": "Hex", "values": { "Radius": 9.24, "Sides": 6, "Center": [0, 0, 6] } },
+            { "type": "Extrude", "nickname": "Body", "values": { "Distance": 8 } },
+            { "type": "Difference", "nickname": "Nut" }
+        ],
+        "connections": [
+            { "from": "Prof.profile", "to": "Thread.Profile" }, { "from": "Rail", "to": "Thread.Path" },
+            { "from": "C", "to": "Core.Curve" }, { "from": "Core", "to": "Screw.A" }, { "from": "Thread", "to": "Screw.B" },
+            { "from": "Hex", "to": "Body.Curve" }, { "from": "Body", "to": "Nut.A" }, { "from": "Screw", "to": "Nut.B" }
+        ]
+    }))
+    .unwrap();
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let nut = g.nodes.iter().find(|n| n.nickname.as_deref() == Some("Nut")).unwrap();
+    let result = out[&nut.uid][0].first().and_then(|v| v.as_geometry()).cloned();
+    let Some(tri_doc::Geometry::Brep(b)) = result.as_ref() else { panic!("no solid: {:?}", ctx.diagnostics.get(&nut.uid)) };
+    assert!(b.closed);
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    let hex = 3.0f64.sqrt() / 2.0 * 16.0 * 16.0 * 8.0;
+    assert!(v < hex - PI * 4.08 * 4.08 * 8.0 && v > hex - PI * 25.0 * 8.0, "volume {v}");
+}
