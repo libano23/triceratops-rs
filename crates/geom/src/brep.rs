@@ -755,9 +755,11 @@ impl Brep {
                         for (ej, oe) in other_edges.iter().enumerate() {
                             if fi == fj && ei == ej {
                                 // a trim loop may run along a seam twice (closed surfaces):
-                                // a far part of the same loop counts as the partner edge
-                                let margin = 1;
-                                if distance_to_polyline_skipping(s, oe, seg, margin) < tol {
+                                // a far part of the same loop counts as the partner edge. A seam
+                                // is run the other way on its second pass: a part of the loop
+                                // going the same way is just this edge again (cut into segments
+                                // shorter than the tolerance, it would otherwise find itself)
+                                if distance_to_opposite_pass(s, oe, seg) < tol {
                                     found = true;
                                     break 'search;
                                 }
@@ -913,6 +915,29 @@ fn distance_to_polyline_skipping(p: DVec3, poly: &[DVec3], skip: usize, margin: 
     best
 }
 
+/// Distance from `p` (on segment `skip` of the closed polyline `poly`) to the parts of the
+/// polyline that run the opposite way: the second pass of a seam, never this edge itself.
+fn distance_to_opposite_pass(p: DVec3, poly: &[DVec3], skip: usize) -> f64 {
+    let nseg = poly.len().saturating_sub(1);
+    if nseg < 3 {
+        return f64::INFINITY;
+    }
+    let skip = skip.min(nseg - 1);
+    let dir = (poly[skip + 1] - poly[skip]).normalize_or_zero();
+    let mut best = f64::INFINITY;
+    for (k, w) in poly.windows(2).enumerate() {
+        let d = (k as i64 - skip as i64).rem_euclid(nseg as i64).min((skip as i64 - k as i64).rem_euclid(nseg as i64));
+        let ab = w[1] - w[0];
+        if d <= 1 || ab.normalize_or_zero().dot(dir) > 0.0 {
+            continue;
+        }
+        let l2 = ab.length_squared();
+        let t = if l2 < 1e-18 { 0.0 } else { ((p - w[0]).dot(ab) / l2).clamp(0.0, 1.0) };
+        best = best.min((w[0] + ab * t - p).length());
+    }
+    best
+}
+
 fn distance_to_polyline(p: DVec3, poly: &[DVec3]) -> f64 {
     let mut best = f64::INFINITY;
     for w in poly.windows(2) {
@@ -958,6 +983,27 @@ mod tests {
         }
         assert_eq!(b.tessellate(1, 1).triangle_count(), 12);
         assert!(b.compute_closed());
+    }
+
+    /// A loft of many closed sections is closed around but open at both ends: it must not
+    /// count as a closed solid (a short-segment edge used to find "itself" as its partner).
+    #[test]
+    fn long_loft_of_closed_sections_is_open() {
+        let sections: Vec<NurbsCurve> = (0..=200)
+            .map(|k| {
+                let mut pts: Vec<DVec3> = (0..72)
+                    .map(|i| {
+                        let t = std::f64::consts::TAU * i as f64 / 72.0;
+                        let r = 5.0 + 0.5 * (3.0 * t + k as f64 * 0.3).sin();
+                        DVec3::new(r * t.cos(), r * t.sin(), k as f64 * 0.2)
+                    })
+                    .collect();
+                pts.push(pts[0]);
+                NurbsCurve::polyline(pts).unwrap()
+            })
+            .collect();
+        let s = NurbsSurface::loft(&sections, 3).unwrap();
+        assert!(!Brep::from_surface(s).closed, "both ends are open");
     }
 
     /// A long diagonal trim segment is filed only in the cells it crosses, not in every cell
