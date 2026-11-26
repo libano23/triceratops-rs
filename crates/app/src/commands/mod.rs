@@ -282,6 +282,9 @@ pub struct Job {
     pub started: std::time::Instant,
     /// Why it was cancelled ("cancelled", "cancelled by the user"), once it was.
     pub cancelled: Option<String>,
+    /// The command changed the document (in an undo group) before starting the job: a
+    /// cancelled job undoes that group, so nothing is left half done.
+    pub undo_on_cancel: bool,
     handle: std::thread::JoinHandle<WorkResult>,
     apply: ApplyFn,
 }
@@ -461,7 +464,7 @@ impl CmdCtx<'_> {
             Ok(v) => apply(*v, ctx),
             Err(_) => Step::Cancelled,
         });
-        Step::Work(Job { label, token, started: std::time::Instant::now(), cancelled: None, handle, apply })
+        Step::Work(Job { label, token, started: std::time::Instant::now(), cancelled: None, undo_on_cancel: false, handle, apply })
     }
 
     /// `work` for a computation that can fail: an error is logged as "<label> failed: <e>."
@@ -479,6 +482,23 @@ impl CmdCtx<'_> {
                 Step::Cancelled
             }
         })
+    }
+
+    /// `work` for a command that already changed the document in an undo group: if the job
+    /// is cancelled, that group is undone.
+    pub fn work_after_edit<T, F, A>(&mut self, label: impl Into<String>, compute: F, apply: A) -> Step
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+        A: FnOnce(T, &mut CmdCtx) -> Step + 'static,
+    {
+        match self.work(label, compute, apply) {
+            Step::Work(mut j) => {
+                j.undo_on_cancel = true;
+                Step::Work(j)
+            }
+            other => other,
+        }
     }
 
     pub fn log(&mut self, msg: impl Into<String>) {
@@ -573,11 +593,14 @@ impl CommandRunner {
 
     fn finish_job(&mut self, ctx: &mut CmdCtx) {
         let Some(job) = self.job.take() else { return };
-        let Job { label, cancelled, handle, apply, .. } = job;
+        let Job { label, cancelled, handle, apply, undo_on_cancel, .. } = job;
         let result = handle.join();
         match (cancelled, result) {
             (Some(reason), _) => {
                 ctx.log(format!("{label} {reason}"));
+                if undo_on_cancel {
+                    ctx.doc.undo();
+                }
                 self.cancel(ctx);
             }
             (None, Err(_)) => {

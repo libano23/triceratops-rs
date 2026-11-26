@@ -251,4 +251,45 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
     }
+
+    /// Planar Booleans and the volume analyses that cut meshes run as jobs too.
+    #[test]
+    fn planar_booleans_and_analyses_run_as_jobs() {
+        let circles = ["Circle", "0,0,0", "5", "Circle", "4,0,0", "5"];
+        let boxes = ["Box", "0,0,0", "10,10,0", "10"];
+        let cases: &[(&str, &[&str], &[&str], &str)] = &[
+            ("PlanarUnion", &circles, &["PlanarUnion", "#1,#2", ""], "PlanarUnion"),
+            ("PlanarDifference", &circles, &["PlanarDifference", "#1", "#2"], "PlanarDifference"),
+            ("CreateRegions", &circles, &["CreateRegions", "#1,#2", ""], "CreateRegions"),
+            ("Hydrostatics", &boxes, &["Hydrostatics", "#1", "", "5"], "displaced volume"),
+            ("CutVolume", &boxes, &["CutVolume", "#1", "0,0,0", "5,5,0", "5"], "Volume inside the box"),
+        ];
+        for (label, setup, lines, expect_log) in cases {
+            let mut app = App::new();
+            run(&mut app, setup);
+            run(&mut app, lines);
+            assert_eq!(app.job_status().map(|s| s.label), Some(label.to_string()), "{label}: log {:?}", app.log);
+            wait(&mut app, Duration::from_secs(60));
+            assert!(app.log.iter().any(|l| l.contains(expect_log)), "{label}: {:?}", app.log);
+        }
+    }
+
+    /// Holes are re-cut as a job; cancelling it undoes the hole curve too.
+    #[test]
+    fn round_hole_runs_as_a_job_and_cancel_undoes_it() {
+        let volume = |app: &App| app.doc.objects().filter_map(|o| tri_doc::Document::volume_of(&o.geometry)).map(|v| v.0).sum::<f64>();
+        let mut app = App::new();
+        run(&mut app, &["Box", "0,0,0", "20,20,0", "10"]);
+        run(&mut app, &["RoundHole", "#1@10,10,10", "10,10,10", "3"]);
+        assert_eq!(app.job_status().map(|s| s.label), Some("RoundHole".to_string()), "{:?}", app.log);
+        wait(&mut app, Duration::from_secs(60));
+        assert!(volume(&app) < 4000.0 - 200.0, "a hole was cut: {}", volume(&app));
+        let mut app = App::new();
+        run(&mut app, &["Box", "0,0,0", "20,20,0", "10"]);
+        run(&mut app, &["RoundHole", "#1@10,10,10", "10,10,10", "3"]);
+        app.cancel_job("cancelled by the user");
+        wait(&mut app, Duration::from_secs(60));
+        assert_eq!(app.doc.objects().count(), 1, "the hole curve is gone too: {:?}", app.log);
+        assert!((volume(&app) - 4000.0).abs() < 1.0);
+    }
 }

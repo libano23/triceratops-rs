@@ -1214,28 +1214,32 @@ pub fn extrude_srf_along_crv() -> SeqCmd {
 pub fn hydrostatics() -> SeqCmd {
     SeqCmd::new(vec![Ask::Objects("Select closed objects", ObjFilter::Any, 1), Ask::Number("Waterline height (world Z)", 0.0)], |a, ctx| {
         let z = a[1].number();
-        for id in a[0].ids() {
-            let Some(m) = solid_mesh(ctx.doc, id) else { continue };
-            let bb = m.bounding_box();
-            let diag = bb.diagonal().max(1e-3) * 2.0;
-            let c = bb.center();
-            let plane = Plane::from_normal(DVec3::new(c.x, c.y, z - diag), DVec3::Z);
-            let poly = vec![plane.point_at(-diag, -diag), plane.point_at(diag, -diag), plane.point_at(diag, diag), plane.point_at(-diag, diag)];
-            let Some(water) = prism_mesh(&poly, &plane, diag) else { continue };
-            let below = match mesh_bool(&m, &water, BooleanOp::Intersection) {
-                Ok(b) => b,
-                Err(e) => {
-                    ctx.log(e.to_string());
-                    continue;
-                }
-            };
-            let (vol, centroid) = Document::volume_of(&Geometry::Mesh(below.clone())).unwrap_or((0.0, c));
-            let wl = Mesh::section(&m, &Plane::from_normal(DVec3::new(c.x, c.y, z), DVec3::Z), diag * 1e-6);
-            let area: f64 = wl.iter().filter_map(|p| NurbsCurve::polyline(p.clone()).ok()).filter_map(|cv| Document::area_of(&Geometry::Curve(cv))).sum();
-            ctx.log(format!("Object #{id}: displaced volume {} , centre of buoyancy ({}, {}, {}), waterline area {}", fmt_num(vol), fmt_num(centroid.x), fmt_num(centroid.y), fmt_num(centroid.z), fmt_num(area)));
-        }
-        Step::Done
+        let solids: Vec<(ObjectId, Mesh)> = a[0].ids().into_iter().filter_map(|id| solid_mesh(ctx.doc, id).map(|m| (id, m))).collect();
+        ctx.work("Hydrostatics", move || solids.into_iter().map(|(id, m)| hydrostatics_of(id, &m, z)).collect::<Vec<String>>(), |lines, ctx| {
+            for l in lines {
+                ctx.log(l);
+            }
+            Step::Done
+        })
     })
+}
+
+/// The Hydrostatics line for one solid mesh at waterline `z`.
+fn hydrostatics_of(id: ObjectId, m: &Mesh, z: f64) -> String {
+    let bb = m.bounding_box();
+    let diag = bb.diagonal().max(1e-3) * 2.0;
+    let c = bb.center();
+    let plane = Plane::from_normal(DVec3::new(c.x, c.y, z - diag), DVec3::Z);
+    let poly = vec![plane.point_at(-diag, -diag), plane.point_at(diag, -diag), plane.point_at(diag, diag), plane.point_at(-diag, diag)];
+    let Some(water) = prism_mesh(&poly, &plane, diag) else { return format!("Object #{id}: cannot build the water volume") };
+    let below = match mesh_bool(m, &water, BooleanOp::Intersection) {
+        Ok(b) => b,
+        Err(e) => return format!("Object #{id}: {e}"),
+    };
+    let (vol, centroid) = Document::volume_of(&Geometry::Mesh(below.clone())).unwrap_or((0.0, c));
+    let wl = Mesh::section(m, &Plane::from_normal(DVec3::new(c.x, c.y, z), DVec3::Z), diag * 1e-6);
+    let area: f64 = wl.iter().filter_map(|p| NurbsCurve::polyline(p.clone()).ok()).filter_map(|cv| Document::area_of(&Geometry::Curve(cv))).sum();
+    format!("Object #{id}: displaced volume {} , centre of buoyancy ({}, {}, {}), waterline area {}", fmt_num(vol), fmt_num(centroid.x), fmt_num(centroid.y), fmt_num(centroid.z), fmt_num(area))
 }
 
 pub fn cut_volume() -> SeqCmd {
@@ -1246,16 +1250,15 @@ pub fn cut_volume() -> SeqCmd {
         let min = p.min(q);
         let max = DVec3::new(p.max(q).x, p.max(q).y, p.max(q).z + h);
         let bx = Mesh::cuboid(min.min(max), min.max(max));
-        let inter = match mesh_bool(&m, &bx, BooleanOp::Intersection) {
-            Ok(i) => i,
-            Err(e) => {
-                ctx.log(e.to_string());
-                return Step::Cancelled;
-            }
-        };
-        let v = Document::volume_of(&Geometry::Mesh(inter)).map(|v| v.0).unwrap_or(0.0);
-        ctx.log(format!("Volume inside the box = {}", fmt_num(v)));
-        Step::Done
+        ctx.try_work(
+            "CutVolume",
+            move || mesh_bool(&m, &bx, BooleanOp::Intersection).map_err(|e| e.to_string()),
+            |inter, ctx| {
+                let v = Document::volume_of(&Geometry::Mesh(inter)).map(|v| v.0).unwrap_or(0.0);
+                ctx.log(format!("Volume inside the box = {}", fmt_num(v)));
+                Step::Done
+            },
+        )
     })
 }
 

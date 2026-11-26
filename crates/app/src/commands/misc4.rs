@@ -192,18 +192,20 @@ impl Command for PlanarBoolCmd {
         match input {
             Input::Objects(ids) if self.first.is_empty() && (self.op == BooleanOp::Union || self.curve_boolean) => {
                 let curves: Vec<NurbsCurve> = ids.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
-                let result = region_boolean(&curves, &[], BooleanOp::Union);
-                if result.is_empty() {
-                    ctx.log("No closed planar regions found.");
-                    return Step::Cancelled;
-                }
-                ctx.doc.begin_undo(self.label());
-                if !self.curve_boolean {
-                    for id in &ids {
-                        ctx.doc.remove(*id);
+                let (label, keep_input) = (self.label(), self.curve_boolean);
+                ctx.work(label, move || region_boolean(&curves, &[], BooleanOp::Union), move |result, ctx| {
+                    if result.is_empty() {
+                        ctx.log("No closed planar regions found.");
+                        return Step::Cancelled;
                     }
-                }
-                add_all(ctx, self.label(), result.into_iter().map(Geometry::Curve).collect())
+                    ctx.doc.begin_undo(label);
+                    if !keep_input {
+                        for id in &ids {
+                            ctx.doc.remove(*id);
+                        }
+                    }
+                    add_all(ctx, label, result.into_iter().map(Geometry::Curve).collect())
+                })
             }
             Input::Objects(ids) if self.first.is_empty() => {
                 self.first = ids;
@@ -213,16 +215,19 @@ impl Command for PlanarBoolCmd {
             Input::Objects(second) => {
                 let a: Vec<NurbsCurve> = self.first.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
                 let b: Vec<NurbsCurve> = second.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
-                let result = region_boolean(&a, &b, self.op);
-                if result.is_empty() {
-                    ctx.log("Boolean produced no regions.");
-                    return Step::Cancelled;
-                }
-                ctx.doc.begin_undo(self.label());
-                for id in self.first.iter().chain(second.iter()) {
-                    ctx.doc.remove(*id);
-                }
-                add_all(ctx, self.label(), result.into_iter().map(Geometry::Curve).collect())
+                let (label, op) = (self.label(), self.op);
+                let inputs: Vec<ObjectId> = self.first.iter().chain(second.iter()).copied().collect();
+                ctx.work(label, move || region_boolean(&a, &b, op), move |result, ctx| {
+                    if result.is_empty() {
+                        ctx.log("Boolean produced no regions.");
+                        return Step::Cancelled;
+                    }
+                    ctx.doc.begin_undo(label);
+                    for id in &inputs {
+                        ctx.doc.remove(*id);
+                    }
+                    add_all(ctx, label, result.into_iter().map(Geometry::Curve).collect())
+                })
             }
             Input::Option(_) => self.start(ctx),
             _ => Step::Cancelled,
@@ -362,9 +367,8 @@ impl Command for RoundHoleCmd {
                 ctx.doc.begin_undo("RoundHole");
                 let cid = add_hole_curve(ctx, circle);
                 register_hole(ctx, id, vec![cid]);
-                recut_holes(ctx, id);
                 ctx.log("The hole curve stays as a locked definition curve (MoveHole, CopyHole, ... re-cut it).");
-                Step::Done
+                recut_holes(ctx, id, "RoundHole")
             }
             (_, _, _, Input::Option(_)) => Prompt::point("Center point of hole").step(),
             _ => Step::Cancelled,
@@ -410,9 +414,8 @@ impl Command for MakeHoleCmd {
                     }
                 }
                 register_hole(ctx, id, curves);
-                recut_holes(ctx, id);
                 ctx.log("The hole curves stay as locked definition curves (MoveHole, CopyHole, ... re-cut them).");
-                Step::Done
+                recut_holes(ctx, id, "MakeHole")
             }
             _ => Step::Cancelled,
         }
@@ -1039,28 +1042,38 @@ pub fn register_hole(ctx: &mut CmdCtx, target: ObjectId, curves: Vec<ObjectId>) 
 }
 
 /// Cut all registered holes of a target into its original geometry again.
-pub fn recut_holes(ctx: &mut CmdCtx, target: ObjectId) {
-    let Some(rec) = ctx.doc.state.history.holes.iter().find(|h| h.target == target).cloned() else { return };
+/// Re-cut every hole of `target` from its original shape, as a job named `label` (the caller
+/// has opened an undo group and changed hole curves: a cancel undoes that). Ends the command.
+pub fn recut_holes(ctx: &mut CmdCtx, target: ObjectId, label: &str) -> Step {
+    let Some(rec) = ctx.doc.state.history.holes.iter().find(|h| h.target == target).cloned() else { return Step::Done };
     if !matches!(rec.original, Geometry::Surface(_) | Geometry::Brep(_) | Geometry::Mesh(_)) {
-        return;
+        return Step::Done;
     }
-    let mut result = rec.original.clone();
-    let diag = result.bounding_box().diagonal().max(1e-3);
-    let mut live = Vec::new();
-    for cid in &rec.curves {
-        let Some(c) = curve_of(ctx.doc, *cid) else { continue };
-        live.push(*cid);
-        let Some(plane) = curve_plane(&c) else { continue };
-        if let Some(tool) = prism_tool(&c, &plane, diag) {
-            if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
-                result = r;
+    let curves: Vec<(ObjectId, NurbsCurve)> = rec.curves.iter().filter_map(|cid| curve_of(ctx.doc, *cid).map(|c| (*cid, c))).collect();
+    let original = rec.original.clone();
+    ctx.work_after_edit(
+        label,
+        move || {
+            let mut result = original;
+            let diag = result.bounding_box().diagonal().max(1e-3);
+            for (_, c) in &curves {
+                let Some(plane) = curve_plane(c) else { continue };
+                if let Some(tool) = prism_tool(c, &plane, diag) {
+                    if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
+                        result = r;
+                    }
+                }
             }
-        }
-    }
-    if let Some(r) = ctx.doc.state.history.holes.iter_mut().find(|h| h.target == target) {
-        r.curves = live;
-    }
-    ctx.doc.replace_geometry(target, result);
+            (result, curves.into_iter().map(|(id, _)| id).collect::<Vec<_>>())
+        },
+        move |(result, live), ctx| {
+            if let Some(r) = ctx.doc.state.history.holes.iter_mut().find(|h| h.target == target) {
+                r.curves = live;
+            }
+            ctx.doc.replace_geometry(target, result);
+            Step::Done
+        },
+    )
 }
 
 /// The hole record owning a hole curve.

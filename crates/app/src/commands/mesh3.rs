@@ -1133,34 +1133,39 @@ pub fn create_regions() -> SeqCmd {
             ctx.log("Select at least two closed planar curves.");
             return Step::Cancelled;
         }
-        let mut regions = Vec::new();
-        for i in 0..curves.len() {
-            // the part of curve i outside all the others, plus the pairwise intersections
-            let mut pieces = vec![curves[i].clone()];
-            for j in 0..curves.len() {
-                if i == j {
-                    continue;
+        let ids = a[0].ids();
+        ctx.work("CreateRegions", move || {
+            let mut regions = Vec::new();
+            for i in 0..curves.len() {
+                // the part of curve i outside all the others, plus the pairwise intersections
+                let mut pieces = vec![curves[i].clone()];
+                for j in 0..curves.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let mut next = Vec::new();
+                    for p in &pieces {
+                        next.extend(super::misc4::region_boolean(std::slice::from_ref(p), std::slice::from_ref(&curves[j]), BooleanOp::Difference));
+                    }
+                    pieces = next;
                 }
-                let mut next = Vec::new();
-                for p in &pieces {
-                    next.extend(super::misc4::region_boolean(std::slice::from_ref(p), std::slice::from_ref(&curves[j]), BooleanOp::Difference));
+                regions.extend(pieces);
+                for j in i + 1..curves.len() {
+                    regions.extend(super::misc4::region_boolean(&[curves[i].clone()], &[curves[j].clone()], BooleanOp::Intersection));
                 }
-                pieces = next;
             }
-            regions.extend(pieces);
-            for j in i + 1..curves.len() {
-                regions.extend(super::misc4::region_boolean(&[curves[i].clone()], &[curves[j].clone()], BooleanOp::Intersection));
+            regions
+        }, move |regions, ctx| {
+            if regions.is_empty() {
+                ctx.log("The curves do not overlap.");
+                return Step::Done;
             }
-        }
-        if regions.is_empty() {
-            ctx.log("The curves do not overlap.");
-            return Step::Done;
-        }
-        ctx.doc.begin_undo("CreateRegions");
-        for id in a[0].ids() {
-            ctx.doc.remove(id);
-        }
-        add_all(ctx, "CreateRegions", regions.into_iter().map(Geometry::Curve).collect())
+            ctx.doc.begin_undo("CreateRegions");
+            for id in &ids {
+                ctx.doc.remove(*id);
+            }
+            add_all(ctx, "CreateRegions", regions.into_iter().map(Geometry::Curve).collect())
+        })
     })
 }
 
