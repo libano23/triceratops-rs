@@ -4,7 +4,7 @@ What changed in each version of Triceratops, newest first. The section of a vers
 becomes its release notes and is what the program shows when it offers an update:
 before tagging a release, rename "Unreleased" to the version and date.
 
-## Unreleased
+## 0.4.0 - 2026-11-26
 
 ### New
 
