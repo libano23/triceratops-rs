@@ -360,6 +360,8 @@ pub enum AppRequest {
     WindowOp(String),
     /// Save a backup copy of the document in the options folder.
     Autosave,
+    /// Look for a newer version now (Help › Check for Updates).
+    CheckUpdates,
     /// Export (true) or import (false) the options file through a dialog.
     OptionsFile { export: bool },
     /// Repeat the last command.

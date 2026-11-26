@@ -32,6 +32,11 @@ pub fn status_bar(app: &mut App, root: &mut egui::Ui) {
                 ui.label(&app.status_hint);
                 return;
             }
+            if let Some(o) = &app.update.offer {
+                if !app.update.show && ui.small_button(RichText::new(format!("⬆ Triceratops {} available", o.version)).strong()).on_hover_text("See what's new and update").clicked() {
+                    app.update.show = true;
+                }
+            }
             // left sidebar toggle
             if ui.small_button("◧").on_hover_text("Toggle left sidebar").clicked() {
                 app.toggle_side(crate::ui::dock::Placement::Left);

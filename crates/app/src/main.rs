@@ -2,6 +2,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
+mod autosave;
 mod file_dialog;
 mod camera;
 mod commands;
@@ -13,6 +14,7 @@ mod render;
 mod snap;
 mod theme;
 mod ui;
+mod update;
 
 use std::sync::Arc;
 
@@ -48,6 +50,15 @@ impl Runner {
         let mut app = App::new();
         // `triceratops model.3dm` opens a model; `triceratops --script file.txt` runs a command file at startup.
         let args: Vec<String> = std::env::args().skip(1).collect();
+        let scripted = args.iter().any(|a| a == "--script");
+        if !scripted {
+            app.find_recoverable();
+        }
+        let env_off = std::env::var_os("TRICERATOPS_NO_UPDATE_CHECK").is_some_and(|v| v != "0");
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        if app::should_auto_check(app.check_updates, app.last_update_check, now, scripted, env_off) {
+            app.start_update_check(false);
+        }
         let mut i = 0;
         while i < args.len() {
             if args[i] == "--script" && i + 1 < args.len() {
@@ -90,6 +101,16 @@ impl Runner {
         let mut full_output = self.egui_ctx.run_ui(raw_input, |root| ui::draw(&mut self.app, root));
         state.handle_platform_output(window, full_output.platform_output.clone());
         self.app.process_requests();
+        self.app.tick_autosave(std::time::Instant::now());
+        self.app.poll_update();
+        if self.app.update.job.is_some() {
+            // keep polling the check or download (and redraw its progress)
+            self.egui_ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        if self.app.autosave && self.app.doc.modified {
+            // wake up for the next autosave even when nothing else happens
+            self.egui_ctx.request_repaint_after(std::time::Duration::from_secs(30));
+        }
         if self.app.quit {
             full_output.textures_delta.clear(); // closing: nothing left to upload them to
             event_loop.exit();
@@ -240,8 +261,13 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
         match event {
             WindowEvent::CloseRequested => {
-                self.app.save_options();
-                event_loop.exit();
+                // unsaved changes are asked about first; the next frame exits once `quit` is set
+                self.app.request_discard(app::Discard::Quit);
+                if self.app.quit {
+                    event_loop.exit();
+                } else {
+                    window.request_redraw();
+                }
             }
             WindowEvent::Resized(size) => {
                 if let Some(r) = &mut self.renderer {

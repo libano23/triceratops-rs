@@ -61,6 +61,14 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-latest
     steps:
+      # the notes are this version's section of CHANGELOG.md; no section, no release
+      # (checked out first: checkout cleans the folder the artifacts are downloaded to)
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            CHANGELOG.md
+            scripts/changelog_section.py
+      - run: python3 scripts/changelog_section.py "${GITHUB_REF_NAME#v}" > notes.md
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -68,7 +76,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: notes.md
       # A release made with GITHUB_TOKEN does not trigger other workflows by
       # itself; a manual dispatch does, so the website picks up the new files.
       - name: Update the website

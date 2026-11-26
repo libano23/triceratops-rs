@@ -11,6 +11,230 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     command_history(app, ctx);
     help_window(app, ctx);
     message_box(app, ctx);
+    save_prompt(app, ctx);
+    recovery(app, ctx);
+    update_dialog(app, ctx);
+}
+
+/// A changelog in Markdown, shown plainly: `##` headings bold, `*`/`-` items as bullets.
+fn changelog(ui: &mut egui::Ui, text: &str) {
+    for line in text.lines() {
+        // inline code reads fine without its backticks
+        let plain = line.trim_end().replace('`', "");
+        let t = plain.as_str();
+        if let Some(h) = t.strip_prefix("## ").or_else(|| t.strip_prefix("### ")) {
+            ui.add_space(4.0);
+            ui.label(RichText::new(h).strong());
+        } else if let Some(item) = t.trim_start().strip_prefix("* ").or_else(|| t.trim_start().strip_prefix("- ")) {
+            ui.label(format!("  •  {item}"));
+        } else if !t.is_empty() {
+            ui.label(t);
+        }
+    }
+}
+
+/// "Triceratops X is available": what changed, and how to get it.
+fn update_dialog(app: &mut App, ctx: &egui::Context) {
+    if !app.update.show {
+        return;
+    }
+    use crate::update::Install;
+    let mut close = false;
+    let mut skip = false;
+    let mut download = false;
+    let mut cancel = false;
+    let mut restart: Option<std::path::PathBuf> = None;
+    let mut page: Option<String> = None;
+    let install = Install::detect();
+    egui::Window::new("Software update").collapsible(false).resizable(true).default_width(520.0).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        if let Some(o) = &app.update.offer {
+            ui.label(RichText::new(format!("Triceratops {} is available (you have {}).", o.version, crate::update::current())).strong());
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| changelog(ui, &o.changelog));
+            ui.add_space(6.0);
+        }
+        if app.update.downloading {
+            let total = app.update.offer.as_ref().and_then(|o| o.asset.as_ref()).map_or(1, |a| a.size.max(1));
+            let got = app.update.job.as_ref().map_or(0, |j| j.received.load(std::sync::atomic::Ordering::Relaxed));
+            ui.add(egui::ProgressBar::new(got as f32 / total as f32).text(format!("{:.1} of {:.1} MB", got as f64 / 1e6, total as f64 / 1e6)));
+        }
+        if !app.update.status.is_empty() {
+            let failed = app.update.status.starts_with("Could not");
+            ui.label(if failed { RichText::new(&app.update.status).color(egui::Color32::from_rgb(220, 70, 60)) } else { RichText::new(&app.update.status) });
+        }
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            if let Some(target) = app.update.installed.clone() {
+                if ui.button(RichText::new("Restart now").strong()).clicked() {
+                    restart = Some(target);
+                }
+                if ui.button("Later").clicked() {
+                    close = true;
+                }
+                return;
+            }
+            if app.update.downloading {
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+                return;
+            }
+            if let Some(o) = &app.update.offer {
+                match (&install, &o.asset) {
+                    (Install::AppImage(_), Some(_)) => download = ui.button(RichText::new("Update and restart").strong()).clicked(),
+                    (Install::WindowsZip, Some(_)) => download = ui.button(RichText::new("Download").strong()).clicked(),
+                    _ => {
+                        if ui.button(RichText::new("Open the release page").strong()).clicked() {
+                            page = Some(o.html_url.clone());
+                        }
+                    }
+                }
+                if ui.button("Skip this version").clicked() {
+                    skip = true;
+                }
+                if ui.button("Later").clicked() {
+                    close = true;
+                }
+            } else if app.update.job.is_none() && ui.button("Close").clicked() {
+                close = true;
+            }
+        });
+    });
+    if download {
+        app.start_update_download();
+    }
+    if cancel {
+        app.cancel_update_download();
+    }
+    if let Some(url) = page {
+        let _ = crate::commands::simple::open_external(&url);
+        close = true;
+    }
+    if skip {
+        if let Some(o) = app.update.offer.take() {
+            app.skipped_version = o.version.to_string();
+            app.options_dirty = true;
+        }
+        close = true;
+    }
+    if let Some(target) = restart {
+        app.update.show = false;
+        app.request_discard(crate::app::Discard::Restart(target));
+    }
+    if close {
+        app.update.show = false;
+        app.update.status.clear();
+    }
+}
+
+/// Options › General: autosave (and, later, updates).
+fn general_page(app: &mut App, ui: &mut egui::Ui) {
+    ui.label(RichText::new("Autosave").strong());
+    ui.horizontal(|ui| {
+        if ui.checkbox(&mut app.autosave, "Autosave every").changed() {
+            app.options_dirty = true;
+        }
+        if ui.add_enabled(app.autosave, egui::DragValue::new(&mut app.autosave_minutes).range(1..=60)).changed() {
+            app.options_dirty = true;
+        }
+        ui.label("minutes");
+    });
+    ui.label(RichText::new("A modified model is written to its own file in the settings folder; your file is not touched.").weak());
+    ui.add_space(10.0);
+    ui.label(RichText::new("Updates").strong());
+    if ui.checkbox(&mut app.check_updates, "Check for a newer version at start (once a day)").changed() {
+        app.options_dirty = true;
+    }
+    ui.horizontal(|ui| {
+        let last = if app.last_update_check == 0 {
+            "never".to_string()
+        } else {
+            let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(app.last_update_check);
+            crate::autosave::ago(t, std::time::SystemTime::now())
+        };
+        ui.label(format!("Last checked: {last}"));
+        if ui.button("Check now").clicked() {
+            app.start_update_check(true);
+        }
+    });
+    ui.label(RichText::new(format!("You have Triceratops {}. The check asks GitHub for the list of releases and sends nothing about you.", crate::update::current())).weak());
+}
+
+/// Autosave files left by a session that ended badly.
+fn recovery(app: &mut App, ctx: &egui::Context) {
+    if app.recovered.is_empty() {
+        return;
+    }
+    let now = std::time::SystemTime::now();
+    let mut open: Option<std::path::PathBuf> = None;
+    let mut delete: Option<usize> = None;
+    let mut later = false;
+    egui::Window::new("Recover autosaved models").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        ui.label("Triceratops did not close normally. These models were autosaved:");
+        ui.add_space(6.0);
+        egui::Grid::new("recovery").spacing([12.0, 6.0]).show(ui, |ui| {
+            for (i, (p, t)) in app.recovered.iter().enumerate() {
+                let name = p.file_name().map(|n| n.to_string_lossy().trim_end_matches(".autosave.3dm").to_string()).unwrap_or_default();
+                ui.label(RichText::new(name).strong());
+                ui.label(crate::autosave::ago(*t, now));
+                if ui.button("Open").clicked() {
+                    open = Some(p.clone());
+                }
+                if ui.button("Delete").clicked() {
+                    delete = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+        ui.add_space(6.0);
+        if ui.button("Later").on_hover_text("Keep them and ask again at the next start").clicked() {
+            later = true;
+        }
+    });
+    if let Some(p) = open {
+        if app.doc.modified {
+            app.log.push("Save or close the current model before opening a recovered one.".into());
+        } else {
+            app.recovered.retain(|(q, _)| *q != p);
+            app.open_recovered(&p);
+        }
+    }
+    if let Some(i) = delete {
+        let (p, _) = app.recovered.remove(i);
+        let _ = std::fs::remove_file(p);
+    }
+    if later {
+        app.recovered.clear();
+    }
+}
+
+/// "Save changes?" before closing, opening or clearing a modified model.
+fn save_prompt(app: &mut App, ctx: &egui::Context) {
+    if app.save_prompt.is_none() {
+        return;
+    }
+    let mut answer: Option<crate::app::SaveAnswer> = None;
+    egui::Window::new("Unsaved changes").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        ui.label(format!("Save changes to {}?", app.doc.title()));
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button("Save").clicked() {
+                answer = Some(crate::app::SaveAnswer::Save);
+            }
+            if ui.button("Don't Save").clicked() {
+                answer = Some(crate::app::SaveAnswer::DontSave);
+            }
+            if ui.button("Cancel").clicked() {
+                answer = Some(crate::app::SaveAnswer::Cancel);
+            }
+        });
+    });
+    if answer.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        answer = Some(crate::app::SaveAnswer::Cancel);
+    }
+    if let Some(a) = answer {
+        app.answer_save_prompt(a);
+    }
 }
 
 fn loft_dialog(app: &mut App, ctx: &egui::Context) {
@@ -63,7 +287,7 @@ fn loft_dialog(app: &mut App, ctx: &egui::Context) {
     }
 }
 
-const OPTION_PAGES: [&str; 5] = ["Appearance", "Colors", "Modeling Aids", "Mouse", "AI Assistants"];
+const OPTION_PAGES: [&str; 6] = ["General", "Appearance", "Colors", "Modeling Aids", "Mouse", "AI Assistants"];
 
 fn options(app: &mut App, ctx: &egui::Context) {
     let Some(page) = app.options_page.clone() else { return };
@@ -83,6 +307,7 @@ fn options(app: &mut App, ctx: &egui::Context) {
             });
             ui.separator();
             ui.vertical(|ui| match page.as_str() {
+                "General" => general_page(app, ui),
                 "AI Assistants" => {
                     ui.label(RichText::new("AI Assistants").strong());
                     if ui.checkbox(&mut app.allow_assistants, "Allow AI assistants (MCP)").changed() {

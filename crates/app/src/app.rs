@@ -320,6 +320,62 @@ impl ExportMemory {
     }
 }
 
+/// The update check: its job, what it found, and the download.
+#[derive(Default)]
+pub struct UpdateState {
+    /// The check or download running in the background.
+    pub job: Option<crate::update::Checker>,
+    /// The running check was asked for (Help › Check for Updates).
+    pub manual: bool,
+    pub offer: Option<crate::update::Offer>,
+    /// The dialog is open.
+    pub show: bool,
+    /// A message for the dialog: up to date, an error, installed.
+    pub status: String,
+    pub downloading: bool,
+    /// An AppImage installed in place: restart into it.
+    pub installed: Option<PathBuf>,
+}
+
+/// Whether to look for a newer version at start.
+pub fn should_auto_check(enabled: bool, last_check: u64, now: u64, scripted: bool, env_off: bool) -> bool {
+    enabled && !scripted && !env_off && now.saturating_sub(last_check) >= 24 * 3600
+}
+
+/// For a newer `version`: open the dialog, and show the status-bar item?
+pub fn should_open_dialog(version: &crate::update::Version, notified: &str, skipped: &str, manual: bool) -> (bool, bool) {
+    let v = version.to_string();
+    if manual {
+        (true, true)
+    } else if v == skipped {
+        (false, false)
+    } else {
+        (v != notified, true)
+    }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// An action that replaces or closes the model, run once unsaved changes are dealt with.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Discard {
+    Quit,
+    New,
+    Open,
+    /// Start this program (a freshly installed update), then quit.
+    Restart(PathBuf),
+}
+
+/// Answers to "Save changes?".
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SaveAnswer {
+    Save,
+    DontSave,
+    Cancel,
+}
+
 /// Persisted user options (~/.config/triceratops/options.json).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -336,6 +392,17 @@ pub struct UserOptions {
     pub sidebar_width: f32,
     /// Toolbar icon size in px (16–40).
     pub icon_size: f32,
+    /// Autosave a modified model every `autosave_minutes` (1–60) to its own file.
+    pub autosave: bool,
+    pub autosave_minutes: u32,
+    /// Look for a newer version at start (at most once a day).
+    pub check_updates: bool,
+    /// Unix seconds of the last automatic or manual check.
+    pub last_update_check: u64,
+    /// "Skip this version": not offered by automatic checks.
+    pub skipped_version: String,
+    /// The last version whose dialog opened by itself.
+    pub notified_version: String,
     pub panels_visible: bool,
     pub panel_tab: String,
     pub grid_snap: bool,
@@ -375,6 +442,12 @@ impl Default for UserOptions {
             osnap: OsnapSettings::default(),
             sidebar_width: 70.0,
             icon_size: crate::ui::icons::ICON_DEFAULT,
+            autosave: true,
+            autosave_minutes: 5,
+            check_updates: true,
+            last_update_check: 0,
+            skipped_version: String::new(),
+            notified_version: String::new(),
             panels_visible: true,
             panel_tab: "Properties".into(),
             grid_snap: false,
@@ -571,6 +644,19 @@ pub struct App {
     pub sidebar_width: f32,
     /// Toolbar icon size in px, always within `ICON_MIN..=ICON_MAX`.
     pub icon_size: f32,
+    pub autosave: bool,
+    pub autosave_minutes: u32,
+    /// Folder of the autosave files (`None` in tests unless a test sets one).
+    pub autosave_dir: Option<PathBuf>,
+    pub autosaver: crate::autosave::Autosaver,
+    pub check_updates: bool,
+    pub last_update_check: u64,
+    pub skipped_version: String,
+    pub notified_version: String,
+    /// The update check, its offer and download.
+    pub update: UpdateState,
+    /// Autosave files left by a session that ended badly, offered at start.
+    pub recovered: Vec<(PathBuf, std::time::SystemTime)>,
     pub doc: Document,
     pub viewports: Vec<Viewport>,
     pub active: usize,
@@ -602,6 +688,8 @@ pub struct App {
     pub requests: Vec<AppRequest>,
     pub quit: bool,
     pub show_help: bool,
+    /// An action waiting for the answer to "Save changes?".
+    pub save_prompt: Option<Discard>,
     pub show_history: bool,
     pub options_page: Option<String>,
     pub docprops_page: Option<String>,
@@ -697,6 +785,16 @@ impl App {
             backend: "auto".into(),
             sidebar_width: 70.0,
             icon_size: crate::ui::icons::ICON_DEFAULT,
+            autosave: true,
+            autosave_minutes: 5,
+            autosave_dir: if cfg!(test) { None } else { crate::autosave::dir() },
+            autosaver: crate::autosave::Autosaver::new(std::time::Instant::now(), 0),
+            check_updates: true,
+            last_update_check: 0,
+            skipped_version: String::new(),
+            notified_version: String::new(),
+            update: UpdateState::default(),
+            recovered: Vec::new(),
             doc: Document::new(),
             viewports,
             active: 1,
@@ -723,6 +821,7 @@ impl App {
             requests: Vec::new(),
             quit: false,
             show_help: false,
+            save_prompt: None,
             show_history: false,
             options_page: None,
             docprops_page: None,
@@ -770,6 +869,12 @@ impl App {
         {
             self.dark_mode = o.dark_mode;
             self.icon_size = crate::ui::icons::clamp_icon_size(o.icon_size);
+            self.autosave = o.autosave;
+            self.autosave_minutes = o.autosave_minutes.clamp(1, 60);
+            self.check_updates = o.check_updates;
+            self.last_update_check = o.last_update_check;
+            self.skipped_version = o.skipped_version;
+            self.notified_version = o.notified_version;
             self.backend = if o.backend.is_empty() { "auto".into() } else { o.backend.clone() };
             if !o.theme.is_empty() {
                 if let Some(t) = crate::theme::Theme::by_name(&o.theme) {
@@ -899,6 +1004,9 @@ impl App {
                 self.backend = d.backend;
                 self.sidebar_width = d.sidebar_width;
                 self.icon_size = d.icon_size;
+                self.autosave = d.autosave;
+                self.autosave_minutes = d.autosave_minutes;
+                self.check_updates = d.check_updates;
                 self.zoom_border = d.zoom_border;
                 self.drag_mode = d.drag_mode;
                 self.drag_strength = d.drag_strength;
@@ -949,6 +1057,12 @@ impl App {
             osnap: self.aids.osnap,
             sidebar_width: self.sidebar_width,
             icon_size: self.icon_size,
+            autosave: self.autosave,
+            autosave_minutes: self.autosave_minutes,
+            check_updates: self.check_updates,
+            last_update_check: self.last_update_check,
+            skipped_version: self.skipped_version.clone(),
+            notified_version: self.notified_version.clone(),
             panels_visible: self.panels.visible,
             panel_tab: self.panels.tab.clone(),
             grid_snap: self.aids.grid_snap,
@@ -3156,18 +3270,18 @@ impl App {
                     "project" => self.aids.osnap.project = !self.aids.osnap.project,
                     _ => self.aids.osnap.disable = !self.aids.osnap.disable,
                 },
-                AppRequest::FileNew => self.file_new(),
-                AppRequest::FileOpen => self.file_open(),
-                AppRequest::FileSave => self.file_save(false),
-                AppRequest::FileSaveAs => self.file_save(true),
+                AppRequest::FileNew => self.request_discard(Discard::New),
+                AppRequest::FileOpen => self.request_discard(Discard::Open),
+                AppRequest::FileSave => {
+                    self.file_save(false);
+                }
+                AppRequest::FileSaveAs => {
+                    self.file_save(true);
+                }
                 AppRequest::Import => self.file_import(),
                 AppRequest::Export => self.file_export(),
                 AppRequest::Locust => self.locust.show_window(),
-                AppRequest::Quit => {
-                    self.locust.save_autosave();
-                    self.save_options();
-                    self.quit = true;
-                }
+                AppRequest::Quit => self.request_discard(Discard::Quit),
                 AppRequest::Help => self.show_help = true,
                 AppRequest::ShowPanel(p) => {
                     self.show_panel(&p);
@@ -3287,15 +3401,8 @@ impl App {
                     });
                 }
                 AppRequest::WindowOp(op) => self.window_ops.push(op),
-                AppRequest::Autosave => {
-                    if let Some(dir) = options_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-                        let path = dir.join("autosave.3dm");
-                        match tri_doc::io3dm::save(&self.doc, &path, false) {
-                            Ok(_) => self.log.push(format!("Autosave written to {}", path.display())),
-                            Err(e) => self.log.push(format!("Autosave failed: {e:#}")),
-                        }
-                    }
-                }
+                AppRequest::Autosave => self.autosave_now(),
+                AppRequest::CheckUpdates => self.start_update_check(true),
                 AppRequest::OptionsFile { export } => self.options_file(export),
                 AppRequest::RepeatLast => {
                     if let Some(last) = self.runner.last_command.clone() {
@@ -3682,7 +3789,213 @@ impl App {
         }
     }
 
-    fn file_save(&mut self, save_as: bool) {
+    /// Look for a newer version in the background (`manual`: asked for, always report).
+    pub fn start_update_check(&mut self, manual: bool) {
+        if self.update.job.is_some() {
+            self.update.show |= manual;
+            return;
+        }
+        self.last_update_check = unix_now();
+        self.options_dirty = true;
+        self.update.manual = manual;
+        if manual {
+            self.update.show = true;
+            self.update.status = "Checking for updates…".into();
+        }
+        self.update.job = Some(crate::update::Checker::check(crate::update::Install::detect()));
+    }
+
+    /// Once a frame: take the result of a finished check or download.
+    pub fn poll_update(&mut self) {
+        let Some(ev) = self.update.job.as_ref().and_then(|j| j.poll()) else { return };
+        self.update.job = None;
+        let manual = self.update.manual;
+        self.handle_update_event(ev, manual);
+    }
+
+    /// What a finished check or download means for the user.
+    pub fn handle_update_event(&mut self, ev: crate::update::Event, manual: bool) {
+        use crate::update::Event;
+        match ev {
+            Event::Checked(Ok(Some(offer))) => {
+                let (open, item) = should_open_dialog(&offer.version, &self.notified_version, &self.skipped_version, manual);
+                if !item {
+                    self.update.offer = None;
+                    return;
+                }
+                if open && !manual {
+                    self.notified_version = offer.version.to_string();
+                    self.options_dirty = true;
+                }
+                self.update.status.clear();
+                self.update.show |= open;
+                self.update.offer = Some(offer);
+            }
+            Event::Checked(Ok(None)) => {
+                if manual {
+                    self.update.status = format!("Triceratops {} is up to date.", crate::update::current());
+                    self.update.show = true;
+                }
+            }
+            Event::Checked(Err(e)) => {
+                if manual {
+                    self.update.status = format!("Could not check for updates: {e}");
+                    self.update.show = true;
+                }
+            }
+            Event::Downloaded(r) => {
+                self.update.downloading = false;
+                self.update.show = true;
+                match (r, crate::update::Install::detect()) {
+                    (Ok(file), crate::update::Install::AppImage(target)) => match crate::update::replace_appimage(&file, &target) {
+                        Ok(()) => {
+                            self.update.status = "The new version is installed. Restart Triceratops to use it.".into();
+                            self.update.installed = Some(target);
+                        }
+                        Err(e) => {
+                            let _ = std::fs::remove_file(&file);
+                            self.update.status = format!("Could not install the update: {e}");
+                        }
+                    },
+                    (Ok(file), _) => {
+                        self.update.status = format!("Downloaded to {}. Unzip it over your Triceratops folder.", file.display());
+                        crate::commands::simple::reveal_in_file_manager(&file);
+                    }
+                    (Err(e), _) => self.update.status = if e == "cancelled" { "Download cancelled.".into() } else { format!("Could not download the update: {e}") },
+                }
+            }
+        }
+    }
+
+    /// Download the offered file (AppImage next to itself, zip to Downloads).
+    pub fn start_update_download(&mut self) {
+        let Some(asset) = self.update.offer.as_ref().and_then(|o| o.asset.clone()) else { return };
+        let dest = crate::update::download_target(&crate::update::Install::detect(), &asset);
+        self.update.status.clear();
+        self.update.downloading = true;
+        self.update.manual = true;
+        self.update.job = Some(crate::update::Checker::download(asset, dest));
+    }
+
+    /// Stop the download (its partial file is removed by the download itself).
+    pub fn cancel_update_download(&mut self) {
+        if let Some(j) = &self.update.job {
+            j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// This model's autosave file, when autosave has a folder.
+    fn autosave_path(&self) -> Option<PathBuf> {
+        self.autosave_dir.as_deref().map(|d| crate::autosave::path_in(d, self.doc.path.as_deref()))
+    }
+
+    /// Once a frame: report a finished autosave and start one when due.
+    pub fn tick_autosave(&mut self, now: std::time::Instant) {
+        if let Some(msg) = self.autosaver.poll() {
+            self.log.push(msg);
+        }
+        if !self.autosaver.due(now, &self.doc, self.autosave_minutes, self.autosave) {
+            return;
+        }
+        let Some(path) = self.autosave_path() else { return };
+        let job = crate::autosave::SaveJob::of(&self.doc, path);
+        self.autosaver.start(now, self.doc.revision, job);
+    }
+
+    /// Wait for an autosave in flight (tests).
+    #[cfg(test)]
+    pub fn wait_autosave(&mut self) {
+        while self.autosaver.busy() {
+            if let Some(msg) = self.autosaver.poll() {
+                self.log.push(msg);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    /// The Autosave command: write this model's autosave file now.
+    pub fn autosave_now(&mut self) {
+        let Some(path) = self.autosave_path() else {
+            self.log.push("Autosave: no folder for autosave files.".into());
+            return;
+        };
+        match crate::autosave::write(&crate::autosave::SaveJob::of(&self.doc, path)) {
+            Ok(p) => self.log.push(format!("Autosave written to {}", p.display())),
+            Err(e) => self.log.push(format!("Autosave failed: {e}")),
+        }
+    }
+
+    /// Forget this model's autosave file (after a Save or a clean exit).
+    fn delete_autosave(&mut self) {
+        if let Some(p) = self.autosave_path() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    /// Look for autosave files left by a session that ended badly.
+    pub fn find_recoverable(&mut self) {
+        if let Some(d) = self.autosave_dir.clone() {
+            let older = std::time::Duration::from_secs(u64::from(self.autosave_minutes) * 120);
+            self.recovered = crate::autosave::leftovers(&d, older, std::time::SystemTime::now());
+        }
+    }
+
+    /// Open a recovered autosave file as a new, unsaved model.
+    pub fn open_recovered(&mut self, path: &std::path::Path) {
+        self.open_path(path.to_path_buf());
+        let stem = path.file_name().map(|n| n.to_string_lossy().trim_end_matches(".autosave.3dm").to_string()).unwrap_or_default();
+        self.doc.path = None;
+        self.doc.modified = true;
+        let _ = std::fs::remove_file(path);
+        self.log.push(format!("Recovered {stem} from its autosave: save it to keep it."));
+    }
+
+    /// Run `action` now, or first ask whether to save the model's unsaved changes.
+    pub fn request_discard(&mut self, action: Discard) {
+        if self.doc.modified {
+            self.save_prompt = Some(action);
+        } else {
+            self.run_discard(action);
+        }
+    }
+
+    /// The user's answer to "Save changes?".
+    pub fn answer_save_prompt(&mut self, answer: SaveAnswer) {
+        let Some(action) = self.save_prompt.take() else { return };
+        match answer {
+            SaveAnswer::Cancel => {}
+            SaveAnswer::DontSave => self.run_discard(action),
+            SaveAnswer::Save => {
+                if self.file_save(false) {
+                    self.run_discard(action);
+                }
+            }
+        }
+    }
+
+    /// Carry out an action that replaces or closes the model.
+    pub fn run_discard(&mut self, action: Discard) {
+        match action {
+            Discard::New => self.file_new(),
+            Discard::Open => self.file_open(),
+            Discard::Quit | Discard::Restart(_) => {
+                self.cancel_job("Closing Triceratops");
+                self.delete_autosave();
+                self.locust.save_autosave();
+                self.save_options();
+                if let Discard::Restart(path) = action {
+                    if let Err(e) = std::process::Command::new(&path).spawn() {
+                        self.log.push(format!("Cannot start {}: {e}", path.display()));
+                        return;
+                    }
+                }
+                self.quit = true;
+            }
+        }
+    }
+
+    /// Save the model; true when it was written.
+    fn file_save(&mut self, save_as: bool) -> bool {
         let native = self.doc.path.as_ref().is_some_and(|p| {
             let e = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
             e == "3dm" || e == io::NATIVE_EXTENSION
@@ -3690,14 +4003,14 @@ impl App {
         let path = match (&self.doc.path, save_as || !native) {
             (Some(p), false) => p.clone(),
             _ => {
-                if self.file_dialog_blocked(if save_as { "SaveAs" } else { "Save" }) { return; }
+                if self.file_dialog_blocked(if save_as { "SaveAs" } else { "Save" }) { return false; }
                 let Some(p) = rfd::FileDialog::new()
                     .add_filter("3D Models (*.3dm)", &["3dm"])
                     .add_filter("Triceratops JSON Models (*.tri)", &[io::NATIVE_EXTENSION])
                     .set_file_name("Untitled.3dm")
                     .save_file()
                 else {
-                    return;
+                    return false;
                 };
                 p
             }
@@ -3707,11 +4020,18 @@ impl App {
         let result = if ext == "3dm" { tri_doc::io3dm::save(&self.doc, &path, false).map(|_| ()) } else { io::save(&self.doc, &path) };
         match result {
             Ok(()) => {
+                // the autosave of the model as it was named before, and as it is named now
+                self.delete_autosave();
                 self.doc.path = Some(path.clone());
                 self.doc.modified = false;
+                self.delete_autosave();
                 self.log.push(format!("File successfully written as {}", path.display()));
+                true
             }
-            Err(e) => self.log.push(format!("Save failed: {e:#}")),
+            Err(e) => {
+                self.log.push(format!("Save failed: {e:#}"));
+                false
+            }
         }
     }
 
@@ -4360,7 +4680,7 @@ impl App {
     fn file_save_copy(&mut self, incremental: bool) {
         let path = if incremental {
             let Some(cur) = self.doc.path.clone() else {
-                self.file_save(true);
+                let _ = self.file_save(true);
                 return;
             };
             let stem = cur.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled".into());
@@ -5081,6 +5401,198 @@ mod tests {
         let mut other = App::new();
         other.apply_options(serde_json::from_str(&json).unwrap());
         assert_eq!(other.icon_size, 32.0);
+    }
+
+    fn offer(v: &str) -> crate::update::Offer {
+        crate::update::Offer { version: crate::update::parse_version(v).unwrap(), changelog: format!("## v{v}\n\n* New"), html_url: "u".into(), asset: None }
+    }
+
+    #[test]
+    fn update_auto_check_rules() {
+        let day = 24 * 3600;
+        assert!(should_auto_check(true, 0, day + 1, false, false));
+        assert!(!should_auto_check(false, 0, day + 1, false, false), "switched off");
+        assert!(!should_auto_check(true, 10, 10 + day - 1, false, false), "checked less than a day ago");
+        assert!(!should_auto_check(true, 0, day + 1, true, false), "--script");
+        assert!(!should_auto_check(true, 0, day + 1, false, true), "environment variable");
+    }
+
+    #[test]
+    fn update_dialog_once_per_version() {
+        let v = crate::update::Version(0, 4, 0);
+        assert_eq!(should_open_dialog(&v, "", "", false), (true, true));
+        assert_eq!(should_open_dialog(&v, "0.4.0", "", false), (false, true), "already announced");
+        assert_eq!(should_open_dialog(&v, "", "0.4.0", false), (false, false), "skipped");
+        assert_eq!(should_open_dialog(&v, "0.4.0", "0.4.0", true), (true, true), "asked for");
+    }
+
+    #[test]
+    fn update_results_reach_the_user() {
+        use crate::update::Event;
+        let mut app = App::new();
+        // automatic: a new version opens the dialog once and is remembered
+        app.handle_update_event(Event::Checked(Ok(Some(offer("9.0.0")))), false);
+        assert!(app.update.show && app.update.offer.is_some());
+        assert_eq!(app.notified_version, "9.0.0");
+        app.update.show = false;
+        app.handle_update_event(Event::Checked(Ok(Some(offer("9.0.0")))), false);
+        assert!(!app.update.show && app.update.offer.is_some(), "status item only");
+        // skipped: nothing at all
+        app.skipped_version = "9.0.0".into();
+        app.handle_update_event(Event::Checked(Ok(Some(offer("9.0.0")))), false);
+        assert!(!app.update.show && app.update.offer.is_none());
+        // failures are silent when automatic, shown when asked for
+        app.handle_update_event(Event::Checked(Err("offline".into())), false);
+        assert!(!app.update.show);
+        app.handle_update_event(Event::Checked(Err("offline".into())), true);
+        assert!(app.update.show && app.update.status.contains("offline"));
+        // up to date, asked for
+        app.handle_update_event(Event::Checked(Ok(None)), true);
+        assert!(app.update.show && app.update.status.contains("up to date"), "{}", app.update.status);
+    }
+
+    #[test]
+    fn update_options_round_trip() {
+        let mut app = App::new();
+        assert!(app.check_updates);
+        app.check_updates = false;
+        app.last_update_check = 1234;
+        app.skipped_version = "0.4.0".into();
+        app.notified_version = "0.5.0".into();
+        let json = serde_json::to_string(&app.options_snapshot()).unwrap();
+        let mut other = App::new();
+        other.apply_options(serde_json::from_str(&json).unwrap());
+        assert!(!other.check_updates);
+        assert_eq!((other.last_update_check, other.skipped_version.as_str(), other.notified_version.as_str()), (1234, "0.4.0", "0.5.0"));
+    }
+
+    #[test]
+    fn autosave_options_round_trip_and_clamp() {
+        let mut app = App::new();
+        assert!(app.autosave && app.autosave_minutes == 5);
+        app.autosave = false;
+        app.autosave_minutes = 12;
+        let json = serde_json::to_string(&app.options_snapshot()).unwrap();
+        let mut other = App::new();
+        other.apply_options(serde_json::from_str(&json).unwrap());
+        assert!(!other.autosave && other.autosave_minutes == 12);
+        for (j, want) in [(r#"{"autosave_minutes": 0}"#, 1), (r#"{"autosave_minutes": 500}"#, 60)] {
+            other.apply_options(serde_json::from_str(j).unwrap());
+            assert_eq!(other.autosave_minutes, want, "{j}");
+        }
+    }
+
+    #[test]
+    fn autosave_is_written_when_due_and_deleted_by_save() {
+        let dir = std::env::temp_dir().join(format!("tri-app-autosave-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = App::new();
+        app.autosave_dir = Some(dir.clone());
+        app.doc.path = Some(dir.join("plate.3dm"));
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        let auto = dir.join("plate.autosave.3dm");
+        // not yet due
+        app.tick_autosave(std::time::Instant::now());
+        app.wait_autosave();
+        assert!(!auto.exists());
+        // the Autosave command writes at once
+        app.autosave_now();
+        assert!(auto.exists(), "autosave file");
+        // due after the interval
+        let _ = std::fs::remove_file(&auto);
+        app.doc.add(Geometry::Point(DVec3::X));
+        app.tick_autosave(std::time::Instant::now() + std::time::Duration::from_secs(6 * 60));
+        app.wait_autosave();
+        assert!(auto.exists(), "written when due");
+        // a successful Save removes it
+        assert!(app.file_save(false));
+        assert!(!auto.exists(), "deleted after Save");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_recovered_autosave_opens_as_an_unsaved_model() {
+        let dir = std::env::temp_dir().join(format!("tri-recover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut first = App::new();
+        first.autosave_dir = Some(dir.clone());
+        first.doc.path = Some(dir.join("bracket.3dm"));
+        first.doc.add(Geometry::Point(DVec3::new(1.0, 2.0, 3.0)));
+        first.autosave_now();
+        // next start: found only once it is older than twice the interval
+        let mut app = App::new();
+        app.autosave_dir = Some(dir.clone());
+        app.find_recoverable();
+        assert!(app.recovered.is_empty(), "too recent: another window may still be writing it");
+        app.autosave_minutes = 1;
+        let file = dir.join("bracket.autosave.3dm");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(600);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(old).unwrap();
+        app.find_recoverable();
+        assert_eq!(app.recovered.len(), 1);
+        app.open_recovered(&file);
+        assert_eq!(app.doc.objects().count(), 1);
+        assert!(app.doc.path.is_none() && app.doc.modified);
+        assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discard_unmodified_quit_is_immediate() {
+        let mut app = App::new();
+        app.request_discard(Discard::Quit);
+        assert!(app.quit && app.save_prompt.is_none());
+    }
+
+    #[test]
+    fn discard_modified_quit_asks_and_answers() {
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        assert!(app.doc.modified);
+        app.request_discard(Discard::Quit);
+        assert_eq!(app.save_prompt, Some(Discard::Quit));
+        assert!(!app.quit);
+        // Cancel: nothing happens
+        app.answer_save_prompt(SaveAnswer::Cancel);
+        assert!(app.save_prompt.is_none() && !app.quit && app.doc.modified);
+        // Don't Save: quits
+        app.request_discard(Discard::Quit);
+        app.answer_save_prompt(SaveAnswer::DontSave);
+        assert!(app.quit);
+    }
+
+    #[test]
+    fn discard_new_after_dont_save_clears_the_model() {
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        app.request_discard(Discard::New);
+        assert_eq!(app.doc.objects().count(), 1, "still asking");
+        app.answer_save_prompt(SaveAnswer::DontSave);
+        assert_eq!(app.doc.objects().count(), 0);
+    }
+
+    #[test]
+    fn discard_restart_that_cannot_start_keeps_running() {
+        let mut app = App::new();
+        app.request_discard(Discard::Restart(PathBuf::from("/nonexistent/Triceratops.AppImage")));
+        assert!(!app.quit);
+        assert!(app.log.last().is_some_and(|l| l.starts_with("Cannot start")), "{:?}", app.log.last());
+    }
+
+    #[test]
+    fn discard_save_writes_then_proceeds() {
+        let dir = std::env::temp_dir().join(format!("tri-discard-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("model.3dm");
+        let _ = std::fs::remove_file(&path);
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        app.doc.path = Some(path.clone());
+        app.request_discard(Discard::Quit);
+        app.answer_save_prompt(SaveAnswer::Save);
+        assert!(path.exists(), "saved");
+        assert!(app.quit && !app.doc.modified);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

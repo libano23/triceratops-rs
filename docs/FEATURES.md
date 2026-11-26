@@ -364,3 +364,15 @@ Shell, ShrinkWrap, MultiPipe, MeshSplit/Trim) compute on a worker thread through
 Esc cancels; script lines and MCP requests wait for the job. The mesh-CSG has a polygon budget
 (`TRICERATOPS_BOOL_BUDGET` overrides it) so a runaway Boolean fails with a clear message
 instead of exhausting memory. `TRICERATOPS_SLOW=1` logs synchronous command steps over a second.
+
+## Saving, autosave and updates
+
+Closing the window, `Exit`, `New` and `Open` ask to save unsaved changes (Save, Don't Save,
+Cancel). Autosave (Options › General, every 5 minutes by default) writes a modified model
+on a background thread to `<config>/triceratops/autosave/<name>.autosave.3dm` (a new model
+is `Untitled-<process id>`), deleted after a Save or a clean exit and offered for recovery
+at the next start otherwise. Triceratops checks GitHub once a day (or Help › Check for
+Updates…, `CheckForUpdates`) for a newer release and shows the notes of every newer one,
+taken from `CHANGELOG.md`: the AppImage downloads, verifies (size and SHA-256) and
+replaces itself, then restarts; Windows downloads the zip to Downloads. Nothing about the
+user is sent; `TRICERATOPS_NO_UPDATE_CHECK=1` or the option turns the check off.

@@ -196,6 +196,7 @@ cmds! {
     "Import", [], "Merge objects from another file";
     "Export", [], "Save selected objects to a new file";
     "Exit", ["quit"], "Exit Triceratops";
+    "CheckForUpdates", [], "Check for a newer version of Triceratops";
     "Help", ["?"], "Open the Help topic for the current command";
     "CommandHistory", [], "Open the command history window";
     "CommandList", ["commands"], "List all commands";
@@ -946,6 +947,7 @@ pub fn create_command(name: &str) -> Option<Box<dyn Command>> {
         "Minimize" => Box::new(ReqCmd(AppRequest::WindowOp("minimize".into()))),
         "Fullscreen" => Box::new(ReqCmd(AppRequest::WindowOp("fullscreen".into()))),
         "Autosave" => Box::new(ReqCmd(AppRequest::Autosave)),
+        "CheckForUpdates" => Box::new(ReqCmd(AppRequest::CheckUpdates)),
         "OptionsExport" => Box::new(ReqCmd(AppRequest::OptionsFile { export: true })),
         "OptionsImport" => Box::new(ReqCmd(AppRequest::OptionsFile { export: false })),
         "OptionsPage" => Box::new(RequestCmd(AppRequest::Options("View".into()))),

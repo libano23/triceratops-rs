@@ -202,8 +202,27 @@ pub fn select_where(ctx: &mut CmdCtx, pred: impl Fn(&Document, &Object) -> bool)
     Step::Done
 }
 
+/// Open a file, folder or URL with the system's default program.
 pub fn open_external(target: &str) -> Result<(), String> {
-    std::process::Command::new("xdg-open").arg(target).spawn().map(|_| ()).map_err(|e| e.to_string())
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("explorer");
+        c.arg(target);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(target);
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Show a file in the file manager (selected on Windows; its folder elsewhere).
+pub fn reveal_in_file_manager(path: &std::path::Path) {
+    if cfg!(windows) {
+        let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    } else if let Some(dir) = path.parent() {
+        let _ = open_external(&dir.to_string_lossy());
+    }
 }
 
 pub fn group_prefix(o: &Object, prefix: &str) -> bool {

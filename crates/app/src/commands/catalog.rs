@@ -52,6 +52,7 @@ pub const CATALOG: &[(&str, &str)] = &[
     ("AutoAlignCPlane", "Turns on/off Auto CPlane and manages the related options."),
     ("AutomaticSubDFromMesh", "Controls how box-mode TSpline objects in Triceratops 5 3dm files and meshes with non-zero division levels in FBX files are read into Triceratops as SubD or mesh objects."),
     ("Autosave", "Save the current model to a backup file."),
+    ("CheckForUpdates", "Look for a newer version of Triceratops and show what changed."),
     ("BackgroundBitmap", "Manage a background image in a viewport."),
     ("Bake", "Combine an object's textures and decals into a single bitmap file and assign that bitmap as object's texture."),
     ("BakeMapping", "Creates a new texture image by mapping a texture from a UV mesh to another."),

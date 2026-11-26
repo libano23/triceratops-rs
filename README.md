@@ -197,7 +197,10 @@ Start it from the Actions tab, or push a version tag to publish a release:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-Bump `version` in the root `Cargo.toml` first; the tag and the version should match.
+Bump `version` in the root `Cargo.toml` first; the tag and the version should match. In
+[CHANGELOG.md](CHANGELOG.md), rename the "Unreleased" section to the version and date: it
+becomes the release notes (`scripts/changelog_section.py` extracts it, and the release
+fails without it) and is what Triceratops shows users when it offers the update.
 
 ## Using it
 
