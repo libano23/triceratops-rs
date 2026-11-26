@@ -355,6 +355,9 @@ pub struct UserOptions {
     pub sidebar_width: f32,
     /// Toolbar icon size in px (16–40).
     pub icon_size: f32,
+    /// Autosave a modified model every `autosave_minutes` (1–60) to its own file.
+    pub autosave: bool,
+    pub autosave_minutes: u32,
     pub panels_visible: bool,
     pub panel_tab: String,
     pub grid_snap: bool,
@@ -394,6 +397,8 @@ impl Default for UserOptions {
             osnap: OsnapSettings::default(),
             sidebar_width: 70.0,
             icon_size: crate::ui::icons::ICON_DEFAULT,
+            autosave: true,
+            autosave_minutes: 5,
             panels_visible: true,
             panel_tab: "Properties".into(),
             grid_snap: false,
@@ -590,6 +595,13 @@ pub struct App {
     pub sidebar_width: f32,
     /// Toolbar icon size in px, always within `ICON_MIN..=ICON_MAX`.
     pub icon_size: f32,
+    pub autosave: bool,
+    pub autosave_minutes: u32,
+    /// Folder of the autosave files (`None` in tests unless a test sets one).
+    pub autosave_dir: Option<PathBuf>,
+    pub autosaver: crate::autosave::Autosaver,
+    /// Autosave files left by a session that ended badly, offered at start.
+    pub recovered: Vec<(PathBuf, std::time::SystemTime)>,
     pub doc: Document,
     pub viewports: Vec<Viewport>,
     pub active: usize,
@@ -718,6 +730,11 @@ impl App {
             backend: "auto".into(),
             sidebar_width: 70.0,
             icon_size: crate::ui::icons::ICON_DEFAULT,
+            autosave: true,
+            autosave_minutes: 5,
+            autosave_dir: if cfg!(test) { None } else { crate::autosave::dir() },
+            autosaver: crate::autosave::Autosaver::new(std::time::Instant::now(), 0),
+            recovered: Vec::new(),
             doc: Document::new(),
             viewports,
             active: 1,
@@ -792,6 +809,8 @@ impl App {
         {
             self.dark_mode = o.dark_mode;
             self.icon_size = crate::ui::icons::clamp_icon_size(o.icon_size);
+            self.autosave = o.autosave;
+            self.autosave_minutes = o.autosave_minutes.clamp(1, 60);
             self.backend = if o.backend.is_empty() { "auto".into() } else { o.backend.clone() };
             if !o.theme.is_empty() {
                 if let Some(t) = crate::theme::Theme::by_name(&o.theme) {
@@ -921,6 +940,8 @@ impl App {
                 self.backend = d.backend;
                 self.sidebar_width = d.sidebar_width;
                 self.icon_size = d.icon_size;
+                self.autosave = d.autosave;
+                self.autosave_minutes = d.autosave_minutes;
                 self.zoom_border = d.zoom_border;
                 self.drag_mode = d.drag_mode;
                 self.drag_strength = d.drag_strength;
@@ -971,6 +992,8 @@ impl App {
             osnap: self.aids.osnap,
             sidebar_width: self.sidebar_width,
             icon_size: self.icon_size,
+            autosave: self.autosave,
+            autosave_minutes: self.autosave_minutes,
             panels_visible: self.panels.visible,
             panel_tab: self.panels.tab.clone(),
             grid_snap: self.aids.grid_snap,
@@ -3309,15 +3332,7 @@ impl App {
                     });
                 }
                 AppRequest::WindowOp(op) => self.window_ops.push(op),
-                AppRequest::Autosave => {
-                    if let Some(dir) = options_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-                        let path = dir.join("autosave.3dm");
-                        match tri_doc::io3dm::save(&self.doc, &path, false) {
-                            Ok(_) => self.log.push(format!("Autosave written to {}", path.display())),
-                            Err(e) => self.log.push(format!("Autosave failed: {e:#}")),
-                        }
-                    }
-                }
+                AppRequest::Autosave => self.autosave_now(),
                 AppRequest::OptionsFile { export } => self.options_file(export),
                 AppRequest::RepeatLast => {
                     if let Some(last) = self.runner.last_command.clone() {
@@ -3704,6 +3719,72 @@ impl App {
         }
     }
 
+    /// This model's autosave file, when autosave has a folder.
+    fn autosave_path(&self) -> Option<PathBuf> {
+        self.autosave_dir.as_deref().map(|d| crate::autosave::path_in(d, self.doc.path.as_deref()))
+    }
+
+    /// Once a frame: report a finished autosave and start one when due.
+    pub fn tick_autosave(&mut self, now: std::time::Instant) {
+        if let Some(msg) = self.autosaver.poll() {
+            self.log.push(msg);
+        }
+        if !self.autosaver.due(now, &self.doc, self.autosave_minutes, self.autosave) {
+            return;
+        }
+        let Some(path) = self.autosave_path() else { return };
+        let job = crate::autosave::SaveJob::of(&self.doc, path);
+        self.autosaver.start(now, self.doc.revision, job);
+    }
+
+    /// Wait for an autosave in flight (tests).
+    #[cfg(test)]
+    pub fn wait_autosave(&mut self) {
+        while self.autosaver.busy() {
+            if let Some(msg) = self.autosaver.poll() {
+                self.log.push(msg);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    /// The Autosave command: write this model's autosave file now.
+    pub fn autosave_now(&mut self) {
+        let Some(path) = self.autosave_path() else {
+            self.log.push("Autosave: no folder for autosave files.".into());
+            return;
+        };
+        match crate::autosave::write(&crate::autosave::SaveJob::of(&self.doc, path)) {
+            Ok(p) => self.log.push(format!("Autosave written to {}", p.display())),
+            Err(e) => self.log.push(format!("Autosave failed: {e}")),
+        }
+    }
+
+    /// Forget this model's autosave file (after a Save or a clean exit).
+    fn delete_autosave(&mut self) {
+        if let Some(p) = self.autosave_path() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    /// Look for autosave files left by a session that ended badly.
+    pub fn find_recoverable(&mut self) {
+        if let Some(d) = self.autosave_dir.clone() {
+            let older = std::time::Duration::from_secs(u64::from(self.autosave_minutes) * 120);
+            self.recovered = crate::autosave::leftovers(&d, older, std::time::SystemTime::now());
+        }
+    }
+
+    /// Open a recovered autosave file as a new, unsaved model.
+    pub fn open_recovered(&mut self, path: &std::path::Path) {
+        self.open_path(path.to_path_buf());
+        let stem = path.file_name().map(|n| n.to_string_lossy().trim_end_matches(".autosave.3dm").to_string()).unwrap_or_default();
+        self.doc.path = None;
+        self.doc.modified = true;
+        let _ = std::fs::remove_file(path);
+        self.log.push(format!("Recovered {stem} from its autosave: save it to keep it."));
+    }
+
     /// Run `action` now, or first ask whether to save the model's unsaved changes.
     pub fn request_discard(&mut self, action: Discard) {
         if self.doc.modified {
@@ -3734,6 +3815,7 @@ impl App {
             Discard::Open => self.file_open(),
             Discard::Quit | Discard::Restart(_) => {
                 self.cancel_job("Closing Triceratops");
+                self.delete_autosave();
                 self.locust.save_autosave();
                 self.save_options();
                 if let Discard::Restart(path) = action {
@@ -3773,8 +3855,11 @@ impl App {
         let result = if ext == "3dm" { tri_doc::io3dm::save(&self.doc, &path, false).map(|_| ()) } else { io::save(&self.doc, &path) };
         match result {
             Ok(()) => {
+                // the autosave of the model as it was named before, and as it is named now
+                self.delete_autosave();
                 self.doc.path = Some(path.clone());
                 self.doc.modified = false;
+                self.delete_autosave();
                 self.log.push(format!("File successfully written as {}", path.display()));
                 true
             }
@@ -5151,6 +5236,77 @@ mod tests {
         let mut other = App::new();
         other.apply_options(serde_json::from_str(&json).unwrap());
         assert_eq!(other.icon_size, 32.0);
+    }
+
+    #[test]
+    fn autosave_options_round_trip_and_clamp() {
+        let mut app = App::new();
+        assert!(app.autosave && app.autosave_minutes == 5);
+        app.autosave = false;
+        app.autosave_minutes = 12;
+        let json = serde_json::to_string(&app.options_snapshot()).unwrap();
+        let mut other = App::new();
+        other.apply_options(serde_json::from_str(&json).unwrap());
+        assert!(!other.autosave && other.autosave_minutes == 12);
+        for (j, want) in [(r#"{"autosave_minutes": 0}"#, 1), (r#"{"autosave_minutes": 500}"#, 60)] {
+            other.apply_options(serde_json::from_str(j).unwrap());
+            assert_eq!(other.autosave_minutes, want, "{j}");
+        }
+    }
+
+    #[test]
+    fn autosave_is_written_when_due_and_deleted_by_save() {
+        let dir = std::env::temp_dir().join(format!("tri-app-autosave-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = App::new();
+        app.autosave_dir = Some(dir.clone());
+        app.doc.path = Some(dir.join("plate.3dm"));
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        let auto = dir.join("plate.autosave.3dm");
+        // not yet due
+        app.tick_autosave(std::time::Instant::now());
+        app.wait_autosave();
+        assert!(!auto.exists());
+        // the Autosave command writes at once
+        app.autosave_now();
+        assert!(auto.exists(), "autosave file");
+        // due after the interval
+        let _ = std::fs::remove_file(&auto);
+        app.doc.add(Geometry::Point(DVec3::X));
+        app.tick_autosave(std::time::Instant::now() + std::time::Duration::from_secs(6 * 60));
+        app.wait_autosave();
+        assert!(auto.exists(), "written when due");
+        // a successful Save removes it
+        assert!(app.file_save(false));
+        assert!(!auto.exists(), "deleted after Save");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_recovered_autosave_opens_as_an_unsaved_model() {
+        let dir = std::env::temp_dir().join(format!("tri-recover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut first = App::new();
+        first.autosave_dir = Some(dir.clone());
+        first.doc.path = Some(dir.join("bracket.3dm"));
+        first.doc.add(Geometry::Point(DVec3::new(1.0, 2.0, 3.0)));
+        first.autosave_now();
+        // next start: found only once it is older than twice the interval
+        let mut app = App::new();
+        app.autosave_dir = Some(dir.clone());
+        app.find_recoverable();
+        assert!(app.recovered.is_empty(), "too recent: another window may still be writing it");
+        app.autosave_minutes = 1;
+        let file = dir.join("bracket.autosave.3dm");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(600);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(old).unwrap();
+        app.find_recoverable();
+        assert_eq!(app.recovered.len(), 1);
+        app.open_recovered(&file);
+        assert_eq!(app.doc.objects().count(), 1);
+        assert!(app.doc.path.is_none() && app.doc.modified);
+        assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

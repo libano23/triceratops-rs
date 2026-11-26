@@ -12,6 +12,70 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     help_window(app, ctx);
     message_box(app, ctx);
     save_prompt(app, ctx);
+    recovery(app, ctx);
+}
+
+/// Options › General: autosave (and, later, updates).
+fn general_page(app: &mut App, ui: &mut egui::Ui) {
+    ui.label(RichText::new("Autosave").strong());
+    ui.horizontal(|ui| {
+        if ui.checkbox(&mut app.autosave, "Autosave every").changed() {
+            app.options_dirty = true;
+        }
+        if ui.add_enabled(app.autosave, egui::DragValue::new(&mut app.autosave_minutes).range(1..=60)).changed() {
+            app.options_dirty = true;
+        }
+        ui.label("minutes");
+    });
+    ui.label(RichText::new("A modified model is written to its own file in the settings folder; your file is not touched.").weak());
+}
+
+/// Autosave files left by a session that ended badly.
+fn recovery(app: &mut App, ctx: &egui::Context) {
+    if app.recovered.is_empty() {
+        return;
+    }
+    let now = std::time::SystemTime::now();
+    let mut open: Option<std::path::PathBuf> = None;
+    let mut delete: Option<usize> = None;
+    let mut later = false;
+    egui::Window::new("Recover autosaved models").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        ui.label("Triceratops did not close normally. These models were autosaved:");
+        ui.add_space(6.0);
+        egui::Grid::new("recovery").spacing([12.0, 6.0]).show(ui, |ui| {
+            for (i, (p, t)) in app.recovered.iter().enumerate() {
+                let name = p.file_name().map(|n| n.to_string_lossy().trim_end_matches(".autosave.3dm").to_string()).unwrap_or_default();
+                ui.label(RichText::new(name).strong());
+                ui.label(crate::autosave::ago(*t, now));
+                if ui.button("Open").clicked() {
+                    open = Some(p.clone());
+                }
+                if ui.button("Delete").clicked() {
+                    delete = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+        ui.add_space(6.0);
+        if ui.button("Later").on_hover_text("Keep them and ask again at the next start").clicked() {
+            later = true;
+        }
+    });
+    if let Some(p) = open {
+        if app.doc.modified {
+            app.log.push("Save or close the current model before opening a recovered one.".into());
+        } else {
+            app.recovered.retain(|(q, _)| *q != p);
+            app.open_recovered(&p);
+        }
+    }
+    if let Some(i) = delete {
+        let (p, _) = app.recovered.remove(i);
+        let _ = std::fs::remove_file(p);
+    }
+    if later {
+        app.recovered.clear();
+    }
 }
 
 /// "Save changes?" before closing, opening or clearing a modified model.
@@ -93,7 +157,7 @@ fn loft_dialog(app: &mut App, ctx: &egui::Context) {
     }
 }
 
-const OPTION_PAGES: [&str; 5] = ["Appearance", "Colors", "Modeling Aids", "Mouse", "AI Assistants"];
+const OPTION_PAGES: [&str; 6] = ["General", "Appearance", "Colors", "Modeling Aids", "Mouse", "AI Assistants"];
 
 fn options(app: &mut App, ctx: &egui::Context) {
     let Some(page) = app.options_page.clone() else { return };
@@ -113,6 +177,7 @@ fn options(app: &mut App, ctx: &egui::Context) {
             });
             ui.separator();
             ui.vertical(|ui| match page.as_str() {
+                "General" => general_page(app, ui),
                 "AI Assistants" => {
                     ui.label(RichText::new("AI Assistants").strong());
                     if ui.checkbox(&mut app.allow_assistants, "Allow AI assistants (MCP)").changed() {
