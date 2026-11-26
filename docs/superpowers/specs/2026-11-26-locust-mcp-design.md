@@ -24,6 +24,17 @@ Future direction (not in this work): compatibility with Grasshopper. New compone
 follow Grasshopper's names and port conventions where one exists, so a later importer has
 a straight mapping.
 
+## Two ways to model, the user's choice
+
+Both stay first-class: the assistant can model **directly** (command lines through
+`run_commands`, as in 0.2.0) or build a **Locust workflow** (the new tools). Which one is
+the user's call, not the assistant's. The MCP server instructions say so explicitly:
+use the way the user asked for; if they ask for something adjustable/parametric, use
+Locust; if they did not say and it matters, ask briefly rather than pick. The two can be
+mixed (a Locust bake becomes ordinary objects that commands can work on; Locust can read
+document geometry through its Geometry parameter). Nothing in this work changes or
+weakens direct modelling.
+
 ## Goals
 
 - An assistant can discover components, write a whole definition, solve it, read per-node
