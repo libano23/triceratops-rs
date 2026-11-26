@@ -11,6 +11,36 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     command_history(app, ctx);
     help_window(app, ctx);
     message_box(app, ctx);
+    save_prompt(app, ctx);
+}
+
+/// "Save changes?" before closing, opening or clearing a modified model.
+fn save_prompt(app: &mut App, ctx: &egui::Context) {
+    if app.save_prompt.is_none() {
+        return;
+    }
+    let mut answer: Option<crate::app::SaveAnswer> = None;
+    egui::Window::new("Unsaved changes").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        ui.label(format!("Save changes to {}?", app.doc.title()));
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button("Save").clicked() {
+                answer = Some(crate::app::SaveAnswer::Save);
+            }
+            if ui.button("Don't Save").clicked() {
+                answer = Some(crate::app::SaveAnswer::DontSave);
+            }
+            if ui.button("Cancel").clicked() {
+                answer = Some(crate::app::SaveAnswer::Cancel);
+            }
+        });
+    });
+    if answer.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        answer = Some(crate::app::SaveAnswer::Cancel);
+    }
+    if let Some(a) = answer {
+        app.answer_save_prompt(a);
+    }
 }
 
 fn loft_dialog(app: &mut App, ctx: &egui::Context) {

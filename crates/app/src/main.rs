@@ -240,8 +240,13 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
         match event {
             WindowEvent::CloseRequested => {
-                self.app.save_options();
-                event_loop.exit();
+                // unsaved changes are asked about first; the next frame exits once `quit` is set
+                self.app.request_discard(app::Discard::Quit);
+                if self.app.quit {
+                    event_loop.exit();
+                } else {
+                    window.request_redraw();
+                }
             }
             WindowEvent::Resized(size) => {
                 if let Some(r) = &mut self.renderer {

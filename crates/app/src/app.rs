@@ -320,6 +320,25 @@ impl ExportMemory {
     }
 }
 
+/// An action that replaces or closes the model, run once unsaved changes are dealt with.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Discard {
+    Quit,
+    New,
+    Open,
+    /// Start this program (a freshly installed update), then quit.
+    #[allow(dead_code)] // constructed by the updater (next task)
+    Restart(PathBuf),
+}
+
+/// Answers to "Save changes?".
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SaveAnswer {
+    Save,
+    DontSave,
+    Cancel,
+}
+
 /// Persisted user options (~/.config/triceratops/options.json).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -602,6 +621,8 @@ pub struct App {
     pub requests: Vec<AppRequest>,
     pub quit: bool,
     pub show_help: bool,
+    /// An action waiting for the answer to "Save changes?".
+    pub save_prompt: Option<Discard>,
     pub show_history: bool,
     pub options_page: Option<String>,
     pub docprops_page: Option<String>,
@@ -723,6 +744,7 @@ impl App {
             requests: Vec::new(),
             quit: false,
             show_help: false,
+            save_prompt: None,
             show_history: false,
             options_page: None,
             docprops_page: None,
@@ -3156,18 +3178,18 @@ impl App {
                     "project" => self.aids.osnap.project = !self.aids.osnap.project,
                     _ => self.aids.osnap.disable = !self.aids.osnap.disable,
                 },
-                AppRequest::FileNew => self.file_new(),
-                AppRequest::FileOpen => self.file_open(),
-                AppRequest::FileSave => self.file_save(false),
-                AppRequest::FileSaveAs => self.file_save(true),
+                AppRequest::FileNew => self.request_discard(Discard::New),
+                AppRequest::FileOpen => self.request_discard(Discard::Open),
+                AppRequest::FileSave => {
+                    self.file_save(false);
+                }
+                AppRequest::FileSaveAs => {
+                    self.file_save(true);
+                }
                 AppRequest::Import => self.file_import(),
                 AppRequest::Export => self.file_export(),
                 AppRequest::Locust => self.locust.show_window(),
-                AppRequest::Quit => {
-                    self.locust.save_autosave();
-                    self.save_options();
-                    self.quit = true;
-                }
+                AppRequest::Quit => self.request_discard(Discard::Quit),
                 AppRequest::Help => self.show_help = true,
                 AppRequest::ShowPanel(p) => {
                     self.show_panel(&p);
@@ -3682,7 +3704,51 @@ impl App {
         }
     }
 
-    fn file_save(&mut self, save_as: bool) {
+    /// Run `action` now, or first ask whether to save the model's unsaved changes.
+    pub fn request_discard(&mut self, action: Discard) {
+        if self.doc.modified {
+            self.save_prompt = Some(action);
+        } else {
+            self.run_discard(action);
+        }
+    }
+
+    /// The user's answer to "Save changes?".
+    pub fn answer_save_prompt(&mut self, answer: SaveAnswer) {
+        let Some(action) = self.save_prompt.take() else { return };
+        match answer {
+            SaveAnswer::Cancel => {}
+            SaveAnswer::DontSave => self.run_discard(action),
+            SaveAnswer::Save => {
+                if self.file_save(false) {
+                    self.run_discard(action);
+                }
+            }
+        }
+    }
+
+    /// Carry out an action that replaces or closes the model.
+    pub fn run_discard(&mut self, action: Discard) {
+        match action {
+            Discard::New => self.file_new(),
+            Discard::Open => self.file_open(),
+            Discard::Quit | Discard::Restart(_) => {
+                self.cancel_job("Closing Triceratops");
+                self.locust.save_autosave();
+                self.save_options();
+                if let Discard::Restart(path) = action {
+                    if let Err(e) = std::process::Command::new(&path).spawn() {
+                        self.log.push(format!("Cannot start {}: {e}", path.display()));
+                        return;
+                    }
+                }
+                self.quit = true;
+            }
+        }
+    }
+
+    /// Save the model; true when it was written.
+    fn file_save(&mut self, save_as: bool) -> bool {
         let native = self.doc.path.as_ref().is_some_and(|p| {
             let e = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
             e == "3dm" || e == io::NATIVE_EXTENSION
@@ -3690,14 +3756,14 @@ impl App {
         let path = match (&self.doc.path, save_as || !native) {
             (Some(p), false) => p.clone(),
             _ => {
-                if self.file_dialog_blocked(if save_as { "SaveAs" } else { "Save" }) { return; }
+                if self.file_dialog_blocked(if save_as { "SaveAs" } else { "Save" }) { return false; }
                 let Some(p) = rfd::FileDialog::new()
                     .add_filter("3D Models (*.3dm)", &["3dm"])
                     .add_filter("Triceratops JSON Models (*.tri)", &[io::NATIVE_EXTENSION])
                     .set_file_name("Untitled.3dm")
                     .save_file()
                 else {
-                    return;
+                    return false;
                 };
                 p
             }
@@ -3710,8 +3776,12 @@ impl App {
                 self.doc.path = Some(path.clone());
                 self.doc.modified = false;
                 self.log.push(format!("File successfully written as {}", path.display()));
+                true
             }
-            Err(e) => self.log.push(format!("Save failed: {e:#}")),
+            Err(e) => {
+                self.log.push(format!("Save failed: {e:#}"));
+                false
+            }
         }
     }
 
@@ -4360,7 +4430,7 @@ impl App {
     fn file_save_copy(&mut self, incremental: bool) {
         let path = if incremental {
             let Some(cur) = self.doc.path.clone() else {
-                self.file_save(true);
+                let _ = self.file_save(true);
                 return;
             };
             let stem = cur.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled".into());
@@ -5081,6 +5151,64 @@ mod tests {
         let mut other = App::new();
         other.apply_options(serde_json::from_str(&json).unwrap());
         assert_eq!(other.icon_size, 32.0);
+    }
+
+    #[test]
+    fn discard_unmodified_quit_is_immediate() {
+        let mut app = App::new();
+        app.request_discard(Discard::Quit);
+        assert!(app.quit && app.save_prompt.is_none());
+    }
+
+    #[test]
+    fn discard_modified_quit_asks_and_answers() {
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        assert!(app.doc.modified);
+        app.request_discard(Discard::Quit);
+        assert_eq!(app.save_prompt, Some(Discard::Quit));
+        assert!(!app.quit);
+        // Cancel: nothing happens
+        app.answer_save_prompt(SaveAnswer::Cancel);
+        assert!(app.save_prompt.is_none() && !app.quit && app.doc.modified);
+        // Don't Save: quits
+        app.request_discard(Discard::Quit);
+        app.answer_save_prompt(SaveAnswer::DontSave);
+        assert!(app.quit);
+    }
+
+    #[test]
+    fn discard_new_after_dont_save_clears_the_model() {
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        app.request_discard(Discard::New);
+        assert_eq!(app.doc.objects().count(), 1, "still asking");
+        app.answer_save_prompt(SaveAnswer::DontSave);
+        assert_eq!(app.doc.objects().count(), 0);
+    }
+
+    #[test]
+    fn discard_restart_that_cannot_start_keeps_running() {
+        let mut app = App::new();
+        app.request_discard(Discard::Restart(PathBuf::from("/nonexistent/Triceratops.AppImage")));
+        assert!(!app.quit);
+        assert!(app.log.last().is_some_and(|l| l.starts_with("Cannot start")), "{:?}", app.log.last());
+    }
+
+    #[test]
+    fn discard_save_writes_then_proceeds() {
+        let dir = std::env::temp_dir().join(format!("tri-discard-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("model.3dm");
+        let _ = std::fs::remove_file(&path);
+        let mut app = App::new();
+        app.doc.add(Geometry::Point(DVec3::ZERO));
+        app.doc.path = Some(path.clone());
+        app.request_discard(Discard::Quit);
+        app.answer_save_prompt(SaveAnswer::Save);
+        assert!(path.exists(), "saved");
+        assert!(app.quit && !app.doc.modified);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
