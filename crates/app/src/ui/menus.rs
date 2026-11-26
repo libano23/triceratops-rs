@@ -178,6 +178,10 @@ pub fn menu_bar(app: &mut App, root: &mut egui::Ui) {
                     app.start_command("CommandList");
                     ui.close();
                 }
+                if ui.button("Check for Updates…").clicked() {
+                    app.start_update_check(true);
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button("About triceratops").clicked() {
                     app.message_box = Some("triceratops 0.1 — a Rust re-implementation of the Triceratops interface and NURBS modeling workflow.".into());

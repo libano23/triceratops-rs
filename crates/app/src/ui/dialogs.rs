@@ -13,6 +13,118 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     message_box(app, ctx);
     save_prompt(app, ctx);
     recovery(app, ctx);
+    update_dialog(app, ctx);
+}
+
+/// A changelog in Markdown, shown plainly: `##` headings bold, `*`/`-` items as bullets.
+fn changelog(ui: &mut egui::Ui, text: &str) {
+    for line in text.lines() {
+        // inline code reads fine without its backticks
+        let plain = line.trim_end().replace('`', "");
+        let t = plain.as_str();
+        if let Some(h) = t.strip_prefix("## ").or_else(|| t.strip_prefix("### ")) {
+            ui.add_space(4.0);
+            ui.label(RichText::new(h).strong());
+        } else if let Some(item) = t.trim_start().strip_prefix("* ").or_else(|| t.trim_start().strip_prefix("- ")) {
+            ui.label(format!("  •  {item}"));
+        } else if !t.is_empty() {
+            ui.label(t);
+        }
+    }
+}
+
+/// "Triceratops X is available": what changed, and how to get it.
+fn update_dialog(app: &mut App, ctx: &egui::Context) {
+    if !app.update.show {
+        return;
+    }
+    use crate::update::Install;
+    let mut close = false;
+    let mut skip = false;
+    let mut download = false;
+    let mut cancel = false;
+    let mut restart: Option<std::path::PathBuf> = None;
+    let mut page: Option<String> = None;
+    let install = Install::detect();
+    egui::Window::new("Software update").collapsible(false).resizable(true).default_width(520.0).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        if let Some(o) = &app.update.offer {
+            ui.label(RichText::new(format!("Triceratops {} is available (you have {}).", o.version, crate::update::current())).strong());
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| changelog(ui, &o.changelog));
+            ui.add_space(6.0);
+        }
+        if app.update.downloading {
+            let total = app.update.offer.as_ref().and_then(|o| o.asset.as_ref()).map_or(1, |a| a.size.max(1));
+            let got = app.update.job.as_ref().map_or(0, |j| j.received.load(std::sync::atomic::Ordering::Relaxed));
+            ui.add(egui::ProgressBar::new(got as f32 / total as f32).text(format!("{:.1} of {:.1} MB", got as f64 / 1e6, total as f64 / 1e6)));
+        }
+        if !app.update.status.is_empty() {
+            let failed = app.update.status.starts_with("Could not");
+            ui.label(if failed { RichText::new(&app.update.status).color(egui::Color32::from_rgb(220, 70, 60)) } else { RichText::new(&app.update.status) });
+        }
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            if let Some(target) = app.update.installed.clone() {
+                if ui.button(RichText::new("Restart now").strong()).clicked() {
+                    restart = Some(target);
+                }
+                if ui.button("Later").clicked() {
+                    close = true;
+                }
+                return;
+            }
+            if app.update.downloading {
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+                return;
+            }
+            if let Some(o) = &app.update.offer {
+                match (&install, &o.asset) {
+                    (Install::AppImage(_), Some(_)) => download = ui.button(RichText::new("Update and restart").strong()).clicked(),
+                    (Install::WindowsZip, Some(_)) => download = ui.button(RichText::new("Download").strong()).clicked(),
+                    _ => {
+                        if ui.button(RichText::new("Open the release page").strong()).clicked() {
+                            page = Some(o.html_url.clone());
+                        }
+                    }
+                }
+                if ui.button("Skip this version").clicked() {
+                    skip = true;
+                }
+                if ui.button("Later").clicked() {
+                    close = true;
+                }
+            } else if app.update.job.is_none() && ui.button("Close").clicked() {
+                close = true;
+            }
+        });
+    });
+    if download {
+        app.start_update_download();
+    }
+    if cancel {
+        app.cancel_update_download();
+    }
+    if let Some(url) = page {
+        let _ = crate::commands::simple::open_external(&url);
+        close = true;
+    }
+    if skip {
+        if let Some(o) = app.update.offer.take() {
+            app.skipped_version = o.version.to_string();
+            app.options_dirty = true;
+        }
+        close = true;
+    }
+    if let Some(target) = restart {
+        app.update.show = false;
+        app.request_discard(crate::app::Discard::Restart(target));
+    }
+    if close {
+        app.update.show = false;
+        app.update.status.clear();
+    }
 }
 
 /// Options › General: autosave (and, later, updates).
@@ -28,6 +140,24 @@ fn general_page(app: &mut App, ui: &mut egui::Ui) {
         ui.label("minutes");
     });
     ui.label(RichText::new("A modified model is written to its own file in the settings folder; your file is not touched.").weak());
+    ui.add_space(10.0);
+    ui.label(RichText::new("Updates").strong());
+    if ui.checkbox(&mut app.check_updates, "Check for a newer version at start (once a day)").changed() {
+        app.options_dirty = true;
+    }
+    ui.horizontal(|ui| {
+        let last = if app.last_update_check == 0 {
+            "never".to_string()
+        } else {
+            let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(app.last_update_check);
+            crate::autosave::ago(t, std::time::SystemTime::now())
+        };
+        ui.label(format!("Last checked: {last}"));
+        if ui.button("Check now").clicked() {
+            app.start_update_check(true);
+        }
+    });
+    ui.label(RichText::new(format!("You have Triceratops {}. The check asks GitHub for the list of releases and sends nothing about you.", crate::update::current())).weak());
 }
 
 /// Autosave files left by a session that ended badly.

@@ -105,7 +105,6 @@ impl Install {
 #[derive(Clone, Debug)]
 pub struct Offer {
     pub version: Version,
-    pub tag: String,
     /// Every newer release's notes, newest first, each under a `## <tag>` heading.
     pub changelog: String,
     pub html_url: String,
@@ -125,7 +124,7 @@ pub fn offer(releases: &[Release], current: &Version, install: &Install) -> Opti
     let (version, latest) = *newer.first()?;
     let changelog = newer.iter().map(|(_, r)| format!("## {}\n\n{}\n\n", r.tag_name, r.body.as_deref().unwrap_or("").trim())).collect::<String>();
     let asset = install.asset_suffix().and_then(|suffix| latest.assets.iter().find(|a| a.name.ends_with(suffix)).cloned());
-    Some(Offer { version, tag: latest.tag_name.clone(), changelog: changelog.trim_end().to_string(), html_url: latest.html_url.clone(), asset })
+    Some(Offer { version, changelog: changelog.trim_end().to_string(), html_url: latest.html_url.clone(), asset })
 }
 
 fn agent() -> ureq::Agent {
