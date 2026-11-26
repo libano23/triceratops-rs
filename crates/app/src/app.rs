@@ -335,6 +335,13 @@ pub struct UpdateState {
     pub downloading: bool,
     /// An AppImage installed in place: restart into it.
     pub installed: Option<PathBuf>,
+    /// The AppImage's folder cannot be written: the new one goes to Downloads instead.
+    pub fallback: bool,
+}
+
+/// Help › About.
+pub fn about_text() -> String {
+    format!("Triceratops {} — NURBS modelling in Rust.\nhttps://github.com/libano23/triceratops-rs", env!("CARGO_PKG_VERSION"))
 }
 
 /// Whether to look for a newer version at start.
@@ -3846,7 +3853,14 @@ impl App {
             Event::Downloaded(r) => {
                 self.update.downloading = false;
                 self.update.show = true;
+                let fallback = std::mem::take(&mut self.update.fallback);
                 match (r, crate::update::Install::detect()) {
+                    (Ok(file), _) if fallback => {
+                        self.update.status = format!("Downloaded to {}. The AppImage's folder cannot be written: replace your AppImage with this file and make it executable.", file.display());
+                        if !cfg!(test) {
+                            crate::commands::simple::reveal_in_file_manager(&file);
+                        }
+                    }
                     (Ok(file), crate::update::Install::AppImage(target)) => match crate::update::replace_appimage(&file, &target) {
                         Ok(()) => {
                             self.update.status = "The new version is installed. Restart Triceratops to use it.".into();
@@ -3859,7 +3873,9 @@ impl App {
                     },
                     (Ok(file), _) => {
                         self.update.status = format!("Downloaded to {}. Unzip it over your Triceratops folder.", file.display());
-                        crate::commands::simple::reveal_in_file_manager(&file);
+                        if !cfg!(test) {
+                            crate::commands::simple::reveal_in_file_manager(&file);
+                        }
                     }
                     (Err(e), _) => self.update.status = if e == "cancelled" { "Download cancelled.".into() } else { format!("Could not download the update: {e}") },
                 }
@@ -3870,7 +3886,13 @@ impl App {
     /// Download the offered file (AppImage next to itself, zip to Downloads).
     pub fn start_update_download(&mut self) {
         let Some(asset) = self.update.offer.as_ref().and_then(|o| o.asset.clone()) else { return };
-        let dest = crate::update::download_target(&crate::update::Install::detect(), &asset);
+        let mut install = crate::update::Install::detect();
+        // an AppImage in a folder we cannot write to: download it to Downloads instead
+        self.update.fallback = matches!(&install, crate::update::Install::AppImage(p) if !crate::update::folder_writable(p));
+        if self.update.fallback {
+            install = crate::update::Install::WindowsZip;
+        }
+        let dest = crate::update::download_target(&install, &asset);
         self.update.status.clear();
         self.update.downloading = true;
         self.update.manual = true;
@@ -5449,6 +5471,21 @@ mod tests {
         // up to date, asked for
         app.handle_update_event(Event::Checked(Ok(None)), true);
         assert!(app.update.show && app.update.status.contains("up to date"), "{}", app.update.status);
+    }
+
+    #[test]
+    fn update_download_to_downloads_when_the_appimage_folder_is_read_only() {
+        let mut app = App::new();
+        app.update.fallback = true;
+        app.update.downloading = true;
+        app.handle_update_event(crate::update::Event::Downloaded(Ok(PathBuf::from("/home/u/Downloads/T-x86_64.AppImage"))), true);
+        assert!(app.update.installed.is_none(), "nothing swapped");
+        assert!(app.update.status.contains("/home/u/Downloads/T-x86_64.AppImage") && app.update.status.contains("cannot be written"), "{}", app.update.status);
+    }
+
+    #[test]
+    fn about_shows_this_version() {
+        assert!(about_text().contains(env!("CARGO_PKG_VERSION")), "{}", about_text());
     }
 
     #[test]

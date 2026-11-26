@@ -1387,7 +1387,7 @@ pub fn create_command(name: &str) -> Option<Box<dyn Command>> {
         "PlanView" => Box::new(RequestCmd(AppRequest::PlanView)),
         "NextViewport" => Box::new(RequestCmd(AppRequest::NextViewport(true))),
         "PrevViewport" => Box::new(RequestCmd(AppRequest::NextViewport(false))),
-        "About" => Box::new(RequestCmd(AppRequest::Message("triceratops 0.1 — a Rust re-implementation of Triceratops.".into()))),
+        "About" => Box::new(RequestCmd(AppRequest::Message(crate::app::about_text()))),
         "Layer" => Box::new(LayerCmd),
         "ChangeLayer" => Box::new(ChangeLayerCmd::default()),
         "Properties" => Box::new(RequestCmd(AppRequest::ShowPanel("Properties".into()))),
