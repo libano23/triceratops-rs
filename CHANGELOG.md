@@ -2,7 +2,16 @@
 
 What changed in each version of Triceratops, newest first. The section of a version
 becomes its release notes and is what the program shows when it offers an update:
-before tagging a release, rename "Unreleased" to the version and date.
+before tagging a release, rename "Unreleased" to the version and date (see
+[docs/RELEASING.md](docs/RELEASING.md)).
+
+## Unreleased
+
+### Fixed
+
+* An AppImage kept in a folder Triceratops cannot write to is no longer left without an
+  update: the new version is downloaded to Downloads for you to put in its place.
+* Help › About shows the real version.
 
 ## 0.4.0 - 2026-11-26
 

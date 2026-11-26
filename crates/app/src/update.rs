@@ -200,6 +200,19 @@ pub fn replace_appimage(downloaded: &Path, target: &Path) -> Result<(), String> 
     std::fs::rename(downloaded, target).map_err(|e| format!("cannot replace {}: {e}", target.display()))
 }
 
+/// Whether a file can be created next to `target` (the AppImage's folder).
+pub fn folder_writable(target: &Path) -> bool {
+    let Some(dir) = target.parent() else { return false };
+    let probe = dir.join(format!(".triceratops-write-test-{}", std::process::id()));
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// Where the download goes: next to the AppImage (so the rename stays on one filesystem),
 /// otherwise the Downloads folder (or the temp folder).
 pub fn download_target(install: &Install, asset: &Asset) -> PathBuf {
@@ -382,6 +395,15 @@ mod tests {
         let o = offer(&list, &current(), &Install::ReleasePage).unwrap();
         assert_eq!(o.version, Version(99, 0, 0));
         assert!(fetch_releases("http://127.0.0.1:1").unwrap_err().starts_with("cannot reach"));
+    }
+
+    #[test]
+    fn folder_writability() {
+        let dir = std::env::temp_dir().join(format!("tri-writable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(folder_writable(&dir.join("Triceratops.AppImage")));
+        assert!(!folder_writable(Path::new("/nonexistent-folder/Triceratops.AppImage")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
