@@ -803,6 +803,12 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
         for c in &curves {
             let (p, q) = (c.pts[0], c.pts[c.pts.len() - 1]);
             eprintln!("  curve A{} x B{}: {} pts, ({:.3},{:.3},{:.3}) -> ({:.3},{:.3},{:.3})", c.fa, c.fb, c.pts.len(), p.x, p.y, p.z, q.x, q.y, q.z);
+            let (fa_, fb_) = (&a.faces[c.fa], &b.faces[c.fb]);
+            let gap = (0..c.pts.len()).map(|k| (fa_.surface.point_at(c.uva[k].x, c.uva[k].y) - fb_.surface.point_at(c.uvb[k].x, c.uvb[k].y)).length()).fold(0.0, f64::max);
+            let out_a = (0..c.pts.len()).filter(|&k| !fa_.contains_uv(c.uva[k])).count();
+            let out_b = (0..c.pts.len()).filter(|&k| !fb_.contains_uv(c.uvb[k])).count();
+            let sb = &fb_.surface;
+            eprintln!("    gap {gap:.2e}, outside A loops {out_a}, outside B loops {out_b}; B surface degree {}x{} count {}x{} loops {} uvb0 ({:.4},{:.4})", sb.degree_u, sb.degree_v, sb.count_u, sb.count_v, fb_.loops.len(), c.uvb[0].x, c.uvb[0].y);
         }
     }
     // endpoints of different curves that meet (triple points on edges) get one position:
