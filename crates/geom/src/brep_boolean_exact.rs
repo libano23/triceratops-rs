@@ -275,12 +275,23 @@ fn face_face_curves(fa: usize, a: &Face, ma: &FaceMesh, fb: usize, b: &Face, mb:
             uvb.push(s.ub[1 - *e]);
         }
         // refine onto both surfaces
+        let mut failed = 0;
         for k in 0..pts.len() {
             if let Some((p, ua, ub)) = project_to_intersection(&a.surface, &b.surface, pts[k], uva[k], uvb[k], diag) {
                 pts[k] = p;
                 uva[k] = ua;
                 uvb[k] = ub;
+            } else {
+                failed += 1;
             }
+        }
+        if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() && failed > 0 {
+            eprintln!("  chain A{fa} B{fb}: {failed} of {} points not on both surfaces", pts.len());
+        }
+        // a chain mostly off the surfaces comes from stray tessellation triangles (one that
+        // bridges a trim loop, say), not from where the surfaces meet
+        if failed * 2 > pts.len() {
+            continue;
         }
         // densify until the chords follow the intersection within the tolerance
         let (ca, cb) = (surface_closed(&a.surface), surface_closed(&b.surface));
@@ -979,6 +990,38 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
 
 #[cfg(test)]
 mod tests {
+
+    /// A stray triangle in a face's tessellation (one that bridges a trim loop, say) crosses
+    /// the other face where the surfaces do not meet: its chain must not become a curve.
+    #[test]
+    fn chains_off_the_surfaces_are_dropped() {
+        let plane = Plane::world_xy();
+        let cap = Face::untrimmed(NurbsSurface::plane(&Plane { origin: DVec3::new(0.0, 0.0, 5.0), ..plane }, -10.0, 10.0, -10.0, 10.0).unwrap());
+        let side = Face::untrimmed(NurbsSurface::cylinder(&plane, 4.0, 10.0).unwrap());
+        let mc = face_mesh(&cap);
+        let mut ms = face_mesh(&side);
+        // a fan of stray triangles well inside the cylinder, crossing z = 5
+        let base = ms.mesh.vertices.len() as u32;
+        for k in 0..8 {
+            let t = k as f64 / 8.0 * std::f64::consts::TAU;
+            let (x, y) = (1.2 * t.cos(), 1.2 * t.sin());
+            ms.mesh.vertices.extend([DVec3::new(x, y, 3.0), DVec3::new(x + 0.3, y, 7.0), DVec3::new(x, y + 0.3, 7.0)]);
+            ms.mesh.normals.extend([DVec3::Z; 3]);
+            ms.uv.extend([DVec2::new(0.1, 0.3), DVec2::new(0.12, 0.7), DVec2::new(0.1, 0.7)]);
+            let b = base + 3 * k;
+            ms.mesh.indices.extend([b, b + 1, b + 2]);
+            let (p, q, r) = (ms.mesh.vertices[b as usize], ms.mesh.vertices[b as usize + 1], ms.mesh.vertices[b as usize + 2]);
+            ms.tri_bbox.push((p.min(q).min(r), p.max(q).max(r)));
+        }
+        let curves = face_face_curves(0, &cap, &mc, 0, &side, &ms, 1e-3, 30.0);
+        assert!(!curves.is_empty(), "the real circle is found");
+        for c in &curves {
+            for p in &c.pts {
+                let r = (p.x * p.x + p.y * p.y).sqrt();
+                assert!((r - 4.0).abs() < 1e-2, "curve point {p:?} is off the cylinder");
+            }
+        }
+    }
 
     /// A thin diagonal band in a long domain (a thread's strip on its sweep): the sample
     /// points must sit well inside the band, measured with the surface's own scale, or the
