@@ -3,7 +3,7 @@
 
 use egui::{Color32, Pos2};
 
-use super::icons::{icon_button, IconButton, ICON};
+use super::icons::{icon_button, IconButton};
 use crate::app::{App, DisplayMode, Layout};
 
 #[derive(Clone, Copy)]
@@ -432,7 +432,8 @@ fn open_flyout(ctx: &egui::Context, name: &str, pos: Pos2) {
 
 /// Draw a toolbar button, dispatching left/right clicks and flyouts.
 pub fn toolbar_button(ui: &mut egui::Ui, app: &mut App, btn: &Btn) {
-    let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: ICON, flyout: !btn.flyout.is_empty(), selected: false });
+    let icon = app.icon_size;
+    let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: icon, flyout: !btn.flyout.is_empty(), selected: false });
     if resp.hovered() {
         if let Some(info) = crate::commands::command_info(btn.left) {
             app.status_hint = format!("{}: {}", btn.tip, info.description);
@@ -467,16 +468,19 @@ pub const FLYOUT_NAMES: &[&str] = &["Array", "Scale", "Analyze", "Join", "Undo",
 
 /// Draw a toolbar group: a wrapped row (top/bottom/floating) or a grid of icons (left/right).
 pub fn draw_group(app: &mut App, ui: &mut egui::Ui, name: &str, vertical: bool) {
+    let icon = app.icon_size;
     let buttons = group_buttons(name);
     if buttons.is_empty() {
         ui.label(egui::RichText::new("(this toolbar is empty)").color(Color32::GRAY));
         return;
     }
     if vertical {
-        let cell = ICON + 6.0 + 1.0;
+        let cell = icon + 6.0 + 1.0;
         let cols = ((ui.available_width() - 2.0) / cell).floor().max(1.0) as usize;
         egui::ScrollArea::vertical().id_salt(("toolbar_grid", name)).show(ui, |ui| {
-            egui::Grid::new(("toolbar_grid_inner", name)).spacing([1.0, 1.0]).show(ui, |ui| {
+            // columns exactly as wide as a button: the default minimum (40 px) would make small
+            // icons overflow the panel, which then widens and fits more columns every frame
+            egui::Grid::new(("toolbar_grid_inner", name)).spacing([1.0, 1.0]).min_col_width(icon + 6.0).max_col_width(icon + 6.0).show(ui, |ui| {
                 for (i, btn) in buttons.iter().enumerate() {
                     toolbar_button(ui, app, btn);
                     if i % cols == cols - 1 {
@@ -500,6 +504,7 @@ pub fn draw_group(app: &mut App, ui: &mut egui::Ui, name: &str, vertical: bool) 
 
 /// Flyout toolbars and the middle-mouse "Popup" toolbar.
 pub fn flyouts(app: &mut App, ctx: &egui::Context) {
+    let icon = app.icon_size;
     let state: Option<FlyoutState> = ctx.data(|d| d.get_temp(flyout_id()));
     if let Some(st) = state {
         let items = flyout_items(&st.name);
@@ -524,9 +529,9 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
                     });
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.set_max_width(6.0 * (ICON + 8.0));
+                    ui.set_max_width(6.0 * (icon + 8.0));
                     for btn in items {
-                        let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: ICON, flyout: false, selected: false });
+                        let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: icon, flyout: false, selected: false });
                         if resp.clicked() {
                             app.start_command(btn.left);
                             close = true;
@@ -570,9 +575,9 @@ pub fn flyouts(app: &mut App, ctx: &egui::Context) {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.label(egui::RichText::new("Popup").small().color(Color32::GRAY));
                 ui.horizontal_wrapped(|ui| {
-                    ui.set_max_width(7.0 * (ICON + 8.0));
+                    ui.set_max_width(7.0 * (icon + 8.0));
                     for btn in items {
-                        let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: ICON, flyout: false, selected: false });
+                        let resp = icon_button(ui, &IconButton { name: btn.icon, tooltip: btn.tip, size: icon, flyout: false, selected: false });
                         if resp.clicked() {
                             app.start_command(btn.left);
                             close = true;

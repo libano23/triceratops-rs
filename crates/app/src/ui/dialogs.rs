@@ -110,6 +110,13 @@ fn options(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Icon size");
+                        let r = ui.add(egui::Slider::new(&mut app.icon_size, crate::ui::icons::ICON_MIN..=crate::ui::icons::ICON_MAX).step_by(2.0).suffix(" px"));
+                        if r.changed() {
+                            app.options_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Theme");
                         let current = app.theme.name.clone();
                         let mut chosen = current.clone();

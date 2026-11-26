@@ -334,6 +334,8 @@ pub struct UserOptions {
     pub colors: AppearanceColors,
     pub osnap: OsnapSettings,
     pub sidebar_width: f32,
+    /// Toolbar icon size in px (16–40).
+    pub icon_size: f32,
     pub panels_visible: bool,
     pub panel_tab: String,
     pub grid_snap: bool,
@@ -372,6 +374,7 @@ impl Default for UserOptions {
             colors: AppearanceColors::default(),
             osnap: OsnapSettings::default(),
             sidebar_width: 70.0,
+            icon_size: crate::ui::icons::ICON_DEFAULT,
             panels_visible: true,
             panel_tab: "Properties".into(),
             grid_snap: false,
@@ -566,6 +569,8 @@ pub struct App {
     pub theme_revision: u64,
     pub backend: String,
     pub sidebar_width: f32,
+    /// Toolbar icon size in px, always within `ICON_MIN..=ICON_MAX`.
+    pub icon_size: f32,
     pub doc: Document,
     pub viewports: Vec<Viewport>,
     pub active: usize,
@@ -691,6 +696,7 @@ impl App {
             theme_revision: 0,
             backend: "auto".into(),
             sidebar_width: 70.0,
+            icon_size: crate::ui::icons::ICON_DEFAULT,
             doc: Document::new(),
             viewports,
             active: 1,
@@ -754,7 +760,16 @@ impl App {
         let Some(p) = options_path() else { return };
         let Ok(text) = std::fs::read_to_string(&p) else { return };
         if let Ok(o) = serde_json::from_str::<UserOptions>(&text) {
+            self.apply_options(o);
+        }
+        self.last_saved_options = Some(self.options_snapshot());
+    }
+
+    /// Take over every option read from an options file.
+    pub fn apply_options(&mut self, o: UserOptions) {
+        {
             self.dark_mode = o.dark_mode;
+            self.icon_size = crate::ui::icons::clamp_icon_size(o.icon_size);
             self.backend = if o.backend.is_empty() { "auto".into() } else { o.backend.clone() };
             if !o.theme.is_empty() {
                 if let Some(t) = crate::theme::Theme::by_name(&o.theme) {
@@ -799,7 +814,6 @@ impl App {
             self.export_memory = ExportMemory { last_dir: o.last_export_dir, last_format: o.last_export_format, dirs: o.export_dirs };
             self.memory.insert("RecordHistory".into(), if self.aids.record_history { "Yes".into() } else { "No".into() });
         }
-        self.last_saved_options = Some(self.options_snapshot());
     }
 
     /// Show a panel (unhide its container and activate its tab).
@@ -933,6 +947,7 @@ impl App {
             colors: self.colors.clone(),
             osnap: self.aids.osnap,
             sidebar_width: self.sidebar_width,
+            icon_size: self.icon_size,
             panels_visible: self.panels.visible,
             panel_tab: self.panels.tab.clone(),
             grid_snap: self.aids.grid_snap,
@@ -5054,6 +5069,26 @@ mod tests {
         app.layout = Layout::Single;
         app.active = 0; // Top view
         app
+    }
+
+    #[test]
+    fn icon_size_round_trips() {
+        let mut app = App::new();
+        assert_eq!(app.icon_size, 24.0);
+        app.icon_size = 32.0;
+        let json = serde_json::to_string(&app.options_snapshot()).unwrap();
+        let mut other = App::new();
+        other.apply_options(serde_json::from_str(&json).unwrap());
+        assert_eq!(other.icon_size, 32.0);
+    }
+
+    #[test]
+    fn icon_size_defaults_and_clamps() {
+        for (json, want) in [("{}", 24.0), (r#"{"icon_size": 0}"#, 16.0), (r#"{"icon_size": 500}"#, 40.0), (r#"{"icon_size": 20}"#, 20.0)] {
+            let mut app = App::new();
+            app.apply_options(serde_json::from_str(json).unwrap());
+            assert_eq!(app.icon_size, want, "{json}");
+        }
     }
 
     fn type_line(app: &mut App, text: &str) {
