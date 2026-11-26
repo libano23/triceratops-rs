@@ -898,6 +898,7 @@ impl App {
                 self.theme_revision += 1;
                 self.backend = d.backend;
                 self.sidebar_width = d.sidebar_width;
+                self.icon_size = d.icon_size;
                 self.zoom_border = d.zoom_border;
                 self.drag_mode = d.drag_mode;
                 self.drag_strength = d.drag_strength;
@@ -5080,6 +5081,14 @@ mod tests {
         let mut other = App::new();
         other.apply_options(serde_json::from_str(&json).unwrap());
         assert_eq!(other.icon_size, 32.0);
+    }
+
+    #[test]
+    fn reset_all_restores_the_icon_size() {
+        let mut app = App::new();
+        app.icon_size = 36.0;
+        app.layout_file("reset_all", "");
+        assert_eq!(app.icon_size, crate::ui::icons::ICON_DEFAULT);
     }
 
     #[test]
