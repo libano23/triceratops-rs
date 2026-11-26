@@ -7,6 +7,7 @@
 //! `import` is compiled out) and bounded: an operation limit stops runaway loops and the
 //! solve's cancel token (Esc) stops them sooner.
 
+pub mod api;
 pub mod convert;
 
 use std::collections::{BTreeMap, HashMap};
@@ -65,7 +66,14 @@ fn build() -> Engine {
         .register_fn("max", |a: FLOAT, b: FLOAT| a.max(b))
         .register_fn("clamp", |x: FLOAT, lo: FLOAT, hi: FLOAT| x.clamp(lo.min(hi), hi.max(lo)));
     convert::register_types(&mut e);
+    api::register(&mut e);
     e
+}
+
+/// The shorthands every script can call, compiled once.
+fn prelude() -> &'static AST {
+    static PRELUDE: OnceLock<AST> = OnceLock::new();
+    PRELUDE.get_or_init(|| engine().compile(api::PRELUDE).expect("the script prelude compiles"))
 }
 
 /// Compiled sources, by kind and text.
@@ -78,7 +86,7 @@ fn compiled(expression: bool, src: &str) -> Result<Arc<AST>, String> {
     if let Some(ast) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
         return Ok(ast.clone());
     }
-    let ast = if expression { engine().compile_expression(src) } else { engine().compile(src) }.map_err(parse_error)?;
+    let ast = if expression { engine().compile_expression(src).map_err(parse_error)? } else { prelude().merge(&engine().compile(src).map_err(parse_error)?) };
     let ast = Arc::new(ast);
     let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
     if c.len() > 512 {
@@ -150,6 +158,8 @@ pub fn solve_node(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs) 
         match_trees(&trees.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>())
     };
     let mut buckets: Vec<BTreeMap<Vec<i64>, Vec<Value>>> = vec![BTreeMap::new(); outs.len()];
+    api::set_objects(ctx.objects.clone());
+    api::take_printed();
     for combo in combos {
         let mut scope = Scope::new();
         scope.push_constant("PI", std::f64::consts::PI as FLOAT).push_constant("E", std::f64::consts::E as FLOAT);
@@ -206,6 +216,9 @@ pub fn solve_node(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs) 
                 Out::Many(xs) => buckets[k].entry(combo.path.clone()).or_default().extend(xs),
             }
         }
+    }
+    for line in api::take_printed() {
+        ctx.print(line);
     }
     buckets.into_iter().map(|b| DataTree { branches: b }).collect()
 }

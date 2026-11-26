@@ -24,7 +24,15 @@ pub fn register(r: &mut Registry) {
         "Rhai code with its own inputs and outputs: values.code is the code, values._inputs and values._outputs list the \
          ports as names or {name, kind, access: item|list|tree} (default inputs x, y; output a). Inputs are variables; \
          whatever each output variable holds at the end goes out, an array as a list. Item inputs run the code once per \
-         matched item; list inputs get the whole branch as an array; tree inputs an array of branches.",
+         matched item; list inputs get the whole branch as an array; tree inputs an array of branches. \
+         Helpers: point(x, y, z), vec(x, y, z) (with .x .y .z, + - * /, dot, cross, length, unit, distance), rng(seed).next(), \
+         line, polyline(pts[, closed]), interpolate(pts[, periodic]), nurbs_curve(pts, degree), circle(c, r[, normal]), \
+         arc(c, r, angle), divide(c, n), offset(c, d), join(curves), curve_point(c, t 0..1), curve_length(c), loft(curves), \
+         extrude(g, dir), revolve(curve, axis_point, axis, angle), sweep1(rail, profile), cap(g), surface_from_grid(rows), \
+         surface_point(s, u, v), box(corner, x, y, z), cylinder(base, r, h), sphere(c, r), union, difference, intersection, \
+         move(g, v), rotate(g, degrees, center, axis), scale(g, center, f), mirror(g, origin, normal), \
+         array_polar(g, center, count, degrees), area(g), volume(g); run(\"Component\", [args]) calls any component \
+         (run_all gives every output). print() shows on the node. Maths in radians: sin, cos, pow, atan2, PI, E, deg, rad.",
     );
     r.elem("Geometry", "Params", vec![any("Objects")], &["Geometry"], |ctx, a| {
         let refs: Vec<Value> = match a.get(0) {

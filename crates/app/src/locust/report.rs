@@ -71,6 +71,7 @@ pub fn solve_report(graph: &Graph, outputs: &Outputs, diags: &HashMap<String, Ve
     let level = |l: Level| match l {
         Level::Error => "error",
         Level::Warning => "warning",
+        Level::Info => "print",
     };
     let mut problems = Vec::new();
     for n in &graph.nodes {

@@ -35,6 +35,7 @@ mod transform;
 mod vector;
 
 pub mod geo;
+pub mod random;
 
 /// One declared input of a component.
 #[derive(Clone, Debug)]
@@ -98,6 +99,8 @@ pub fn tree_d(name: &'static str, kind: Kind, d: Value) -> InputSpec {
 /// How serious a node's message is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
+    /// `print` from a script.
+    Info,
     Warning,
     Error,
 }
@@ -209,6 +212,10 @@ impl Ctx {
 
     pub fn warn(&mut self, msg: impl Into<String>) {
         self.note(Level::Warning, msg.into());
+    }
+
+    pub fn print(&mut self, msg: impl Into<String>) {
+        self.note(Level::Info, msg.into());
     }
 
 }

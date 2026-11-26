@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{epaint::CubicBezierShape, Align2, Color32, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{epaint::CubicBezierShape, Align2, Color32, FontId, Key, Modifiers, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use serde_json::{json, Value as J};
 use tri_doc::{Document, Geometry};
 
@@ -106,6 +106,8 @@ enum Dialog {
     ClusterName(Vec<String>, String),
     /// Node, output side, port index, new name.
     RenamePort(String, bool, usize, String),
+    /// A Script node's code being edited.
+    EditCode(String, String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1254,10 +1256,16 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
     painter.text(head.left_center() + Vec2::new(8.0, 0.0), Align2::LEFT_CENTER, if unknown { format!("{title} (missing)") } else { title }, FontId::proportional(13.0), if n.disabled { MUTED } else { TEXT });
     // errors and warnings: a dot in the header, the messages on hover
     if let Some(list) = ed.diagnostics.get(uid).filter(|l| !l.is_empty()) {
-        let colour = if list.iter().any(|d| d.level == Level::Error) { Color32::from_rgb(0xe5, 0x48, 0x4d) } else { Color32::from_rgb(0xf0, 0xa0, 0x30) };
+        let colour = if list.iter().any(|d| d.level == Level::Error) {
+            Color32::from_rgb(0xe5, 0x48, 0x4d)
+        } else if list.iter().any(|d| d.level == Level::Warning) {
+            Color32::from_rgb(0xf0, 0xa0, 0x30)
+        } else {
+            Color32::from_rgb(0x6a, 0xa8, 0xe8)
+        };
         let c = Pos2::new(head.max.x - 10.0, head.center().y);
         painter.circle_filled(c, 4.5, colour);
-        let text = list.iter().map(|d| format!("{}: {}", match d.level { Level::Error => "Error", Level::Warning => "Warning" }, d.message)).collect::<Vec<_>>().join("\n");
+        let text = list.iter().map(|d| format!("{}: {}", match d.level { Level::Error => "Error", Level::Warning => "Warning", Level::Info => "Print" }, d.message)).collect::<Vec<_>>().join("\n");
         ui.interact(Rect::from_center_size(c, Vec2::splat(14.0)), ui.scope_id().with(("diag", uid)), Sense::hover()).on_hover_text(text);
     }
     let font = FontId::proportional(12.0);
@@ -1381,6 +1389,9 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
             ed.selected.insert(uid.to_string());
         }
     }
+    if body.double_clicked() && n.kind == "Script" {
+        ed.dialog = Some(Dialog::EditCode(uid.to_string(), n.values.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string()));
+    }
     if body.double_clicked() && ports.cluster {
         ed.open_cluster(uid);
         return;
@@ -1419,6 +1430,10 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         }
         if ui.button("Cluster selected…").clicked() {
             ed.dialog = Some(Dialog::ClusterName(ed.sorted_selection(), "Cluster".into()));
+            ui.close();
+        }
+        if n.kind == "Script" && ui.button("Edit code…").clicked() {
+            ed.dialog = Some(Dialog::EditCode(uid.to_string(), n.values.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string()));
             ui.close();
         }
         if super::graph::is_dynamic(&n.kind) {
@@ -1490,6 +1505,43 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
     let Some(d) = ed.dialog.clone() else { return };
     let mut keep = true;
     match d {
+        Dialog::EditCode(uid, mut code) => {
+            let error = ed.diagnostics.get(&uid).and_then(|d| d.iter().find(|x| x.level == Level::Error)).map(|d| d.message.clone());
+            let mut apply = false;
+            egui::Window::new("Script").id(egui::Id::unique("locust_code_dialog")).collapsible(false).resizable(true).default_size([560.0, 380.0]).show(ctx, |ui| {
+                if let Some(e) = &error {
+                    ui.colored_label(Color32::from_rgb(0xe5, 0x48, 0x4d), e);
+                }
+                egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut code).font(egui::TextStyle::Monospace).code_editor().desired_rows(16).desired_width(f32::INFINITY).lock_focus(true));
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        keep = false;
+                    }
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("OK").clicked() {
+                        apply = true;
+                        keep = false;
+                    }
+                    ui.label(RichText::new("Ctrl+Enter applies").small().color(MUTED));
+                });
+                if ui.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) {
+                    apply = true;
+                }
+            });
+            if apply {
+                ed.set_value(&uid, "code", json!(code));
+            }
+            if keep {
+                ed.dialog = Some(Dialog::EditCode(uid, code));
+            } else {
+                ed.dialog = None;
+            }
+            return;
+        }
         Dialog::Search { pos, mut text, mut sel, focus } => {
             let q = text.to_lowercase();
             let mut names: Vec<(&str, &str)> = registry().components.values().filter(|c| q.is_empty() || c.name.to_lowercase().contains(q.trim()) || c.category.to_lowercase().contains(q.trim())).map(|c| (c.category, c.name)).collect();
@@ -1551,11 +1603,11 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                 Dialog::EditComment(..) => ("Comment", true),
                 Dialog::ClusterName(..) => ("Cluster", false),
                 Dialog::RenamePort(..) => ("Port name", false),
-                Dialog::Search { .. } => unreachable!(),
+                Dialog::Search { .. } | Dialog::EditCode(..) => unreachable!(),
             };
             let mut text = match &other {
                 Dialog::RenameNode(_, s) | Dialog::RenameGroup(_, s) | Dialog::EditComment(_, s) | Dialog::ClusterName(_, s) | Dialog::RenamePort(_, _, _, s) => s.clone(),
-                Dialog::Search { .. } => unreachable!(),
+                Dialog::Search { .. } | Dialog::EditCode(..) => unreachable!(),
             };
             let mut ok = false;
             egui::Window::new(title).id(egui::Id::unique("locust_text_dialog")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
@@ -1605,7 +1657,7 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                         ed.undo.pop();
                         ed.cluster(uids, text.trim());
                     }
-                    Dialog::Search { .. } => {}
+                    Dialog::Search { .. } | Dialog::EditCode(..) => {}
                 }
                 ed.changed();
                 keep = false;
