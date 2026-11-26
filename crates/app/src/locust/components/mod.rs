@@ -34,6 +34,7 @@ mod string;
 mod surface;
 mod transform;
 mod vector;
+pub mod voronoi;
 
 pub mod geo;
 pub mod random;
@@ -394,6 +395,7 @@ fn build() -> Registry {
     params::register(&mut r);
     vector::register(&mut r);
     populate::register(&mut r);
+    voronoi::register(&mut r);
     math::register(&mut r);
     logic::register(&mut r);
     sets::register(&mut r);

@@ -965,3 +965,92 @@ mod populate {
         assert!((100..200).contains(&above), "spread over the whole sphere: {above} above the equator");
     }
 }
+
+// --------------------------------------------------------------- voronoi
+
+mod voronoi {
+    use super::*;
+    use crate::locust::components::voronoi::cells_2d;
+    use crate::locust::components::Level;
+    use glam::DVec2;
+
+    fn area(poly: &[DVec2]) -> f64 {
+        let n = poly.len();
+        (0..n).map(|i| poly[i].perp_dot(poly[(i + 1) % n])).sum::<f64>().abs() / 2.0
+    }
+
+    fn square(s: f64) -> Vec<DVec2> {
+        vec![DVec2::new(0.0, 0.0), DVec2::new(s, 0.0), DVec2::new(s, s), DVec2::new(0.0, s)]
+    }
+
+    #[test]
+    fn four_sites_four_quadrants() {
+        let sites = [DVec2::new(25.0, 25.0), DVec2::new(75.0, 25.0), DVec2::new(75.0, 75.0), DVec2::new(25.0, 75.0)];
+        let cells = cells_2d(&sites, &square(100.0));
+        assert_eq!(cells.len(), 4);
+        for (cell, site) in cells.iter().zip(sites) {
+            assert!((area(cell) - 2500.0).abs() < 1e-6, "{}", area(cell));
+            assert!(crate::locust::components::populate::inside(site, cell));
+        }
+    }
+
+    #[test]
+    fn cells_tile_the_boundary() {
+        let sites = crate::locust::components::populate::points_in(&square(100.0), 30, 1);
+        let cells = cells_2d(&sites, &square(100.0));
+        assert_eq!(cells.len(), 30);
+        let total: f64 = cells.iter().map(|c| area(c)).sum();
+        assert!((total - 10_000.0).abs() < 10.0, "{total}");
+    }
+
+    #[test]
+    fn voronoi_component_makes_closed_cells() {
+        let mut g = Graph::new();
+        let pop = node(&mut g, "Populate 2D", &[("Count", json!(40)), ("Seed", json!(3))]);
+        let v = node(&mut g, "Voronoi", &[]);
+        g.connect(&pop, 0, &v, 0);
+        let out = run(&g);
+        let cells = out[&v][0].items();
+        assert_eq!(cells.len(), 40);
+        assert!(cells.iter().all(|c| matches!(c.as_geometry(), Some(tri_doc::Geometry::Curve(k)) if k.is_closed())));
+    }
+
+    #[test]
+    fn voronoi_rejects_concave_boundary() {
+        let mut g = Graph::new();
+        let l = node(&mut g, "Polyline", &[]);
+        let pts = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 5.0, 0.0], [5.0, 5.0, 0.0], [5.0, 10.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0]];
+        g.node_mut(&l).unwrap().values.insert("Vertices".into(), json!(pts));
+        let pop = node(&mut g, "Populate 2D", &[("Count", json!(5))]);
+        let v = node(&mut g, "Voronoi", &[]);
+        g.connect(&pop, 0, &v, 0);
+        g.connect(&l, 0, &v, 1);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        let errs: Vec<String> = ctx.diagnostics.get(&v).map(|d| d.iter().filter(|x| x.level == Level::Error).map(|x| x.message.clone()).collect()).unwrap_or_default();
+        assert!(errs.iter().any(|e| e.contains("convex")), "{errs:?}");
+    }
+
+    #[test]
+    fn surface_voronoi_on_cylinder() {
+        let mut g = Graph::new();
+        let arc = node(&mut g, "Arc", &[("Radius", json!(10.0)), ("Angle", json!(90.0))]);
+        let ext = node(&mut g, "Extrude", &[("Distance", json!(20.0)), ("Cap", json!(false))]);
+        let sv = node(&mut g, "Surface Voronoi", &[("Count", json!(20)), ("Seed", json!(2))]);
+        g.connect(&arc, 0, &ext, 0);
+        g.connect(&ext, 0, &sv, 0);
+        let out = run(&g);
+        let cells = out[&sv][0].items();
+        assert_eq!(cells.len(), 20);
+        assert_eq!(out[&sv][1].count(), 20, "sites");
+        for c in &cells {
+            let Some(tri_doc::Geometry::Curve(k)) = c.as_geometry() else { panic!("a curve") };
+            let (t0, t1) = k.domain();
+            for i in 0..50 {
+                let p = k.point_at(t0 + (t1 - t0) * i as f64 / 50.0);
+                let r = DVec3::new(p.x, p.y, 0.0).length();
+                assert!((r - 10.0).abs() < 1e-3, "off the cylinder by {}", (r - 10.0).abs());
+            }
+        }
+    }
+}
