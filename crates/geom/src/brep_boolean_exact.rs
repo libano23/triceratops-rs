@@ -333,7 +333,52 @@ fn face_face_curves(fa: usize, a: &Face, ma: &FaceMesh, fb: usize, b: &Face, mb:
             out.push(Curve { fa, fb, pts: rp, uva: ra, uvb: rb });
         }
     }
+    drop_overlapping(&mut out, tol);
     out
+}
+
+/// Drops chains that retrace a longer chain of the same two faces. Two tessellation chains
+/// can follow one intersection (a run of triangles that crosses it twice, say); kept, the
+/// copy splits the faces into slivers along it, and which slivers come out depends on the
+/// last bits of rounding.
+fn drop_overlapping(curves: &mut Vec<Curve>, tol: f64) {
+    if curves.len() < 2 {
+        return;
+    }
+    let length = |c: &Curve| c.pts.windows(2).map(|w| (w[1] - w[0]).length()).sum::<f64>();
+    let mut order: Vec<usize> = (0..curves.len()).collect();
+    order.sort_by(|&i, &j| length(&curves[j]).total_cmp(&length(&curves[i])));
+    let near = tol * 20.0;
+    let dist_to = |p: DVec3, c: &Curve| -> f64 {
+        c.pts.windows(2).map(|w| {
+            let e = w[1] - w[0];
+            let t = ((p - w[0]).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
+            (w[0] + e * t - p).length()
+        }).fold(f64::INFINITY, f64::min)
+    };
+    let mut kept: Vec<usize> = Vec::new();
+    let mut dropped = vec![false; curves.len()];
+    for &i in &order {
+        let c = &curves[i];
+        let retraces = kept.iter().any(|&k| {
+            let on = c.pts.iter().filter(|p| dist_to(**p, &curves[k]) <= near).count();
+            on * 10 >= c.pts.len() * 9
+        });
+        if retraces {
+            dropped[i] = true;
+            if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() {
+                eprintln!("  chain A{} B{} of {} points retraces a longer one: dropped", c.fa, c.fb, c.pts.len());
+            }
+        } else {
+            kept.push(i);
+        }
+    }
+    let mut k = 0;
+    curves.retain(|_| {
+        let keep = !dropped[k];
+        k += 1;
+        keep
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1007,6 +1052,26 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
 
 #[cfg(test)]
 mod tests {
+
+    /// Two chains along one intersection: the shorter copy goes, a separate one stays.
+    #[test]
+    fn retraced_chains_are_dropped() {
+        let arc = |a0: f64, a1: f64, n: usize, z: f64| -> Curve {
+            let pts: Vec<DVec3> = (0..=n).map(|k| {
+                let t = a0 + (a1 - a0) * k as f64 / n as f64;
+                DVec3::new(4.08 * t.cos(), 4.08 * t.sin(), z)
+            }).collect();
+            let m = pts.len();
+            Curve { fa: 1, fb: 6, pts, uva: vec![DVec2::ZERO; m], uvb: vec![DVec2::ZERO; m] }
+        };
+        let mut curves = vec![arc(2.3, 4.0, 352, 6.0), arc(2.32, 2.81, 17, 6.0), arc(4.5, 5.0, 20, 6.0)];
+        // the copy's first point was moved a little off the plane
+        curves[1].pts[0].z += 0.0123;
+        drop_overlapping(&mut curves, 1e-3);
+        assert_eq!(curves.len(), 2);
+        assert_eq!(curves[0].pts.len(), 353);
+        assert_eq!(curves[1].pts.len(), 21);
+    }
 
     /// A stray triangle in a face's tessellation (one that bridges a trim loop, say) crosses
     /// the other face where the surfaces do not meet: its chain must not become a curve.
