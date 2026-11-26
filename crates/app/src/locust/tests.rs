@@ -897,3 +897,71 @@ mod helix {
         assert!((DVec3::new(e.x, e.y, 0.0).length() - 2.0).abs() < 1e-6, "{e:?}");
     }
 }
+
+// --------------------------------------------------------------- populate
+
+mod populate {
+    use super::*;
+    use crate::locust::components::Level;
+
+    fn pts(t: &DataTree) -> Vec<DVec3> {
+        t.items().iter().map(super::super::data::as_point).collect()
+    }
+
+    fn populate_circle(count: i64, seed: i64) -> (Vec<DVec3>, Ctx, String) {
+        let mut g = Graph::new();
+        let c = node(&mut g, "Circle", &[("Radius", json!(10.0))]);
+        let p = node(&mut g, "Populate 2D", &[("Count", json!(count)), ("Seed", json!(seed))]);
+        g.connect(&c, 0, &p, 0);
+        let mut ctx = Ctx::default();
+        let out = solve(&g, &mut ctx);
+        (pts(&out[&p][0]), ctx, p)
+    }
+
+    fn warnings(ctx: &Ctx, uid: &str) -> Vec<String> {
+        ctx.diagnostics.get(uid).map(|d| d.iter().filter(|x| x.level == Level::Warning).map(|x| x.message.clone()).collect()).unwrap_or_default()
+    }
+
+    #[test]
+    fn populate_2d_inside_and_deterministic() {
+        let (a, _, _) = populate_circle(200, 1);
+        assert_eq!(a.len(), 200);
+        assert!(a.iter().all(|p| p.length() <= 10.0 + 1e-9 && p.z.abs() < 1e-9));
+        let (b, _, _) = populate_circle(200, 1);
+        assert_eq!(a, b, "same seed, same points");
+        let (c, _, _) = populate_circle(200, 2);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn populate_2d_count_limits() {
+        let (a, ctx, p) = populate_circle(0, 1);
+        assert!(a.is_empty());
+        assert_eq!(warnings(&ctx, &p), ["count is 0"]);
+        let (a, ctx, p) = populate_circle(10_000_000, 1);
+        assert_eq!(a.len(), 100_000);
+        assert_eq!(warnings(&ctx, &p), ["count limited to 100000"]);
+    }
+
+    #[test]
+    fn populate_2d_default_region() {
+        let out = solve_node("Populate 2D", &[("Count", json!(50))]);
+        let p = pts(&out[0]);
+        assert_eq!(p.len(), 50);
+        assert!(p.iter().all(|q| (0.0..=100.0).contains(&q.x) && (0.0..=100.0).contains(&q.y)));
+    }
+
+    #[test]
+    fn populate_geometry_on_sphere() {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Sphere", &[("Radius", json!(10.0))]);
+        let p = node(&mut g, "Populate Geometry", &[("Count", json!(300)), ("Seed", json!(4))]);
+        g.connect(&s, 0, &p, 0);
+        let out = run(&g);
+        let ps = pts(&out[&p][0]);
+        assert_eq!(ps.len(), 300);
+        assert!(ps.iter().all(|q| (q.length() - 10.0).abs() < 1e-3), "{:?}", ps.iter().map(|q| q.length()).fold(0.0f64, |m, l| m.max((l - 10.0).abs())));
+        let above = ps.iter().filter(|q| q.z > 0.0).count();
+        assert!((100..200).contains(&above), "spread over the whole sphere: {above} above the equator");
+    }
+}

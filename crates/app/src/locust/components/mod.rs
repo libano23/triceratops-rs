@@ -27,6 +27,7 @@ mod math;
 mod mesh;
 mod output;
 mod params;
+pub mod populate;
 mod sets;
 mod solid;
 mod string;
@@ -392,6 +393,7 @@ fn build() -> Registry {
     let mut r = Registry::default();
     params::register(&mut r);
     vector::register(&mut r);
+    populate::register(&mut r);
     math::register(&mut r);
     logic::register(&mut r);
     sets::register(&mut r);
