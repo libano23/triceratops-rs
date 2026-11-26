@@ -1149,6 +1149,8 @@ fn helical_sweep_unites_with_its_core() {
 /// The female thread the same way: a hex nut body minus the swept screw is one closed solid.
 #[test]
 fn hex_nut_minus_a_swept_screw() {
+    // TEMPORARY: diagnose the macOS-only difference in CI
+    std::env::set_var("TRICERATOPS_BOOL_DEBUG", "1");
     let g = crate::locust::authoring::prepare(&json!({
         "nodes": [
             { "type": "Script", "nickname": "Prof", "values": { "_inputs": [], "_outputs": ["profile"], "code": "let rc = 5.0 - 0.6134 * 1.5; let inner = rc - 0.15; let w = 2.0 * (5.0 - inner) * 0.57735; profile = polyline([point(inner, 0, -w / 2), point(5.0, 0, -0.06), point(5.0, 0, 0.06), point(inner, 0, w / 2)], true);" } },
@@ -1176,5 +1178,6 @@ fn hex_nut_minus_a_swept_screw() {
     assert!(b.closed);
     let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
     let hex = 3.0f64.sqrt() / 2.0 * 16.0 * 16.0 * 8.0;
+    eprintln!("NUTVOLUME {v}");
     assert!(v < hex - PI * 4.08 * 4.08 * 8.0 && v > hex - PI * 25.0 * 8.0, "volume {v}");
 }
