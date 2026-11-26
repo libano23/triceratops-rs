@@ -731,8 +731,7 @@ mod acceptance_tests {
             let _ = run_json(&mut app, &lines);
         }
         let r = run(&mut app, &["BooleanUnion", "#1,#4", ""]);
-        let log = r["log"].to_string();
-        assert!(r["added"].as_array().map_or(0, |a| a.len()) == 1 || log.contains("Boolean"), "{r}");
+        assert_eq!(r["added"].as_array().map_or(0, |a| a.len()), 1, "the thread and its rod make one solid: {r}");
         assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
     }
 

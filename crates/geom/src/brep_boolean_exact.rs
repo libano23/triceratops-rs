@@ -504,6 +504,8 @@ fn densify_original_segments(original: &Face, mut piece: Face) -> Face {
             })
         })
     };
+    let corners_u = c0_knots(&original.surface.knots_u, original.surface.degree_u);
+    let corners_v = c0_knots(&original.surface.knots_v, original.surface.degree_v);
     for l in piece.loops.iter_mut() {
         let mut out = Vec::with_capacity(l.len());
         let n = l.len();
@@ -512,14 +514,50 @@ fn densify_original_segments(original: &Face, mut piece: Face) -> Face {
             out.push(p);
             if on_edge(p, q) {
                 let m = original.segment_subdivisions(p, q);
-                for i in 1..m {
-                    out.push(p + (q - p) * (i as f64 / m as f64));
+                let mut ts: Vec<f64> = (1..m).map(|i| i as f64 / m as f64).collect();
+                // the surface's corners (C0 knot lines) the segment crosses are vertices too,
+                // or the border cuts them and misses the neighbouring face's edge
+                for (knots, a, b) in [(&corners_u, p.x, q.x), (&corners_v, p.y, q.y)] {
+                    if (b - a).abs() < 1e-15 {
+                        continue;
+                    }
+                    for &k in knots.iter() {
+                        let t = (k - a) / (b - a);
+                        if t > 1e-9 && t < 1.0 - 1e-9 {
+                            ts.push(t);
+                        }
+                    }
+                }
+                ts.sort_by(f64::total_cmp);
+                ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+                for t in ts {
+                    out.push(p + (q - p) * t);
                 }
             }
         }
         *l = out;
     }
     piece
+}
+
+/// Interior knots where the surface has a corner (multiplicity at least the degree: every
+/// knot of a degree-1 direction).
+fn c0_knots(knots: &[f64], degree: usize) -> Vec<f64> {
+    let inner = &knots[degree.min(knots.len())..knots.len().saturating_sub(degree)];
+    let mut out = Vec::new();
+    let mut i = 1;
+    while i + 1 < inner.len() {
+        let k = inner[i];
+        let mut mult = 1;
+        while i + mult < inner.len() && (inner[i + mult] - k).abs() < 1e-12 {
+            mult += 1;
+        }
+        if mult >= degree && i + mult < inner.len() {
+            out.push(k);
+        }
+        i += mult;
+    }
+    out
 }
 
 /// An interior point of a (u, v) region: the sample farthest from the boundary.
@@ -903,6 +941,25 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
 
 #[cfg(test)]
 mod tests {
+
+    /// A cut piece's border along the original outline gets a vertex wherever it crosses a
+    /// corner of the surface (a knot of a straight-sided profile): without it the border cut
+    /// the corner and no longer met the neighbouring face (a thread's crest at its start cap).
+    #[test]
+    fn border_segments_keep_the_surface_corners() {
+        use crate::NurbsCurve;
+        let square = NurbsCurve::polyline(vec![DVec3::new(0.0, 0.0, 0.0), DVec3::new(1.0, 0.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(0.0, 1.0, 0.0), DVec3::new(0.0, 0.0, 0.0)]).unwrap();
+        let s = crate::NurbsSurface::extrude(&square, DVec3::new(0.0, 0.0, 5.0)).unwrap();
+        let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+        let original = Face::untrimmed(s.clone());
+        // a piece whose bottom border runs from the first side, across a corner, to the second
+        let (ua, ub) = (u0 + (u1 - u0) * 0.17, u0 + (u1 - u0) * 0.42);
+        let piece = Face { surface: s.clone(), loops: vec![vec![DVec2::new(ua, v0), DVec2::new(ub, v0), DVec2::new(ub, v1), DVec2::new(ua, v1)]] };
+        let dense = densify_original_segments(&original, piece);
+        let corner = DVec3::new(1.0, 0.0, 0.0);
+        assert!(dense.loops[0].iter().any(|q| (s.point_at(q.x, q.y) - corner).length() < 1e-9), "the corner (1,0,0) is a vertex of the border");
+    }
+
     use super::*;
     use crate::{NurbsCurve, NurbsSurface, Plane};
 

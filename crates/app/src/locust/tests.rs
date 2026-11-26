@@ -1118,7 +1118,6 @@ fn surface_voronoi_count_warnings() {
 /// A thread made the classic way: an ISO profile swept along a helix and united with its
 /// core. The union must be one closed solid.
 #[test]
-#[ignore = "in progress: the exact Boolean leaves the thread's start cap unmatched"]
 fn helical_sweep_unites_with_its_core() {
     let g = crate::locust::authoring::prepare(&json!({
         "nodes": [
