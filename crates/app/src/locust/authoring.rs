@@ -34,6 +34,13 @@ pub fn prepare(input: &J) -> Result<Graph, String> {
         }
         nodes.push(n);
     }
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for n in &nodes {
+        *seen.entry(n["uid"].as_str().unwrap_or("").to_string()).or_default() += 1;
+    }
+    if let Some((uid, k)) = seen.iter().find(|(_, k)| **k > 1) {
+        return Err(format!("uid \"{uid}\" is used by {k} nodes"));
+    }
     // a graph of just the nodes, to ask for ports
     let shell = Graph::from_json(&json!({ "nodes": nodes, "clusters": clusters }));
     let handles = Handles::new(&shell);
@@ -43,6 +50,8 @@ pub fn prepare(input: &J) -> Result<Graph, String> {
             let (src, out) = handles.port(&shell, from, true)?;
             let (dst, inp) = handles.port(&shell, to, false)?;
             (src, out, dst, inp)
+        } else if c.get("from").is_some() || c.get("to").is_some() || c.get("src").is_none() || c.get("dst").is_none() {
+            return Err("a connection needs \"from\" and \"to\" (or src, src_port, dst, dst_port)".into());
         } else {
             let src = handles.node(c.get("src").and_then(|v| v.as_str()).unwrap_or(""))?;
             let dst = handles.node(c.get("dst").and_then(|v| v.as_str()).unwrap_or(""))?;
@@ -346,5 +355,17 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(g.connections.len(), 2);
+    }
+
+    #[test]
+    fn duplicate_uids_are_refused() {
+        let e = err(json!({ "nodes": [{ "uid": "a", "type": "Number" }, { "uid": "a", "type": "Circle" }] }));
+        assert_eq!(e, "uid \"a\" is used by 2 nodes");
+    }
+
+    #[test]
+    fn half_a_connection_says_what_is_missing() {
+        let e = err(json!({ "nodes": [{ "type": "Number" }], "connections": [{ "from": "Number" }] }));
+        assert_eq!(e, "a connection needs \"from\" and \"to\" (or src, src_port, dst, dst_port)");
     }
 }

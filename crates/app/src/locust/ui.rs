@@ -758,6 +758,10 @@ impl Editor {
 
     /// Put the pending Bake geometry into the document. Returns the number of objects.
     pub fn bake_into(&mut self, doc: &mut Document) -> usize {
+        if self.solving().is_some() {
+            self.status = "Still solving — bake when the solve has finished.".into();
+            return 0;
+        }
         if self.bake.is_empty() {
             self.status = "Nothing to bake — connect an Output › Bake component.".into();
             return 0;
@@ -1920,5 +1924,20 @@ mod solve_job_tests {
         ed.cancel_solve();
         wait(&mut ed, Duration::from_secs(10));
         assert_eq!(ed.last_outcome(), Err("the solve was cancelled".to_string()));
+    }
+
+    /// Bake waits for a running solve instead of baking the previous result.
+    #[test]
+    fn bake_waits_for_the_solve() {
+        let mut doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve_blocking(&doc);
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        assert_eq!(ed.bake_into(&mut doc), 0);
+        assert!(ed.status.contains("solving"), "{}", ed.status);
+        ed.cancel_solve();
+        wait(&mut ed, Duration::from_secs(5));
     }
 }

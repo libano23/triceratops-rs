@@ -472,13 +472,28 @@ impl LoopIndex {
         let ix = |x: f64| (((x - min.x) / cell) as isize).clamp(0, nx as isize - 1) as usize;
         let iy = |y: f64| (((y - min.y) / cell) as isize).clamp(0, ny as isize - 1) as usize;
         for (si, (a, b, _)) in segs.iter().enumerate() {
-            let (x0, x1) = (ix(a.x.min(b.x)), ix(a.x.max(b.x)));
             let (y0, y1) = (iy(a.y.min(b.y)), iy(a.y.max(b.y)));
-            for y in y0..=y1 {
-                bands[y].push(si as u32);
-                for x in x0..=x1 {
-                    cells[y * nx + x].push(si as u32);
+            for band in &mut bands[y0..=y1] {
+                band.push(si as u32);
+            }
+            // the cells along the segment (and their neighbours, so a sample that skips a
+            // corner still finds it): stepping by a third of a cell
+            let steps = (((*b - *a).length() / cell) * 3.0).ceil() as usize + 1;
+            let mut last = usize::MAX;
+            for k in 0..=steps {
+                let p = *a + (*b - *a) * (k as f64 / steps as f64);
+                let (cx, cy) = (ix(p.x), iy(p.y));
+                for (dx, dy) in [(0isize, 0isize), (1, 0), (0, 1), (1, 1), (-1, 0), (0, -1), (-1, -1), (1, -1), (-1, 1)] {
+                    let (x, y) = (cx as isize + dx, cy as isize + dy);
+                    if x < 0 || y < 0 || x >= nx as isize || y >= ny as isize {
+                        continue;
+                    }
+                    let c = y as usize * nx + x as usize;
+                    if c != last && cells[c].last() != Some(&(si as u32)) {
+                        cells[c].push(si as u32);
+                    }
                 }
+                last = cy * nx + cx;
             }
         }
         Self { segs, loops: loops.len(), min, cell, nx, ny, cells, bands }
@@ -943,6 +958,18 @@ mod tests {
         }
         assert_eq!(b.tessellate(1, 1).triangle_count(), 12);
         assert!(b.compute_closed());
+    }
+
+    /// A long diagonal trim segment is filed only in the cells it crosses, not in every cell
+    /// of its bounding box (which could take gigabytes).
+    #[test]
+    fn loop_index_files_segments_along_their_path() {
+        let diamond = vec![DVec2::new(500.0, 0.0), DVec2::new(1000.0, 500.0), DVec2::new(500.0, 1000.0), DVec2::new(0.0, 500.0)];
+        let index = LoopIndex::new(&[diamond], 1.0);
+        let entries: usize = index.cells.iter().map(|c| c.len()).sum();
+        assert!(entries < 20_000, "{entries} cell entries");
+        assert!(index.inside(DVec2::new(500.0, 500.0)) && !index.inside(DVec2::new(10.0, 10.0)));
+        assert!(index.near_outline(DVec2::new(750.0, 250.2), 1.0));
     }
 
     /// A curved face trimmed by loops of thousands of points (a threaded nut's bore) must

@@ -165,8 +165,10 @@ pub enum BooleanError {
     TooComplex { polygons: usize },
     /// The running job was cancelled.
     Cancelled,
-    /// Nothing came out (or the Boolean thread panicked).
+    /// Nothing came out.
     Empty,
+    /// The Boolean thread panicked (a geometry case the BSP does not handle).
+    Panicked,
 }
 
 impl std::fmt::Display for BooleanError {
@@ -175,6 +177,7 @@ impl std::fmt::Display for BooleanError {
             BooleanError::TooComplex { polygons } => write!(f, "Boolean too complex ({polygons} polygons) — simplify the inputs or use a coarser mesh"),
             BooleanError::Cancelled => write!(f, "cancelled"),
             BooleanError::Empty => write!(f, "Boolean produced nothing"),
+            BooleanError::Panicked => write!(f, "Boolean failed (internal error)"),
         }
     }
 }
@@ -384,12 +387,12 @@ pub const TAG_B: u32 = 0x8000_0000;
 /// parameters; the result polygons keep their tags so faces can be rebuilt as trimmed surfaces.
 pub fn mesh_boolean_tagged(a: &Mesh, a_uv: &[DVec2], a_tags: &[u32], b: &Mesh, b_uv: &[DVec2], b_tags: &[u32], op: BooleanOp) -> Result<Vec<TaggedPolygon>, BooleanError> {
     let budget = Budget::for_inputs(a.triangle_count(), b.triangle_count());
-    let polys = with_big_stack(|| {
+    let polys = on_big_stack(|| {
         let pa = mesh_to_tagged_polygons(a, a_uv, a_tags, 0);
         let pb = mesh_to_tagged_polygons(b, b_uv, b_tags, TAG_B);
         polygons_boolean(pa, pb, op, budget)
     })
-    .unwrap_or(Err(BooleanError::Empty))?;
+    ?;
     Ok(polys.into_iter().map(|p| TaggedPolygon { tag: p.tag, normal: p.plane.normal, points: p.vertices.iter().map(|v| (v.pos, v.uv)).collect() }).collect())
 }
 
@@ -423,7 +426,7 @@ pub fn mesh_boolean(a: &Mesh, b: &Mesh, op: BooleanOp) -> Result<Mesh, BooleanEr
 
 /// `mesh_boolean` with an explicit budget.
 fn boolean_budgeted(a: &Mesh, b: &Mesh, op: BooleanOp, budget: Budget) -> Result<Mesh, BooleanError> {
-    let polys = with_big_stack(|| polygons_boolean(mesh_to_polygons(a), mesh_to_polygons(b), op, budget)).unwrap_or(Err(BooleanError::Empty))?;
+    let polys = on_big_stack(|| polygons_boolean(mesh_to_polygons(a), mesh_to_polygons(b), op, budget))?;
     if polys.is_empty() {
         return Err(BooleanError::Empty);
     }
@@ -447,6 +450,11 @@ pub fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Option<T> {
             .join()
             .ok()
     })
+}
+
+/// A Boolean on the big-stack thread; a panic there is `Panicked`, not a crash.
+fn on_big_stack<T: Send>(f: impl FnOnce() -> Result<T, BooleanError> + Send) -> Result<T, BooleanError> {
+    with_big_stack(f).unwrap_or(Err(BooleanError::Panicked))
 }
 
 /// Build both trees and combine them; everything (including dropping the deep trees) happens
@@ -578,6 +586,13 @@ mod tests {
         let cancelled_at = canceller.join().unwrap();
         assert_eq!(r.err(), Some(BooleanError::Cancelled));
         assert!(done.duration_since(cancelled_at) < std::time::Duration::from_millis(500), "took {:?} after cancel", done.duration_since(cancelled_at));
+    }
+
+    #[test]
+    fn a_panic_in_the_boolean_thread_is_an_error() {
+        let r: Result<(), BooleanError> = on_big_stack(|| panic!("bad polygon"));
+        assert_eq!(r, Err(BooleanError::Panicked));
+        assert_eq!(BooleanError::Panicked.to_string(), "Boolean failed (internal error)");
     }
 
     #[test]

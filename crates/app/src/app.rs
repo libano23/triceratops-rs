@@ -1440,6 +1440,11 @@ impl App {
         self.after_command_step(&before);
         self.process_requests();
         self.assistant_mode = was;
+        if self.runner.job().is_none() && !self.pending_lines.is_empty() && self.pending_assistant && !self.cmd_text.trim().is_empty() {
+            // the user started typing meanwhile: their text wins over the assistant's queue
+            let n = std::mem::take(&mut self.pending_lines).len();
+            self.log.push(format!("{n} assistant command line(s) abandoned: the user is typing."));
+        }
         if self.runner.job().is_none() && !self.pending_lines.is_empty() {
             let lines = std::mem::take(&mut self.pending_lines);
             self.assistant_mode = self.pending_assistant;
@@ -1867,11 +1872,12 @@ impl App {
         if self.runner.job().is_some() {
             let reason = if self.assistant_mode { "cancelled" } else { "cancelled by the user" };
             self.cancel_job(reason);
-        } else if self.locust.cancel_solve() {
-            // Esc stopped the Locust solve
         } else if self.runner.is_active() {
+            // the user's own command first; a second Esc stops a Locust solve
             self.with_ctx(|r, ctx| r.cancel(ctx));
             self.constraints = Constraints::default();
+        } else if self.locust.cancel_solve() {
+            // Esc stopped the Locust solve
         } else if self.any_grip_selected() || !self.doc.selection.is_empty() {
             for g in self.grips.iter_mut() {
                 g.selected = false;

@@ -208,4 +208,47 @@ mod tests {
         app.cancel_job("cancelled");
         wait(&mut app, Duration::from_secs(5));
     }
+
+    /// Script lines an assistant queued behind a job are dropped, not typed over what the
+    /// user is typing when the job ends.
+    #[test]
+    fn pending_assistant_lines_yield_to_typing() {
+        let mut app = App::new();
+        app.assistant_mode = true;
+        run(&mut app, &["Box", "0,0,0", "10,10,0", "10", "Box", "5,5,5", "15,15,5", "10", "BooleanUnion", "#1,#2", "", "Sphere", "50,0,0", "5"]);
+        app.assistant_mode = false;
+        assert!(!app.pending_lines.is_empty());
+        app.cmd_text = "Lin".into();
+        wait(&mut app, Duration::from_secs(60));
+        assert_eq!(app.cmd_text, "Lin", "the user's text is kept");
+        assert_eq!(app.doc.objects().count(), 1, "the sphere was not made");
+        assert!(app.log.iter().any(|l| l.contains("abandoned")), "{:?}", app.log);
+        assert!(app.pending_lines.is_empty());
+    }
+
+    /// Esc leaves the user's own command before it stops a Locust solve.
+    #[test]
+    fn esc_leaves_the_users_command_first() {
+        let mut app = App::new();
+        let g = crate::locust::authoring::prepare(&serde_json::json!({
+            "nodes": [{ "type": "Populate 2D", "nickname": "P", "values": { "Count": 5000 } }, { "type": "Voronoi" }],
+            "connections": [{ "from": "P", "to": "Voronoi.Points" }]
+        }))
+        .unwrap();
+        app.locust.replace_root(g);
+        app.locust.solve(&app.doc);
+        app.cmd_text = "Circle".into();
+        app.submit();
+        assert!(app.runner.is_active() && app.locust.solving().is_some());
+        app.cancel();
+        assert!(!app.runner.is_active(), "the command went first");
+        assert!(app.locust.solving().is_some(), "the solve goes on");
+        app.cancel();
+        let t = Instant::now();
+        while app.locust.solving().is_some() {
+            app.locust.poll();
+            assert!(t.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
 }

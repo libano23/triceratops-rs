@@ -35,7 +35,7 @@ impl RunState {
 
 /// Methods that change the model, refused while a job runs.
 fn changes_model(method: &str) -> bool {
-    matches!(method, "run_commands" | "undo" | "redo") || method.starts_with("locust_")
+    matches!(method, "run_commands" | "undo" | "redo" | "locust_set_graph" | "locust_set_values" | "locust_solve" | "locust_bake")
 }
 
 fn ok(v: Value) -> Outcome {
@@ -871,6 +871,15 @@ mod acceptance_tests {
         let r = ok_settled(&mut app, "locust_set_values", &json!({ "values": { "F.Expression": "x * 10", "S.code": "a = 7;" } }));
         let panels = r["panels"].to_string();
         assert!(panels.contains("20") && panels.contains('7'), "{r}");
+    }
+
+    #[test]
+    fn read_only_locust_tools_work_while_the_user_types() {
+        let mut app = App::new();
+        app.cmd_text = "Box".into();
+        ok_reply(handle(&mut app, "locust_get_graph", &json!({})));
+        ok_reply(handle(&mut app, "locust_components", &json!({ "query": "circle" })));
+        assert!(err_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }))).contains("the user"));
     }
 
     #[test]

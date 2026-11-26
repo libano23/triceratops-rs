@@ -97,8 +97,13 @@ impl Host {
             None => {
                 if last.elapsed() >= Duration::from_secs(1) {
                     *last = Instant::now();
-                    // a bridge that has gone away: keep the run, the job still ends normally
-                    let _ = reply.send(Response::progress(*id, busy_json(app)));
+                    if reply.send(Response::progress(*id, busy_json(app))).is_err() {
+                        // nobody waits for this any more (the assistant went away): stop the work
+                        if !app.cancel_job("cancelled (the assistant disconnected)") {
+                            app.locust.cancel_solve();
+                        }
+                        return false;
+                    }
                 }
                 true
             }
@@ -207,6 +212,23 @@ mod tests {
         assert_eq!(canceller.join().unwrap().unwrap()["cancelled"], true);
         let r = caller.join().unwrap().unwrap();
         assert!(r["log"].to_string().contains("BooleanUnion cancelled"), "{r}");
+    }
+
+    /// When the assistant that asked has gone away, its job is cancelled instead of running on.
+    #[test]
+    fn a_job_whose_caller_left_is_cancelled() {
+        let mut app = App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let mut host = Host::start_in(&temp_dir("left"), || {}).unwrap();
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("a job") };
+        let (tx, rx) = std::sync::mpsc::channel();
+        drop(rx); // the bridge's side is gone
+        host.runs.push((state, 1, tx, Instant::now() - Duration::from_secs(2)));
+        host.finish_runs(&mut app);
+        assert!(app.job_status().is_some_and(|j| j.cancelling), "cancelled once nobody listens");
+        assert!(host.runs.is_empty());
+        app.settle();
+        assert_eq!(app.doc.objects().count(), 2);
     }
 
     #[test]
