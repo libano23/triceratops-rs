@@ -10,7 +10,7 @@
 //! Geometry comes from the application's own kernel (`tri_geom`) and the same helpers the
 //! modelling commands use; nothing is re-implemented for the node graph.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, OnceLock};
 
 use glam::DVec3;
@@ -95,6 +95,20 @@ pub fn tree_d(name: &'static str, kind: Kind, d: Value) -> InputSpec {
     spec(name, kind, Some(d))
 }
 
+/// How serious a node's message is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Level {
+    Warning,
+    Error,
+}
+
+/// A message a node left during a solve (shown on the canvas and in the MCP report).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Diagnostic {
+    pub level: Level,
+    pub message: String,
+}
+
 /// Where previews and bakes go during a solve, and the document geometry parameters read.
 #[derive(Default)]
 pub struct Ctx<'a> {
@@ -103,12 +117,34 @@ pub struct Ctx<'a> {
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Geometry waiting for the Bake button.
     pub bake: Vec<Arc<Geometry>>,
+    /// Messages by node uid.
+    pub diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// The node being solved (messages go to it).
+    pub current: Option<String>,
 }
 
 impl<'a> Ctx<'a> {
     pub fn with_doc(doc: &'a Document) -> Self {
         Self { doc: Some(doc), ..Default::default() }
     }
+
+    fn note(&mut self, level: Level, message: String) {
+        let Some(uid) = self.current.clone() else { return };
+        let list = self.diagnostics.entry(uid).or_default();
+        // element components run once per combination: say each thing once
+        if !list.iter().any(|d| d.level == level && d.message == message) {
+            list.push(Diagnostic { level, message });
+        }
+    }
+
+    pub fn error(&mut self, msg: impl Into<String>) {
+        self.note(Level::Error, msg.into());
+    }
+
+    pub fn warn(&mut self, msg: impl Into<String>) {
+        self.note(Level::Warning, msg.into());
+    }
+
 }
 
 /// Values a geometry output can be shown or baked from (points become point objects).

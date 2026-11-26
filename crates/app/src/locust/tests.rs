@@ -713,3 +713,62 @@ fn numbers_print_like_python() {
     assert_eq!(py_float(1e-5), "1e-05");
     assert_eq!(py_float(1.5e20), "1.5e+20");
 }
+
+// --------------------------------------------------------------- diagnostics
+
+mod diagnostics {
+    use super::*;
+    use crate::locust::components::Level;
+
+    fn messages(ctx: &Ctx, uid: &str, level: Level) -> Vec<String> {
+        ctx.diagnostics.get(uid).map(|d| d.iter().filter(|x| x.level == level).map(|x| x.message.clone()).collect()).unwrap_or_default()
+    }
+
+    #[test]
+    fn panic_becomes_error_diagnostic() {
+        let mut reg = Registry::default();
+        reg.elem("Boom", "Test", vec![num("A", 1.0)], &["R"], |_, _| panic!("boom here"));
+        let mut g = Graph::new();
+        let n = node(&mut g, "Boom", &[]);
+        let mut ctx = Ctx::default();
+        solve_with(&g, &mut ctx, &HashMap::new(), &reg);
+        let errs = messages(&ctx, &n, Level::Error);
+        assert!(errs.iter().any(|m| m.contains("boom here")), "{errs:?}");
+    }
+
+    #[test]
+    fn empty_result_warns() {
+        let mut g = Graph::new();
+        let number = node(&mut g, "Number", &[("Value", json!(3.0))]);
+        let eval = node(&mut g, "Evaluate Curve", &[]);
+        g.connect(&number, 0, &eval, 0);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        assert_eq!(messages(&ctx, &eval, Level::Warning), vec!["no result".to_string()]);
+        assert!(messages(&ctx, &number, Level::Warning).is_empty());
+    }
+
+    #[test]
+    fn unknown_kind_errors() {
+        let mut g = Graph::new();
+        let n = node(&mut g, "Nope", &[]);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        assert_eq!(messages(&ctx, &n, Level::Error), vec!["unknown component Nope".to_string()]);
+    }
+
+    /// A Boolean that cannot be done says why on its node.
+    #[test]
+    fn boolean_error_reaches_node() {
+        let mut g = Graph::new();
+        let a = node(&mut g, "Line", &[]);
+        let b = node(&mut g, "Line", &[("End", json!([0.0, 1.0, 0.0]))]);
+        let u = node(&mut g, "Union", &[]);
+        g.connect(&a, 0, &u, 0);
+        g.connect(&b, 0, &u, 1);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        let errs = messages(&ctx, &u, Level::Error);
+        assert!(errs.iter().any(|m| m.contains("cannot be combined")), "{errs:?}");
+    }
+}

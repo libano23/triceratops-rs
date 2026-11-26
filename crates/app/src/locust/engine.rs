@@ -45,9 +45,16 @@ fn input_tree(graph: &Graph, node: &Node, index: usize, comp: &Component, output
     tree
 }
 
-/// Run `f` and turn a panic in geometry code into "no result".
-fn guarded<T>(f: impl FnOnce() -> Option<T>) -> Option<T> {
-    catch_unwind(AssertUnwindSafe(f)).ok().flatten()
+/// Run `f` and turn a panic in geometry code into "no result", noted as an error on the node.
+fn guarded<T>(ctx_errors: &mut Vec<String>, f: impl FnOnce() -> Option<T>) -> Option<T> {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(payload) => {
+            let msg = payload.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| payload.downcast_ref::<String>().cloned()).unwrap_or_else(|| "component panicked".into());
+            ctx_errors.push(msg);
+            None
+        }
+    }
 }
 
 fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx, trees: &[DataTree]) -> Vec<DataTree> {
@@ -55,13 +62,15 @@ fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx
     let active: Vec<usize> = (0..trees.len()).filter(|&i| !(comp.inputs[i].optional && trees[i].is_empty())).collect();
     let cast: Vec<DataTree> = active.iter().map(|&i| cast_tree(&trees[i], comp.inputs[i].kind)).collect();
     let combos = match_trees(&cast);
+    let ran = !combos.is_empty();
     let mut buckets: Vec<BTreeMap<Vec<i64>, Vec<Value>>> = vec![BTreeMap::new(); comp.outputs.len()];
+    let mut panics = Vec::new();
     for combo in combos {
         let mut args = vec![Value::Null; trees.len()];
         for (k, &i) in active.iter().enumerate() {
             args[i] = combo.values[k].clone();
         }
-        let res = guarded(|| f(ctx, &Args(&args)));
+        let res = guarded(&mut panics, || f(ctx, &Args(&args)));
         let Some(vals) = res else { continue };
         for (k, v) in vals.into_iter().enumerate().take(comp.outputs.len()) {
             match v {
@@ -71,11 +80,21 @@ fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx
             }
         }
     }
+    for p in panics {
+        ctx.error(p);
+    }
+    if ran && !comp.outputs.is_empty() && buckets.iter().all(|b| b.is_empty()) && !ctx.diagnostics.get(ctx.current.as_deref().unwrap_or("")).is_some_and(|d| d.iter().any(|x| x.level == super::components::Level::Error)) {
+        ctx.warn("no result");
+    }
     buckets.into_iter().map(|b| DataTree { branches: b }).collect()
 }
 
 fn tree_outputs(comp: &Component, f: super::components::TreeFn, ctx: &mut Ctx, trees: &[DataTree]) -> Vec<DataTree> {
-    let mut out = guarded(|| Some(f(ctx, trees))).unwrap_or_default();
+    let mut panics = Vec::new();
+    let mut out = guarded(&mut panics, || Some(f(ctx, trees))).unwrap_or_default();
+    for p in panics {
+        ctx.error(p);
+    }
     out.resize(comp.outputs.len(), DataTree::empty());
     out
 }
@@ -95,7 +114,18 @@ fn solve_cluster(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs, r
             seeds.insert(uid.to_string(), vec![raw_input_tree(graph, node, i, outputs)]);
         }
     }
+    let outer = ctx.current.clone();
     let inner_out = solve_with(&inner, ctx, &seeds, reg);
+    // what the nodes inside said is shown on the cluster node
+    ctx.current = outer.clone();
+    if let Some(uid) = outer {
+        for n in &inner.nodes {
+            if let Some(list) = ctx.diagnostics.remove(&n.uid) {
+                let moved: Vec<super::components::Diagnostic> = list.into_iter().map(|d| super::components::Diagnostic { level: d.level, message: format!("{}: {}", n.label(), d.message) }).collect();
+                ctx.diagnostics.entry(uid.clone()).or_default().extend(moved);
+            }
+        }
+    }
     ports("outputs")
         .iter()
         .map(|d| d.get("node").and_then(|x| x.as_str()).and_then(|uid| inner_out.get(uid)).and_then(|t| t.first()).cloned().unwrap_or_default())
@@ -112,6 +142,7 @@ pub fn solve_with(graph: &Graph, ctx: &mut Ctx, seeds: &HashMap<String, Vec<Data
     let mut outputs: Outputs = HashMap::new();
     for uid in graph.topological() {
         let Some(node) = graph.node(&uid) else { continue };
+        ctx.current = Some(uid.clone());
         if let Some(s) = seeds.get(&uid) {
             outputs.insert(uid, s.clone());
             continue;
@@ -122,6 +153,7 @@ pub fn solve_with(graph: &Graph, ctx: &mut Ctx, seeds: &HashMap<String, Vec<Data
             continue;
         }
         let Some(comp) = reg.get(&node.kind) else {
+            ctx.error(format!("unknown component {}", node.kind));
             outputs.insert(uid, Vec::new());
             continue;
         };

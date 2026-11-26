@@ -16,7 +16,7 @@ use egui::{epaint::CubicBezierShape, Align2, Color32, FontId, Key, Modifiers, Po
 use serde_json::{json, Value as J};
 use tri_doc::{Document, Geometry};
 
-use super::components::{registry, Ctx, InputSpec};
+use super::components::{registry, Ctx, Diagnostic, InputSpec, Level};
 use super::data::{DataTree, Kind, Value};
 use super::engine::{self, Outputs};
 use super::example::build_example;
@@ -133,6 +133,9 @@ pub struct Editor {
     /// Outputs of the graph on screen (the nested one inside a cluster).
     outputs: Outputs,
     displays: HashMap<String, String>,
+    /// Messages of the nodes on screen, and of the whole definition (the MCP report).
+    diagnostics: HashMap<String, Vec<Diagnostic>>,
+    pub root_diagnostics: HashMap<String, Vec<Diagnostic>>,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -167,6 +170,8 @@ impl Default for Editor {
             doc_revision: None,
             outputs: HashMap::new(),
             displays: HashMap::new(),
+            diagnostics: HashMap::new(),
+            root_diagnostics: HashMap::new(),
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -494,14 +499,31 @@ impl Editor {
         let root_out = engine::solve(&self.root, &mut ctx);
         self.preview = ctx.preview;
         self.bake = ctx.bake;
+        self.root_diagnostics = ctx.diagnostics;
         self.preview_rev += 1;
         // what the canvas shows: the nested graph solves on its own inside a cluster
-        self.outputs = if self.stack.is_empty() { root_out } else { engine::solve(self.graph(), &mut Ctx::with_doc(doc)) };
+        if self.stack.is_empty() {
+            self.outputs = root_out;
+            self.diagnostics = self.root_diagnostics.clone();
+        } else {
+            let mut inner = Ctx::with_doc(doc);
+            self.outputs = engine::solve(self.graph(), &mut inner);
+            self.diagnostics = inner.diagnostics;
+        }
         self.displays = self.graph().nodes.iter().filter(|n| n.kind == "Panel").map(|n| {
             let tree = engine::input_preview(self.graph(), &n.uid, 0, &self.outputs);
             (n.uid.clone(), tree.format(6, 5))
         }).collect();
-        self.status = format!("{} components · {} preview object(s) · {} to bake", self.root.nodes.len(), self.preview.len(), self.bake.len());
+        let count = |level: Level| self.root_diagnostics.values().flatten().filter(|d| d.level == level).count();
+        let (errors, warnings) = (count(Level::Error), count(Level::Warning));
+        let mut problems = String::new();
+        if errors > 0 {
+            problems.push_str(&format!(" · {errors} error(s)"));
+        }
+        if warnings > 0 {
+            problems.push_str(&format!(" · {warnings} warning(s)"));
+        }
+        self.status = format!("{} components · {} preview object(s) · {} to bake{problems}", self.root.nodes.len(), self.preview.len(), self.bake.len());
     }
 
     /// Put the pending Bake geometry into the document. Returns the number of objects.
@@ -1036,6 +1058,14 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
     let title = if ports.cluster { format!("⊞ {}", n.label()) } else { n.label().to_string() };
     let unknown = ports.inputs.is_empty() && ports.outputs.is_empty() && registry().get(&n.kind).is_none() && !ports.cluster;
     painter.text(head.left_center() + Vec2::new(8.0, 0.0), Align2::LEFT_CENTER, if unknown { format!("{title} (missing)") } else { title }, FontId::proportional(13.0), if n.disabled { MUTED } else { TEXT });
+    // errors and warnings: a dot in the header, the messages on hover
+    if let Some(list) = ed.diagnostics.get(uid).filter(|l| !l.is_empty()) {
+        let colour = if list.iter().any(|d| d.level == Level::Error) { Color32::from_rgb(0xe5, 0x48, 0x4d) } else { Color32::from_rgb(0xf0, 0xa0, 0x30) };
+        let c = Pos2::new(head.max.x - 10.0, head.center().y);
+        painter.circle_filled(c, 4.5, colour);
+        let text = list.iter().map(|d| format!("{}: {}", match d.level { Level::Error => "Error", Level::Warning => "Warning" }, d.message)).collect::<Vec<_>>().join("\n");
+        ui.interact(Rect::from_center_size(c, Vec2::splat(14.0)), ui.scope_id().with(("diag", uid)), Sense::hover()).on_hover_text(text);
+    }
     let font = FontId::proportional(12.0);
     // inputs
     for (i, (name, spec)) in ports.inputs.iter().enumerate() {
