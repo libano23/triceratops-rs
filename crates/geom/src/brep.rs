@@ -759,7 +759,7 @@ impl Brep {
                                 // is run the other way on its second pass: a part of the loop
                                 // going the same way is just this edge again (cut into segments
                                 // shorter than the tolerance, it would otherwise find itself)
-                                if distance_to_opposite_pass(s, oe, seg) < tol {
+                                if distance_to_other_pass(s, oe, seg, 20.0 * tol) < tol {
                                     found = true;
                                     break 'search;
                                 }
@@ -915,20 +915,32 @@ fn distance_to_polyline_skipping(p: DVec3, poly: &[DVec3], skip: usize, margin: 
     best
 }
 
-/// Distance from `p` (on segment `skip` of the closed polyline `poly`) to the parts of the
-/// polyline that run the opposite way: the second pass of a seam, never this edge itself.
-fn distance_to_opposite_pass(p: DVec3, poly: &[DVec3], skip: usize) -> f64 {
+/// Distance from `p` (on segment `skip` of the closed polyline `poly`) to another pass of
+/// the same loop: a part running the opposite way (a seam's second pass), or one running the
+/// same way but at least `reach` away along the loop. Never this edge itself, however short
+/// its segments.
+fn distance_to_other_pass(p: DVec3, poly: &[DVec3], skip: usize, reach: f64) -> f64 {
     let nseg = poly.len().saturating_sub(1);
     if nseg < 3 {
         return f64::INFINITY;
     }
     let skip = skip.min(nseg - 1);
     let dir = (poly[skip + 1] - poly[skip]).normalize_or_zero();
+    let mut cum = vec![0.0; nseg + 1];
+    for k in 0..nseg {
+        cum[k + 1] = cum[k] + (poly[k + 1] - poly[k]).length();
+    }
+    let total = cum[nseg];
+    let here = (cum[skip] + cum[skip + 1]) / 2.0;
     let mut best = f64::INFINITY;
     for (k, w) in poly.windows(2).enumerate() {
         let d = (k as i64 - skip as i64).rem_euclid(nseg as i64).min((skip as i64 - k as i64).rem_euclid(nseg as i64));
         let ab = w[1] - w[0];
-        if d <= 1 || ab.normalize_or_zero().dot(dir) > 0.0 {
+        let along = {
+            let x = ((cum[k] + cum[k + 1]) / 2.0 - here).abs();
+            x.min(total - x)
+        };
+        if d <= 1 || (ab.normalize_or_zero().dot(dir) > 0.0 && along < reach) {
             continue;
         }
         let l2 = ab.length_squared();

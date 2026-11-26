@@ -111,6 +111,12 @@ pub fn edge_surface(mut curves: Vec<NurbsCurve>) -> Result<Geometry, tri_geom::G
 /// Rotation-minimising frames along a curve at `n` stations: (point, rotation from start frame).
 pub fn rail_frames(rail: &NurbsCurve, n: usize) -> Vec<(DVec3, DQuat)> {
     let (t0, t1) = rail.domain();
+    let ts: Vec<f64> = (0..=n).map(|i| t0 + (t1 - t0) * i as f64 / n as f64).collect();
+    // a rail that bends everywhere the same way round (a helix, an arc): the Frenet frame keeps
+    // the profile facing the centre of curvature, as a thread's profile faces the axis
+    if let Some(qs) = frenet_frames(rail, &ts) {
+        return ts.iter().zip(qs).map(|(t, q)| (rail.point_at(*t), q)).collect();
+    }
     let mut out = Vec::with_capacity(n + 1);
     let mut q = DQuat::IDENTITY;
     let mut prev_t = rail.tangent_at(t0);
@@ -124,6 +130,63 @@ pub fn rail_frames(rail: &NurbsCurve, n: usize) -> Vec<(DVec3, DQuat)> {
         prev_t = tan;
     }
     out
+}
+
+/// Rotations taking the Frenet frame at `ts[0]` to the one at each parameter, when the rail
+/// has a well-defined principal normal everywhere that never flips; `None` otherwise (a
+/// straight stretch or an inflection: the caller uses a rotation-minimising frame).
+fn frenet_frames(rail: &NurbsCurve, ts: &[f64]) -> Option<Vec<DQuat>> {
+    let (t0, t1) = rail.domain();
+    let h = (t1 - t0).abs().max(1e-12) * 1e-5;
+    let length = rail.length().max(1e-12);
+    // (tangent, principal normal) at t, or None where the rail is (nearly) straight
+    let frame_at = |t: f64| -> Option<(DVec3, DVec3)> {
+        let d1 = rail.derivative_at(t);
+        let (ta, tb) = ((t - h).max(t0), (t + h).min(t1));
+        let d2 = (rail.derivative_at(tb) - rail.derivative_at(ta)) / (tb - ta).max(1e-15);
+        let speed = d1.length();
+        if speed < 1e-12 {
+            return None;
+        }
+        let tan = d1 / speed;
+        let normal = d2 - tan * d2.dot(tan);
+        // curvature times the rail's length: well away from straight
+        (normal.length() / (speed * speed) * length >= 1e-2).then(|| (tan, normal.normalize()))
+    };
+    // the decision must not depend on how many frames are asked for (a sweep's caps and its
+    // side ask for different numbers): check the whole rail densely for straight stretches
+    // and flipping normals
+    let checks = 4000;
+    let mut prev_n: Option<DVec3> = None;
+    for i in 0..=checks {
+        let (_, n) = frame_at(t0 + (t1 - t0) * i as f64 / checks as f64)?;
+        if prev_n.is_some_and(|p| p.dot(n) < 0.5) {
+            return None;
+        }
+        prev_n = Some(n);
+    }
+    let mut frames = Vec::with_capacity(ts.len());
+    for &t in ts {
+        let (tan, n) = frame_at(t)?;
+        frames.push(DQuat::from_mat3(&glam::DMat3::from_cols(tan, n, tan.cross(n))));
+    }
+    let start = frames[0].inverse();
+    Some(frames.into_iter().map(|q| (q * start).normalize()).collect())
+}
+
+/// Sections a sweep needs to follow its rail: one per 10° of turning (24 at least); the
+/// loft through them is cubic, so a helix is followed to a few thousandths of its radius.
+pub fn sweep_section_count(rail: &NurbsCurve) -> usize {
+    let (t0, t1) = rail.domain();
+    let samples = 2000;
+    let mut turning = 0.0;
+    let mut prev = rail.tangent_at(t0);
+    for i in 1..=samples {
+        let tan = rail.tangent_at(t0 + (t1 - t0) * i as f64 / samples as f64);
+        turning += prev.angle_between(tan);
+        prev = tan;
+    }
+    ((turning / 10f64.to_radians()).ceil() as usize).clamp(24, 2000)
 }
 
 pub fn sweep_sections_pub(profile: &NurbsCurve, rail: &NurbsCurve, n: usize) -> Vec<NurbsCurve> {
@@ -244,7 +307,7 @@ impl Command for Sweep2Cmd {
 
 /// Sweep1 of one profile along a rail (`translate_only`: ExtrudeCrvAlongCrv, no rotation).
 pub fn sweep1_surface(profile: &NurbsCurve, rail: &NurbsCurve, translate_only: bool) -> Option<NurbsSurface> {
-    let sections = sweep_sections(profile, rail, 24, !translate_only);
+    let sections = sweep_sections(profile, rail, sweep_section_count(rail), !translate_only);
     NurbsSurface::loft(&sections, 3).ok()
 }
 
@@ -981,4 +1044,32 @@ impl Command for ExtractSrfCmd {
 #[allow(dead_code)]
 fn unused() {
     let _ = yesno(true);
+}
+
+#[cfg(test)]
+mod sweep_tests {
+    use super::*;
+
+    /// A profile swept along a many-turn helix (a thread) stays a profile around the helix:
+    /// enough sections to follow every turn, and it keeps facing the axis instead of slowly
+    /// rolling round the rail.
+    #[test]
+    fn sweep_follows_a_helix() {
+        let rail = crate::commands::curve2::helix_curve(DVec3::ZERO, DVec3::new(0.0, 0.0, 15.0), 5.0, 5.0, 10.0, Some(DVec3::X)).unwrap();
+        // a 1×1 square across the rail at its start, in the plane of the axis
+        let profile = NurbsCurve::polyline(vec![DVec3::new(4.5, 0.0, -0.5), DVec3::new(5.5, 0.0, -0.5), DVec3::new(5.5, 0.0, 0.5), DVec3::new(4.5, 0.0, 0.5), DVec3::new(4.5, 0.0, -0.5)]).unwrap();
+        let s = sweep1_surface(&profile, &rail, false).unwrap();
+        let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+        let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+        for i in 0..=400 {
+            for j in 0..=16 {
+                let (u, v) = (u0 + (u1 - u0) * j as f64 / 16.0, v0 + (v1 - v0) * i as f64 / 400.0);
+                let p = s.point_at(u, v);
+                let r = (p.x * p.x + p.y * p.y).sqrt();
+                lo = lo.min(r);
+                hi = hi.max(r);
+            }
+        }
+        assert!(lo > 4.45 && hi < 5.55, "radius between {lo} and {hi}, expected 4.5..5.5");
+    }
 }

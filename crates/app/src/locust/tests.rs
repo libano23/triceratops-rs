@@ -1114,3 +1114,35 @@ fn surface_voronoi_count_warnings() {
         assert!(warnings.iter().any(|w| w == warning), "{count}: {warnings:?}");
     }
 }
+
+/// A thread made the classic way: an ISO profile swept along a helix and united with its
+/// core. The union must be one closed solid.
+#[test]
+#[ignore = "in progress: the exact Boolean leaves the thread's start cap unmatched"]
+fn helical_sweep_unites_with_its_core() {
+    let g = crate::locust::authoring::prepare(&json!({
+        "nodes": [
+            { "type": "Script", "nickname": "Prof", "values": { "_inputs": [], "_outputs": ["profile"], "code": "let rc = 5.0 - 0.6134 * 1.5; let inner = rc - 0.15; let w = 2.0 * (5.0 - inner) * 0.57735; profile = polyline([point(inner, 0, -w / 2), point(5.0, 0, -0.06), point(5.0, 0, 0.06), point(inner, 0, w / 2)], true);" } },
+            { "type": "Helix", "nickname": "Rail", "values": { "Radius": 4.08, "Pitch": 1.5, "End": [0, 0, 20] } },
+            { "type": "Extrude Along Curve", "nickname": "Thread" },
+            { "type": "Circle", "nickname": "C", "values": { "Radius": 4.08 } },
+            { "type": "Extrude", "nickname": "Core", "values": { "Distance": 20 } },
+            { "type": "Union", "nickname": "Screw" }
+        ],
+        "connections": [
+            { "from": "Prof.profile", "to": "Thread.Profile" }, { "from": "Rail", "to": "Thread.Path" },
+            { "from": "C", "to": "Core.Curve" }, { "from": "Core", "to": "Screw.A" }, { "from": "Thread", "to": "Screw.B" }
+        ]
+    }))
+    .unwrap();
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let screw = g.nodes.iter().find(|n| n.nickname.as_deref() == Some("Screw")).unwrap();
+    let result = out[&screw.uid][0].first().and_then(|v| v.as_geometry()).cloned();
+    let Some(tri_doc::Geometry::Brep(b)) = result.as_ref() else { panic!("no solid: {:?}", ctx.diagnostics.get(&screw.uid)) };
+    assert!(b.closed);
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    let core = PI * 4.08 * 4.08 * 20.0;
+    assert!(v > core && v < PI * 25.0 * 21.0, "volume {v}");
+}
+

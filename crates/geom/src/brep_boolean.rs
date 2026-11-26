@@ -33,9 +33,21 @@ fn tessellate_brep(b: &Brep) -> Tagged {
     let mut mesh = Mesh::new();
     let mut uv = Vec::new();
     let mut tags = Vec::new();
-    for (fi, f) in b.faces.iter().enumerate() {
+    // curved faces first: their mesh boundaries are what planar neighbours must follow
+    let meshed: Vec<Option<(Mesh, Vec<DVec2>)>> = b.faces.iter().map(|f| (!is_planar(f)).then(|| {
         let (su, sv) = boolean_segs(f);
-        let (m, fuv) = f.tessellate_uv(su, sv);
+        f.tessellate_uv(su, sv)
+    })).collect();
+    let boundary: Vec<(DVec3, DVec3)> = meshed.iter().flatten().flat_map(|(m, _)| mesh_boundary(m)).collect();
+    let eps = b.bounding_box().diagonal().max(1e-9) * 5e-4;
+    for (fi, f) in b.faces.iter().enumerate() {
+        let (m, fuv) = match &meshed[fi] {
+            Some(done) => done.clone(),
+            None => {
+                let (su, sv) = boolean_segs(f);
+                conform_planar_loops(f, &boundary, eps).tessellate_uv(su, sv)
+            }
+        };
         let before = mesh.triangle_count();
         mesh.append(&m);
         uv.extend(fuv);
@@ -45,6 +57,99 @@ fn tessellate_brep(b: &Brep) -> Tagged {
         mesh.compute_normals();
     }
     Tagged { mesh, uv, tags }
+}
+
+fn is_planar(f: &Face) -> bool {
+    let s = &f.surface;
+    s.degree_u == 1 && s.degree_v == 1 && s.count_u == 2 && s.count_v == 2
+}
+
+/// Edges of a mesh used by one triangle only (its open boundary).
+fn mesh_boundary(m: &Mesh) -> Vec<(DVec3, DVec3)> {
+    let mut count: HashMap<(u32, u32), usize> = HashMap::new();
+    for t in m.indices.chunks(3) {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            *count.entry((a.min(b), a.max(b))).or_default() += 1;
+        }
+    }
+    count.into_iter().filter(|(_, n)| *n == 1).map(|((a, b), _)| (m.vertices[a as usize], m.vertices[b as usize])).collect()
+}
+
+/// A planar face whose trim loops follow a curved neighbour (a cap on an extruded circle)
+/// meshes its loop with the neighbour's own boundary vertices where they run along it: the
+/// two meshes then share their edge exactly instead of leaving chord-sized gaps between a
+/// densely sampled loop and the neighbour's few chords per span.
+fn conform_planar_loops(f: &Face, neighbour_edges: &[(DVec3, DVec3)], eps: f64) -> Face {
+    if !is_planar(f) || f.loops.is_empty() || neighbour_edges.is_empty() {
+        return f.clone();
+    }
+    let s = &f.surface;
+    let loops = f
+        .loops
+        .iter()
+        .map(|l| {
+            let pts: Vec<DVec3> = l.iter().map(|p| s.point_at(p.x, p.y)).collect();
+            let n = pts.len();
+            if n < 3 {
+                return l.clone();
+            }
+            let mut cum = vec![0.0; n + 1];
+            for i in 0..n {
+                cum[i + 1] = cum[i] + (pts[(i + 1) % n] - pts[i]).length();
+            }
+            let total = cum[n].max(1e-12);
+            // arc position of `q` on the loop, when it lies on it
+            let param = |q: DVec3| -> Option<f64> {
+                let mut best = (f64::INFINITY, 0.0);
+                for i in 0..n {
+                    let (a, b) = (pts[i], pts[(i + 1) % n]);
+                    let ab = b - a;
+                    let l2 = ab.length_squared();
+                    let t = if l2 < 1e-24 { 0.0 } else { ((q - a).dot(ab) / l2).clamp(0.0, 1.0) };
+                    let d = (a + ab * t - q).length();
+                    if d < best.0 {
+                        best = (d, cum[i] + t * (cum[i + 1] - cum[i]));
+                    }
+                }
+                (best.0 < eps).then_some(best.1)
+            };
+            let mut covered: Vec<(f64, f64)> = Vec::new();
+            let mut extra: Vec<(f64, DVec3)> = Vec::new();
+            for &(a, b) in neighbour_edges {
+                let (Some(ta), Some(tb)) = (param(a), param(b)) else { continue };
+                extra.push((ta, a));
+                extra.push((tb, b));
+                let (lo, hi) = (ta.min(tb), ta.max(tb));
+                // an edge across the loop's start covers (hi, lo + total), going round
+                covered.push(if hi - lo > total / 2.0 { (hi, lo + total) } else { (lo, hi) });
+            }
+            if extra.is_empty() {
+                return l.clone();
+            }
+            let margin = eps * 0.1;
+            let inside = |t: f64| covered.iter().any(|&(lo, hi)| [t, t + total].iter().any(|&x| x > lo + margin && x < hi - margin));
+            let mut merged: Vec<(f64, DVec3)> = (0..n).filter(|&i| !inside(cum[i])).map(|i| (cum[i], pts[i])).collect();
+            merged.extend(extra);
+            merged.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut out: Vec<DVec3> = Vec::with_capacity(merged.len());
+            for (_, q) in merged {
+                if out.last().is_none_or(|p: &DVec3| (*p - q).length() > eps * 0.01) {
+                    out.push(q);
+                }
+            }
+            while out.len() > 1 && (out[0] - out[out.len() - 1]).length() <= eps * 0.01 {
+                out.pop();
+            }
+            if out.len() < 3 {
+                return l.clone();
+            }
+            out.into_iter().map(|q| {
+                let (u, v) = s.closest_uv(q);
+                DVec2::new(u, v)
+            }).collect()
+        })
+        .collect();
+    Face { surface: f.surface.clone(), loops }
 }
 
 /// Boolean of two closed polysurfaces with outward normals. `None` when a face outline could
@@ -871,6 +976,31 @@ fn simplify_loop(l: &mut Vec<DVec2>, du: f64, dv: f64) {
 
 #[cfg(test)]
 mod tests {
+
+    /// A cylinder made by extruding a circle and capping it (caps follow the circle point by
+    /// point, the side uses a few chords per span) must still mesh watertight for the mesh
+    /// Boolean: otherwise every fallback Boolean with it fails.
+    #[test]
+    fn capped_extrusion_meshes_watertight() {
+        use crate::NurbsCurve;
+        let plane = Plane::world_xy();
+        let c = NurbsCurve::circle(&plane, 4.08).unwrap();
+        let side = NurbsSurface::extrude(&c, DVec3::new(0.0, 0.0, 20.0)).unwrap();
+        let tol = c.bounding_box().diagonal() * 2e-5;
+        let mut faces = vec![Face::untrimmed(side)];
+        for z in [0.0, 20.0] {
+            let mut pts: Vec<DVec3> = c.tessellate_adaptive(tol).into_iter().map(|p| p + DVec3::new(0.0, 0.0, z)).collect();
+            pts.pop();
+            let pl = Plane::from_normal(DVec3::new(0.0, 0.0, z), DVec3::Z);
+            faces.push(Face::planar(&pl, vec![pts]).unwrap());
+        }
+        let mut b = Brep::new(faces);
+        b.orient_outward();
+        let t = tessellate_brep(&b);
+        let welded = t.mesh.repair_tjunctions();
+        assert!(welded.is_closed(), "the mesh has gaps along the cap edges");
+    }
+
     use super::*;
     use crate::{NurbsSurface, Plane};
 

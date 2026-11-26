@@ -723,6 +723,37 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     // clusters of nearby endpoints are moved onto the trim-loop edge they end on (solving the
     // exact point where that edge meets the other surface) and every member gets that point
     let snap = diag * 3e-3;
+    // an open curve stops where the tessellations stopped meeting, close to the face edge it
+    // really ends on. Where the curve runs almost along that edge (a thread's helix meeting
+    // the end face of its core rises 3° a turn) a tiny gap across the edge is a long one
+    // along it: take each end onto the exact point where the edge meets the other surface
+    for c in curves.iter_mut() {
+        if (c.pts[0] - c.pts[c.pts.len() - 1]).length() < tol * 2.0 {
+            continue;
+        }
+        for k in [0, c.pts.len() - 1] {
+            let p = c.pts[k];
+            for (face, uv, other, other_uv) in [(&a.faces[c.fa], c.uva[k], &b.faces[c.fb].surface, c.uvb[k]), (&b.faces[c.fb], c.uvb[k], &a.faces[c.fa].surface, c.uva[k])] {
+                let Some((ea, eb, t)) = nearest_loop_edge(face, uv, snap) else { continue };
+                let (_, q) = refine_on_edge(face, ea, eb, t, other, Some(other_uv), snap);
+                let gap = {
+                    let (u, v) = other.closest_uv_from(q, other_uv.x, other_uv.y);
+                    (other.point_at(u, v) - q).length()
+                };
+                if gap < tol && (q - p).length() < snap * 5.0 {
+                    if debug && (q - p).length() > snap {
+                        eprintln!("  end moved onto its face edge: ({:.4},{:.4},{:.4}) -> ({:.4},{:.4},{:.4})", p.x, p.y, p.z, q.x, q.y, q.z);
+                    }
+                    c.pts[k] = q;
+                    let (ua, va) = a.faces[c.fa].surface.closest_uv_from(q, c.uva[k].x, c.uva[k].y);
+                    let (ub, vb) = b.faces[c.fb].surface.closest_uv_from(q, c.uvb[k].x, c.uvb[k].y);
+                    c.uva[k] = DVec2::new(ua, va);
+                    c.uvb[k] = DVec2::new(ub, vb);
+                    break;
+                }
+            }
+        }
+    }
     {
         let mut ends: Vec<(usize, usize)> = Vec::new(); // (curve, index)
         for (ci, c) in curves.iter().enumerate() {
