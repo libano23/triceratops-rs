@@ -464,6 +464,23 @@ impl CmdCtx<'_> {
         Step::Work(Job { label, token, started: std::time::Instant::now(), cancelled: None, handle, apply })
     }
 
+    /// `work` for a computation that can fail: an error is logged as "<label> failed: <e>."
+    /// and the command ends; a result goes to `apply`.
+    pub fn try_work<T, F, A>(&mut self, label: &'static str, compute: F, apply: A) -> Step
+    where
+        T: Send + 'static,
+        F: FnOnce() -> Result<T, String> + Send + 'static,
+        A: FnOnce(T, &mut CmdCtx) -> Step + 'static,
+    {
+        self.work(label, compute, move |r, ctx| match r {
+            Ok(v) => apply(v, ctx),
+            Err(e) => {
+                ctx.log(format!("{label} failed: {e}."));
+                Step::Cancelled
+            }
+        })
+    }
+
     pub fn log(&mut self, msg: impl Into<String>) {
         self.log.push(msg.into());
     }

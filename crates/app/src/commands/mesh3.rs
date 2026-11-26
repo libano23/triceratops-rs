@@ -440,7 +440,7 @@ pub fn radiate(find: bool) -> SeqCmd {
 pub fn multipipe() -> SeqCmd {
     SeqCmd::new(vec![Ask::Objects("Select curves", ObjFilter::Curve, 1), Ask::Number("Radius", 1.0), Ask::Options("Output", vec![opt("SubD"), opt("Mesh")])], |a, ctx| {
         let r = a[1].number().abs().max(1e-6);
-        let mut result: Option<Mesh> = None;
+        let mut pipes: Vec<Mesh> = Vec::new();
         for id in a[0].ids() {
             let Some(c) = ctx.doc.get(id).and_then(|o| o.geometry.as_curve().cloned()) else { continue };
             let (t0, _) = c.domain();
@@ -459,27 +459,34 @@ pub fn multipipe() -> SeqCmd {
             brep.orient_outward();
             let m = brep.tessellate(24, 12);
             let m = mesh_ops::fill_holes(&m).0;
-            result = Some(match result {
-                Some(acc) => match mesh_bool(&acc, &m, BooleanOp::Union) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        ctx.log(e.to_string());
-                        return Step::Cancelled;
-                    }
-                },
-                None => m,
-            });
+            pipes.push(m);
         }
-        let Some(m) = result else { return Step::Cancelled };
-        ctx.doc.begin_undo("MultiPipe");
-        ctx.doc.clear_selection();
-        let mut attrs = tri_doc::Attributes { layer: ctx.doc.current_layer(), ..Default::default() };
-        if a[2].text() != "Mesh" {
-            attrs.user_text.push(("SubD".into(), "Yes".into()));
+        if pipes.is_empty() {
+            return Step::Cancelled;
         }
-        let id = ctx.doc.add_with(Geometry::Mesh(m), attrs);
-        ctx.doc.select(id, true);
-        Step::Done
+        let subd = a[2].text() != "Mesh";
+        ctx.try_work(
+            "MultiPipe",
+            move || {
+                let mut pipes = pipes.into_iter();
+                let mut acc = pipes.next().unwrap_or_default();
+                for m in pipes {
+                    acc = mesh_bool(&acc, &m, BooleanOp::Union).map_err(|e| e.to_string())?;
+                }
+                Ok(acc)
+            },
+            move |m, ctx| {
+                ctx.doc.begin_undo("MultiPipe");
+                ctx.doc.clear_selection();
+                let mut attrs = tri_doc::Attributes { layer: ctx.doc.current_layer(), ..Default::default() };
+                if subd {
+                    attrs.user_text.push(("SubD".into(), "Yes".into()));
+                }
+                let id = ctx.doc.add_with(Geometry::Mesh(m), attrs);
+                ctx.doc.select(id, true);
+                Step::Done
+            },
+        )
     })
 }
 

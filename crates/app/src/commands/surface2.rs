@@ -909,30 +909,38 @@ impl Command for BooleanSplitCmd {
                 if cut.is_empty() {
                     return Step::Cancelled;
                 }
-                let mut cutter = cut[0].clone();
-                for g in &cut[1..] {
-                    if let Some(r) = boolean_geometry(&cutter, g, BooleanOp::Union) {
-                        cutter = r;
-                    }
-                }
-                ctx.doc.begin_undo("BooleanSplit");
-                let mut out = Vec::new();
-                for id in self.first.clone() {
-                    let Some(g) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { continue };
-                    let (Some(a), Some(b)) = (boolean_geometry(&g, &cutter, BooleanOp::Difference), boolean_geometry(&g, &cutter, BooleanOp::Intersection)) else { continue };
-                    ctx.doc.remove(id);
-                    for part in [a, b] {
-                        if geometry_nonempty(&part) {
-                            out.push(part);
+                let targets: Vec<(ObjectId, Geometry)> = self.first.iter().filter_map(|id| ctx.doc.get(*id).map(|o| (*id, o.geometry.clone()))).collect();
+                ctx.work(
+                    "BooleanSplit",
+                    move || {
+                        let mut cutter = cut[0].clone();
+                        for g in &cut[1..] {
+                            if let Some(r) = boolean_geometry(&cutter, g, BooleanOp::Union) {
+                                cutter = r;
+                            }
                         }
-                    }
-                }
-                ctx.doc.clear_selection();
-                for g in out {
-                    let nid = ctx.doc.add(g);
-                    ctx.doc.select(nid, true);
-                }
-                Step::Done
+                        let mut out = Vec::new();
+                        for (id, g) in targets {
+                            let (Some(a), Some(b)) = (boolean_geometry(&g, &cutter, BooleanOp::Difference), boolean_geometry(&g, &cutter, BooleanOp::Intersection)) else { continue };
+                            out.push((id, [a, b].into_iter().filter(geometry_nonempty).collect::<Vec<_>>()));
+                        }
+                        out
+                    },
+                    |parts, ctx| {
+                        ctx.doc.begin_undo("BooleanSplit");
+                        let mut out = Vec::new();
+                        for (id, gs) in parts {
+                            ctx.doc.remove(id);
+                            out.extend(gs);
+                        }
+                        ctx.doc.clear_selection();
+                        for g in out {
+                            let nid = ctx.doc.add(g);
+                            ctx.doc.select(nid, true);
+                        }
+                        Step::Done
+                    },
+                )
             }
             _ => Step::Cancelled,
         }

@@ -199,36 +199,42 @@ impl Command for MeshSplitCmd {
                     ctx.log("The cutting object must be a closed mesh, a solid, a planar surface or a closed planar curve.");
                     return Step::Cancelled;
                 };
-                let mut parts = Vec::new();
-                for id in self.first.clone() {
-                    let Some(m) = solid_mesh(ctx.doc, id) else { continue };
-                    match (mesh_bool(&m, &cutter, BooleanOp::Intersection), mesh_bool(&m, &cutter, BooleanOp::Difference)) {
-                        (Ok(inside), Ok(outside)) => parts.push((id, inside, outside)),
-                        (Err(e), _) | (_, Err(e)) => {
-                            ctx.log(e.to_string());
-                            return Step::Cancelled;
+                let targets: Vec<(ObjectId, Mesh)> = self.first.iter().filter_map(|id| solid_mesh(ctx.doc, *id).map(|m| (*id, m))).collect();
+                let trim = self.trim;
+                let label = if trim { "MeshTrim" } else { "MeshSplit" };
+                ctx.try_work(
+                    label,
+                    move || {
+                        let mut parts = Vec::new();
+                        for (id, m) in targets {
+                            let inside = mesh_bool(&m, &cutter, BooleanOp::Intersection).map_err(|e| e.to_string())?;
+                            let outside = mesh_bool(&m, &cutter, BooleanOp::Difference).map_err(|e| e.to_string())?;
+                            parts.push((id, inside, outside));
                         }
-                    }
-                }
-                ctx.doc.begin_undo(if self.trim { "MeshTrim" } else { "MeshSplit" });
-                let mut out = Vec::new();
-                for (id, inside, outside) in parts {
-                    ctx.doc.remove(id);
-                    if self.trim {
-                        // keep the part away from the pick point
-                        let keep = if (inside.bounding_box().center() - p).length() > (outside.bounding_box().center() - p).length() { inside } else { outside };
-                        if keep.triangle_count() > 0 {
-                            out.push(Geometry::Mesh(keep));
-                        }
-                    } else {
-                        for part in [inside, outside] {
-                            if part.triangle_count() > 0 {
-                                out.push(Geometry::Mesh(part));
+                        Ok(parts)
+                    },
+                    move |parts, ctx| {
+                        ctx.doc.begin_undo(label);
+                        let mut out = Vec::new();
+                        for (id, inside, outside) in parts {
+                            ctx.doc.remove(id);
+                            if trim {
+                                // keep the part away from the pick point
+                                let keep = if (inside.bounding_box().center() - p).length() > (outside.bounding_box().center() - p).length() { inside } else { outside };
+                                if keep.triangle_count() > 0 {
+                                    out.push(Geometry::Mesh(keep));
+                                }
+                            } else {
+                                for part in [inside, outside] {
+                                    if part.triangle_count() > 0 {
+                                        out.push(Geometry::Mesh(part));
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-                add_all(ctx, if self.trim { "MeshTrim" } else { "MeshSplit" }, out)
+                        add_all(ctx, label, out)
+                    },
+                )
             }
             _ => Step::Cancelled,
         }

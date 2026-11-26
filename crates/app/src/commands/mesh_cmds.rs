@@ -166,21 +166,24 @@ impl Command for MeshBooleanCmd {
                     if meshes.is_empty() {
                         return Step::Cancelled;
                     }
-                    let mut r = meshes[0].clone();
-                    for m in &meshes[1..] {
-                        r = match mesh_bool(&r, m, BooleanOp::Union) {
-                            Ok(u) => u,
-                            Err(e) => {
-                                ctx.log(e.to_string());
-                                return Step::Cancelled;
+                    let first = self.first.clone();
+                    return ctx.try_work(
+                        "MeshBooleanUnion",
+                        move || {
+                            let mut r = meshes[0].clone();
+                            for m in &meshes[1..] {
+                                r = mesh_bool(&r, m, BooleanOp::Union).map_err(|e| e.to_string())?;
                             }
-                        };
-                    }
-                    ctx.doc.begin_undo("MeshBooleanUnion");
-                    for id in &self.first {
-                        ctx.doc.remove(*id);
-                    }
-                    return add_selected(ctx, "MeshBooleanUnion", vec![Geometry::Mesh(r)]);
+                            Ok(r)
+                        },
+                        move |r, ctx| {
+                            ctx.doc.begin_undo("MeshBooleanUnion");
+                            for id in &first {
+                                ctx.doc.remove(*id);
+                            }
+                            add_selected(ctx, "MeshBooleanUnion", vec![Geometry::Mesh(r)])
+                        },
+                    );
                 }
                 ctx.doc.clear_selection();
                 let msg = if self.split { "Select cutting meshes" } else if self.op == BooleanOp::Difference { "Select meshes to subtract with" } else { "Select second set of meshes" };
@@ -192,36 +195,35 @@ impl Command for MeshBooleanCmd {
                     return Step::Cancelled;
                 }
                 let label = if self.split { "MeshBooleanSplit" } else if self.op == BooleanOp::Difference { "MeshBooleanDifference" } else { "MeshBooleanIntersection" };
-                let results = (|| -> Result<_, tri_geom::BooleanError> {
-                    let mut cutter = b[0].clone();
-                    for m in &b[1..] {
-                        cutter = mesh_bool(&cutter, m, BooleanOp::Union)?;
-                    }
-                    let mut results = Vec::new();
-                    for id in self.first.clone() {
-                        let Some(m) = mesh_of(ctx.doc, id, 12) else { continue };
-                        let parts = if self.split { vec![mesh_bool(&m, &cutter, BooleanOp::Difference)?, mesh_bool(&m, &cutter, BooleanOp::Intersection)?] } else { vec![mesh_bool(&m, &cutter, self.op)?] };
-                        results.push((id, parts));
-                    }
-                    Ok(results)
-                })();
-                let results = match results {
-                    Ok(r) => r,
-                    Err(e) => {
-                        ctx.log(e.to_string());
-                        return Step::Cancelled;
-                    }
-                };
-                ctx.doc.begin_undo(label);
-                let mut out = Vec::new();
-                for (id, parts) in results {
-                    out.extend(parts.into_iter().filter(|p| p.triangle_count() > 0).map(Geometry::Mesh));
-                    ctx.doc.remove(id);
-                }
-                for id in &second {
-                    ctx.doc.remove(*id);
-                }
-                add_selected(ctx, label, out)
+                let targets: Vec<(ObjectId, Mesh)> = self.first.iter().filter_map(|id| mesh_of(ctx.doc, *id, 12).map(|m| (*id, m))).collect();
+                let (split, op) = (self.split, self.op);
+                ctx.try_work(
+                    label,
+                    move || -> Result<_, String> {
+                        let mut cutter = b[0].clone();
+                        for m in &b[1..] {
+                            cutter = mesh_bool(&cutter, m, BooleanOp::Union).map_err(|e| e.to_string())?;
+                        }
+                        let mut results = Vec::new();
+                        for (id, m) in targets {
+                            let parts = if split { vec![mesh_bool(&m, &cutter, BooleanOp::Difference), mesh_bool(&m, &cutter, BooleanOp::Intersection)] } else { vec![mesh_bool(&m, &cutter, op)] };
+                            results.push((id, parts.into_iter().collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?));
+                        }
+                        Ok(results)
+                    },
+                    move |results, ctx| {
+                        ctx.doc.begin_undo(label);
+                        let mut out = Vec::new();
+                        for (id, parts) in results {
+                            out.extend(parts.into_iter().filter(|p| p.triangle_count() > 0).map(Geometry::Mesh));
+                            ctx.doc.remove(id);
+                        }
+                        for id in &second {
+                            ctx.doc.remove(*id);
+                        }
+                        add_selected(ctx, label, out)
+                    },
+                )
             }
             Input::Option(_) => self.start(ctx),
             _ => Step::Cancelled,

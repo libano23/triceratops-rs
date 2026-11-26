@@ -19,9 +19,10 @@ pub struct JobStatus {
 }
 
 impl JobStatus {
-    /// `⟳ BooleanUnion — 12 s · mesh Boolean · 1.3 M · Esc to cancel`
+    /// `BooleanUnion — 12 s · mesh Boolean · 1.3 M · Esc to cancel` (the status bar draws a
+    /// spinner in front; the UI font has no arrow glyph)
     pub fn text(&self) -> String {
-        let mut s = format!("⟳ {} — {} s", self.label, self.elapsed.as_secs());
+        let mut s = format!("{} — {} s", self.label, self.elapsed.as_secs());
         if !self.stage.is_empty() {
             s.push_str(&format!(" · {}", self.stage));
         }
@@ -107,7 +108,7 @@ mod tests {
     #[test]
     fn status_text_reads_well() {
         let s = JobStatus { label: "BooleanUnion".into(), elapsed: Duration::from_secs(12), stage: "mesh Boolean", count: 1_300_000, cancelling: false };
-        assert_eq!(s.text(), "⟳ BooleanUnion — 12 s · mesh Boolean · 1.3 M · Esc to cancel");
+        assert_eq!(s.text(), "BooleanUnion — 12 s · mesh Boolean · 1.3 M · Esc to cancel");
         assert_eq!(count_text(950), "950");
         assert_eq!(count_text(12_345), "12.3 k");
     }
@@ -167,5 +168,27 @@ mod tests {
         wait(&mut app, Duration::from_secs(60));
         assert_eq!(app.doc.objects().count(), 2, "union + sphere; log: {:?}", app.log);
         assert!(app.pending_lines.is_empty());
+    }
+
+    /// Every command that runs a solid Boolean does it as a job.
+    #[test]
+    fn boolean_commands_run_as_jobs() {
+        let boxes = ["Box", "0,0,0", "10,10,0", "10", "Box", "5,5,5", "15,15,5", "10"];
+        let cases: &[(&str, &[&str])] = &[
+            ("BooleanSplit", &["BooleanSplit", "#1", "#2"]),
+            ("Boolean2Objects", &["Boolean2Objects", "#1", "#2", "Difference"]),
+            ("MeshBooleanUnion", &["MeshBooleanUnion", "#1,#2", ""]),
+            ("MeshBooleanDifference", &["MeshBooleanDifference", "#1", "#2"]),
+            ("MeshBooleanSplit", &["MeshBooleanSplit", "#1", "#2"]),
+        ];
+        for (label, lines) in cases {
+            let mut app = App::new();
+            run(&mut app, &boxes);
+            run(&mut app, lines);
+            assert_eq!(app.job_status().map(|s| s.label), Some(label.to_string()), "{label}: log {:?}", app.log);
+            wait(&mut app, Duration::from_secs(60));
+            assert!(app.doc.objects().count() >= 1, "{label}: log {:?}", app.log);
+            assert!(!app.runner.is_active(), "{label}");
+        }
     }
 }

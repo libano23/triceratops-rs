@@ -445,16 +445,17 @@ impl Command for ShellCmd {
                 let id = self.picks[0].0;
                 let Some(outer) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { return Step::Cancelled };
                 let remove: Vec<DVec3> = self.picks.iter().filter(|(pid, _)| *pid == id).map(|(_, p)| *p).collect();
-                let result = match shell_geometry(&outer, t, &remove) {
-                    Ok(r) => r,
+                ctx.work("Shell", move || shell_geometry(&outer, t, &remove), move |result, ctx| match result {
+                    Ok(r) => {
+                        ctx.doc.begin_undo("Shell");
+                        ctx.doc.replace_geometry(id, r);
+                        Step::Done
+                    }
                     Err(e) => {
                         ctx.log(e);
-                        return Step::Cancelled;
+                        Step::Cancelled
                     }
-                };
-                ctx.doc.begin_undo("Shell");
-                ctx.doc.replace_geometry(id, result);
-                Step::Done
+                })
             }
             _ => Step::Cancelled,
         }

@@ -810,10 +810,16 @@ pub fn push_pull() -> SeqCmd {
         tool.orient_outward();
         tool.closed = true;
         let Some(base) = ctx.doc.get(*id).map(|o| o.geometry.clone()) else { return Step::Cancelled };
-        let Some(result) = super::misc4::boolean_geometry(&base, &Geometry::Brep(tool), if d >= 0.0 { BooleanOp::Union } else { BooleanOp::Difference }) else { return Step::Cancelled };
-        ctx.doc.begin_undo("PushPull");
-        ctx.doc.replace_geometry(*id, result);
-        Step::Done
+        let id = *id;
+        ctx.try_work(
+            "PushPull",
+            move || super::misc4::boolean_geometry_checked(&base, &Geometry::Brep(tool), if d >= 0.0 { BooleanOp::Union } else { BooleanOp::Difference }),
+            move |result, ctx| {
+                ctx.doc.begin_undo("PushPull");
+                ctx.doc.replace_geometry(id, result);
+                Step::Done
+            },
+        )
     })
 }
 
@@ -875,33 +881,37 @@ impl WireCutCmd {
         let Some(c) = curve_of(ctx.doc, cid) else { return Step::Cancelled };
         let dir = self.cut_direction(ctx);
         let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
-        ctx.doc.begin_undo("WireCut");
-        let mut cut_any = false;
-        for id in self.targets.clone() {
-            let Some(g) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { continue };
-            let results = wire_cut_geometry(&g, &c, dir, &self.depth, tol);
-            if results.len() >= 2 {
-                cut_any = true;
-                let attrs = ctx.doc.get(id).map(|o| o.attributes.clone()).unwrap_or_default();
-                ctx.doc.remove(id);
-                for r in results {
-                    let nid = ctx.doc.add_with(r, attrs.clone());
-                    ctx.doc.select(nid, true);
-                }
-            }
-        }
-        if !cut_any {
-            ctx.log("WireCut: the curve does not cut the objects.");
-            return Step::Cancelled;
-        }
-        if self.delete_input {
-            ctx.doc.remove(cid);
-        }
-        if self.keep_all {
-            return Step::Done;
-        }
+        let targets: Vec<(ObjectId, Geometry)> = self.targets.iter().filter_map(|id| ctx.doc.get(*id).map(|o| (*id, o.geometry.clone()))).collect();
+        let depth = self.depth.clone();
+        let (delete_input, keep_all) = (self.delete_input, self.keep_all);
+        // the pieces prompt comes after the job; this command only sees it if the job finished
         self.stage = WireStage::KeepPieces;
-        Prompt::objects("Select the pieces to delete. Press Enter to keep all", ObjFilter::Any, 0).step()
+        ctx.work(
+            "WireCut",
+            move || targets.into_iter().map(|(id, g)| (id, wire_cut_geometry(&g, &c, dir, &depth, tol))).filter(|(_, r)| r.len() >= 2).collect::<Vec<_>>(),
+            move |cuts, ctx| {
+                if cuts.is_empty() {
+                    ctx.log("WireCut: the curve does not cut the objects.");
+                    return Step::Cancelled;
+                }
+                ctx.doc.begin_undo("WireCut");
+                for (id, results) in cuts {
+                    let attrs = ctx.doc.get(id).map(|o| o.attributes.clone()).unwrap_or_default();
+                    ctx.doc.remove(id);
+                    for r in results {
+                        let nid = ctx.doc.add_with(r, attrs.clone());
+                        ctx.doc.select(nid, true);
+                    }
+                }
+                if delete_input {
+                    ctx.doc.remove(cid);
+                }
+                if keep_all {
+                    return Step::Done;
+                }
+                Prompt::objects("Select the pieces to delete. Press Enter to keep all", ObjFilter::Any, 0).step()
+            },
+        )
     }
 }
 
@@ -1115,14 +1125,18 @@ pub fn boss_rib(rib: bool) -> SeqCmd {
             return Step::Cancelled;
         }
         let diag = target.bounding_box().diagonal().max(1e-3);
-        let mut result = target;
-        for id in a[0].ids() {
-            let Some(c) = curve_of(ctx.doc, id) else { continue };
+        let curves: Vec<(NurbsCurve, Plane)> = a[0].ids().into_iter().filter_map(|id| curve_of(ctx.doc, id)).map(|c| {
             let plane = curve_plane(&c).unwrap_or(ctx.cplane);
+            (c, plane)
+        }).collect();
+        let thickness = a[2].number().abs().max(1e-6);
+        let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
+        let compute = move || {
+        let mut result = target;
+        for (c, plane) in curves {
             let tool = if rib {
                 // thin slab around the curve, both directions along the plane normal
-                let t = a[2].number().abs().max(1e-6);
-                let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
+                let t = thickness;
                 let Ok(o1) = c.offset(&plane, t * 0.5, tol) else { continue };
                 let Ok(o2) = c.offset(&plane, -t * 0.5, tol) else { continue };
                 let mut pts = o1.tessellate_adaptive(tol * 10.0);
@@ -1145,9 +1159,14 @@ pub fn boss_rib(rib: bool) -> SeqCmd {
                 result = r;
             }
         }
-        ctx.doc.begin_undo(if rib { "Rib" } else { "Boss" });
-        ctx.doc.replace_geometry(tid, result);
-        Step::Done
+        result
+        };
+        let label = if rib { "Rib" } else { "Boss" };
+        ctx.work(label, compute, move |result, ctx| {
+            ctx.doc.begin_undo(label);
+            ctx.doc.replace_geometry(tid, result);
+            Step::Done
+        })
     })
 }
 
@@ -1383,30 +1402,37 @@ pub fn revolved_hole() -> SeqCmd {
             return Step::Cancelled;
         }
         let tool = Geometry::Brep(tool);
-        let Some(result) = super::misc4::boolean_geometry(&target, &tool, BooleanOp::Difference) else { return Step::Cancelled };
-        ctx.doc.begin_undo("RevolvedHole");
-        ctx.doc.replace_geometry(tid, result);
-        Step::Done
+        ctx.try_work(
+            "RevolvedHole",
+            move || super::misc4::boolean_geometry_checked(&target, &tool, BooleanOp::Difference),
+            move |result, ctx| {
+                ctx.doc.begin_undo("RevolvedHole");
+                ctx.doc.replace_geometry(tid, result);
+                Step::Done
+            },
+        )
     })
 }
 
 pub fn boolean_two_objects() -> SeqCmd {
     SeqCmd::new(vec![Ask::Pick("Select first object", ObjFilter::Any), Ask::Pick("Select second object", ObjFilter::Any), Ask::Options("Result", vec![opt("Union"), opt("Difference"), opt("Intersection"), opt("ReverseDifference")])], |a, ctx| {
         let (Some(g1), Some(g2)) = (ctx.doc.get(a[0].ids()[0]).map(|o| o.geometry.clone()), ctx.doc.get(a[1].ids()[0]).map(|o| o.geometry.clone())) else { return Step::Cancelled };
-        let r = match a[2].text().as_str() {
-            "Difference" => super::misc4::boolean_geometry(&g1, &g2, BooleanOp::Difference),
-            "Intersection" => super::misc4::boolean_geometry(&g1, &g2, BooleanOp::Intersection),
-            "ReverseDifference" => super::misc4::boolean_geometry(&g2, &g1, BooleanOp::Difference),
-            _ => super::misc4::boolean_geometry(&g1, &g2, BooleanOp::Union),
-        };
-        let Some(r) = r else {
-            ctx.log("Boolean2Objects failed.");
-            return Step::Cancelled;
-        };
-        ctx.doc.begin_undo("Boolean2Objects");
-        ctx.doc.remove(a[0].ids()[0]);
-        ctx.doc.remove(a[1].ids()[0]);
-        add_all(ctx, "Boolean2Objects", vec![r])
+        let (id1, id2, which) = (a[0].ids()[0], a[1].ids()[0], a[2].text());
+        ctx.try_work(
+            "Boolean2Objects",
+            move || match which.as_str() {
+                "Difference" => super::misc4::boolean_geometry_checked(&g1, &g2, BooleanOp::Difference),
+                "Intersection" => super::misc4::boolean_geometry_checked(&g1, &g2, BooleanOp::Intersection),
+                "ReverseDifference" => super::misc4::boolean_geometry_checked(&g2, &g1, BooleanOp::Difference),
+                _ => super::misc4::boolean_geometry_checked(&g1, &g2, BooleanOp::Union),
+            },
+            move |r, ctx| {
+                ctx.doc.begin_undo("Boolean2Objects");
+                ctx.doc.remove(id1);
+                ctx.doc.remove(id2);
+                add_all(ctx, "Boolean2Objects", vec![r])
+            },
+        )
     })
 }
 
