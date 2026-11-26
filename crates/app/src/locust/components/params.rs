@@ -27,7 +27,7 @@ pub fn register(r: &mut Registry) {
          matched item; list inputs get the whole branch as an array; tree inputs an array of branches. \
          Helpers: point(x, y, z), vec(x, y, z) (with .x .y .z, + - * /, dot, cross, length, unit, distance), rng(seed).next(), \
          line, polyline(pts[, closed]), interpolate(pts[, periodic]), nurbs_curve(pts, degree), circle(c, r[, normal]), \
-         arc(c, r, angle), divide(c, n), offset(c, d), join(curves), curve_point(c, t 0..1), curve_length(c), loft(curves), \
+         arc(c, r, angle), helix(start, end, r, turns[, end_radius]), divide(c, n), offset(c, d), join(curves), curve_point(c, t 0..1), curve_length(c), loft(curves), \
          extrude(g, dir), revolve(curve, axis_point, axis, angle), sweep1(rail, profile), cap(g), surface_from_grid(rows), \
          surface_point(s, u, v), box(corner, x, y, z), cylinder(base, r, h), sphere(c, r), union, difference, intersection, \
          move(g, v), rotate(g, degrees, center, axis), scale(g, center, f), mirror(g, origin, normal), \

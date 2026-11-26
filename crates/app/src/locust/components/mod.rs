@@ -67,6 +67,10 @@ fn spec(name: &'static str, kind: Kind, default: Option<Value>) -> InputSpec {
 pub fn num(name: &'static str, d: f64) -> InputSpec {
     spec(name, Kind::Number, Some(Value::Number(d)))
 }
+/// An optional number with no default: `Value::Null` when nothing is given.
+pub fn num_opt(name: &'static str) -> InputSpec {
+    spec(name, Kind::Number, None).opt()
+}
 pub fn int(name: &'static str, d: i64) -> InputSpec {
     spec(name, Kind::Int, Some(Value::Int(d)))
 }

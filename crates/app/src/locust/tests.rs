@@ -860,3 +860,40 @@ mod dynamic_ports {
         assert!(g.connections.is_empty(), "a removed port loses its wire");
     }
 }
+
+// --------------------------------------------------------------- helix
+
+mod helix {
+    use super::*;
+
+    fn curve(t: &DataTree) -> tri_geom::NurbsCurve {
+        match t.first().and_then(|v| v.as_geometry()) {
+            Some(tri_doc::Geometry::Curve(c)) => c.clone(),
+            other => panic!("expected a curve, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn helix_length_and_ends() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("Turns", json!(5.0)), ("End", json!([0.0, 0.0, 10.0]))]);
+        let c = curve(&out[0]);
+        let expect = ((2.0 * PI * 5.0 * 5.0).powi(2) + 100.0).sqrt();
+        assert!(close(c.length(), expect, 0.01), "length {} vs {expect}", c.length());
+        assert!((c.start_point() - DVec3::new(5.0, 0.0, 0.0)).length() < 1e-6, "{:?}", c.start_point());
+        assert!((c.end_point().z - 10.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn helix_pitch_overrides_turns() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("Turns", json!(1.0)), ("Pitch", json!(2.0)), ("End", json!([0.0, 0.0, 10.0]))]);
+        let expect = ((2.0 * PI * 5.0 * 5.0).powi(2) + 100.0).sqrt();
+        assert!(close(curve(&out[0]).length(), expect, 0.01));
+    }
+
+    #[test]
+    fn conical_helix_ends_at_end_radius() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("End Radius", json!(2.0)), ("Turns", json!(3.0)), ("End", json!([0.0, 0.0, 6.0]))]);
+        let e = curve(&out[0]).end_point();
+        assert!((DVec3::new(e.x, e.y, 0.0).length() - 2.0).abs() < 1e-6, "{e:?}");
+    }
+}

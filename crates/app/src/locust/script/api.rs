@@ -115,6 +115,8 @@ fn nurbs_curve(pts, degree) { run("Nurbs Curve", [pts, degree]) }
 fn circle(c, r) { run("Circle", [c, r]) }
 fn circle(c, r, normal) { run("Circle", [c, r, normal]) }
 fn arc(c, r, angle) { run("Arc", [c, r, angle]) }
+fn helix(start, end, r, turns) { run("Helix", [start, end, r, turns]) }
+fn helix(start, end, r, turns, end_radius) { run("Helix", [start, end, r, turns, (), end_radius]) }
 fn divide(c, n) { run("Divide Curve", [c, n]) }
 fn offset(c, d) { run("Offset Curve", [c, d]) }
 fn join(curves) { run("Join Curves", [curves]) }

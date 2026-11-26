@@ -199,3 +199,13 @@ fn script_rng_is_deterministic() {
     assert_ne!(v[0], v[2]);
     assert!(v.iter().all(|x| (0.0..1.0).contains(x)));
 }
+
+#[test]
+fn script_helix_shorthand() {
+    let mut g = Graph::new();
+    let s = script(&mut g, "let h = helix(point(0,0,0), point(0,0,10), 5, 2); a = curve_length(h);", json!([]), json!(["a"]), &[]);
+    let (out, ctx) = run(&g, &s);
+    assert!(errors(&ctx, &s).is_empty(), "{:?}", ctx.diagnostics);
+    let expect = ((2.0 * std::f64::consts::PI * 5.0 * 2.0f64).powi(2) + 100.0).sqrt();
+    assert!((nums(&out[0])[0] - expect).abs() < expect * 0.01);
+}

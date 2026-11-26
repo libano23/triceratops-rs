@@ -28,6 +28,21 @@ pub fn register(r: &mut Registry) {
         }
         NurbsCurve::line(a.pt(0), a.pt(0) + d.normalize() * a.num(2)).ok().and_then(|c| one(gc(c)))
     });
+    r.elem("Helix", "Curve", vec![pt("Start", 0.0, 0.0, 0.0), pt("End", 0.0, 0.0, 10.0), num("Radius", 5.0), num("Turns", 5.0).slider(0.25, 50.0), num_opt("Pitch"), num_opt("End Radius")], &["Curve"], |_, a| {
+        let (start, end, r) = (a.pt(0), a.pt(1), a.num(2));
+        let height = (end - start).length();
+        // a pitch (rise per turn) wins over the number of turns
+        let turns = match a.get(4) {
+            Value::Null => a.num(3),
+            _ if a.num(4).abs() > 1e-12 => height / a.num(4).abs(),
+            _ => return None,
+        };
+        let r2 = if matches!(a.get(5), Value::Null) { r } else { a.num(5) };
+        // like Grasshopper: it starts towards world X (Y when the axis runs along X)
+        let dir = if (end - start).normalize_or_zero().dot(DVec3::X).abs() > 0.999 { DVec3::Y } else { DVec3::X };
+        crate::commands::curve2::helix_curve(start, end, r, r2, turns, Some(dir)).and_then(|c| one(gc(c)))
+    })
+    .describe("A helix (coil, thread path) around the axis Start→End: Radius, Turns or Pitch (rise per turn, wins when given), and End Radius for a conical one");
     r.elem("Circle", "Curve", vec![pt("Center", 0.0, 0.0, 0.0), num("Radius", 5.0), pt("Normal", 0.0, 0.0, 1.0)], &["Circle"], |_, a| {
         if a.num(1) < 1e-9 {
             return None;
