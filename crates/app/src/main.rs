@@ -14,6 +14,8 @@ mod render;
 mod snap;
 mod theme;
 mod ui;
+#[allow(dead_code)] // wired into the UI in the next task
+mod update;
 
 use std::sync::Arc;
 
