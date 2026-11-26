@@ -57,47 +57,14 @@ fn summary(tree: &DataTree) -> J {
         out["bbox"] = json!([[bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]]);
     }
     if let Some(Value::Geometry(g)) = items.first() {
-        match measure(g) {
-            Some(Measure::Volume(v)) => out["volume"] = json!(v),
-            Some(Measure::Area(a)) => out["area"] = json!(a),
-            None => {}
+        // both measure on the display mesh: quick even for a screw of hundreds of sections
+        if let Some((v, _)) = Document::volume_of(g) {
+            out["volume"] = json!(v);
+        } else if let Some(a) = Document::area_of(g) {
+            out["area"] = json!(a);
         }
     }
     out
-}
-
-enum Measure {
-    Volume(f64),
-    Area(f64),
-}
-
-/// Volume of a closed solid or area of a surface, from the display mesh: as accurate as what
-/// is drawn and quick even for a screw of hundreds of sections (`Document::volume_of`
-/// meshes every span 16×16).
-fn measure(g: &Geometry) -> Option<Measure> {
-    let d = tri_geom::display_mesh::MeshDensity::for_size(g.bounding_box().diagonal().max(1e-9));
-    let (mesh, closed) = match g {
-        Geometry::Brep(b) => (b.faces.iter().fold(tri_geom::Mesh::new(), |mut m, f| {
-            m.append(&f.display_mesh(&d));
-            m
-        }), b.closed),
-        Geometry::Surface(s) => (s.display_mesh(&d), false),
-        Geometry::Mesh(m) => (m.clone(), m.is_closed()),
-        Geometry::Curve(_) => return Document::area_of(g).map(Measure::Area),
-        _ => return None,
-    };
-    if closed {
-        let v: f64 = (0..mesh.triangle_count()).map(|t| {
-            let (a, b, c) = mesh.triangle(t);
-            a.dot(b.cross(c)) / 6.0
-        }).sum();
-        return Some(Measure::Volume(v.abs()));
-    }
-    let a: f64 = (0..mesh.triangle_count()).map(|t| {
-        let (a, b, c) = mesh.triangle(t);
-        (b - a).cross(c - a).length() / 2.0
-    }).sum();
-    (a > 0.0).then_some(Measure::Area(a))
 }
 
 /// The report of a solve of `graph`.
