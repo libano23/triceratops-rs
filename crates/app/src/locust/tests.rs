@@ -772,3 +772,91 @@ mod diagnostics {
         assert!(errs.iter().any(|m| m.contains("cannot be combined")), "{errs:?}");
     }
 }
+
+// --------------------------------------------------------------- nodes with their own ports
+
+mod dynamic_ports {
+    use super::*;
+    use crate::locust::graph::{is_dynamic, Access, PortDef};
+
+    fn names(p: &[PortDef]) -> Vec<&str> {
+        p.iter().map(|d| d.name.as_str()).collect()
+    }
+
+    #[test]
+    fn dynamic_ports_default_and_custom() {
+        assert!(is_dynamic("Script") && is_dynamic("Expression") && !is_dynamic("Circle"));
+        let mut g = Graph::new();
+        let e = node(&mut g, "Expression", &[]);
+        let (ins, outs) = g.dynamic_ports(g.node(&e).unwrap());
+        assert_eq!(names(&ins), ["x", "y", "z"]);
+        assert_eq!(names(&outs), ["Result"]);
+        let s = node(&mut g, "Script", &[]);
+        let (ins, outs) = g.dynamic_ports(g.node(&s).unwrap());
+        assert_eq!((names(&ins), names(&outs)), (vec!["x", "y"], vec!["a"]));
+        let c = node(&mut g, "Script", &[("_inputs", json!([{ "name": "pts", "kind": "point", "access": "list" }, "n"])), ("_outputs", json!(["cells", { "name": "count" }]))]);
+        let (ins, outs) = g.dynamic_ports(g.node(&c).unwrap());
+        assert_eq!(names(&ins), ["pts", "n"]);
+        assert_eq!((ins[0].kind.as_str(), ins[0].access), ("point", Access::List));
+        assert_eq!((ins[1].kind.as_str(), ins[1].access), ("any", Access::Item));
+        assert_eq!(names(&outs), ["cells", "count"]);
+    }
+
+    #[test]
+    fn node_ports_covers_all_three() {
+        let mut g = Graph::new();
+        let circle = node(&mut g, "Circle", &[]);
+        let script = node(&mut g, "Script", &[("_inputs", json!(["r"])), ("_outputs", json!(["c"]))]);
+        let (ins, outs) = g.node_ports(g.node(&circle).unwrap());
+        assert_eq!(ins.iter().map(|p| p.0.as_str()).collect::<Vec<_>>(), registry().get("Circle").unwrap().inputs.iter().map(|i| i.name).collect::<Vec<_>>());
+        assert_eq!(outs.len(), 1);
+        let (ins, outs) = g.node_ports(g.node(&script).unwrap());
+        assert_eq!((ins[0].0.as_str(), outs[0].0.as_str()), ("r", "c"));
+        let a = node(&mut g, "Number", &[]);
+        let b = node(&mut g, "Number", &[]);
+        g.connect(&a, 0, &b, 0);
+        let cl = g.make_cluster(std::slice::from_ref(&b), "C").unwrap();
+        let (ins, _) = g.node_ports(g.node(&cl).unwrap());
+        assert_eq!(ins.len(), 1, "cluster ports come through node_ports too");
+    }
+
+    #[test]
+    fn dynamic_node_round_trips_json() {
+        let mut g = Graph::new();
+        node(&mut g, "Script", &[("_inputs", json!([{ "name": "pts", "kind": "point", "access": "tree" }])), ("code", json!("a = pts;"))]);
+        let back = Graph::from_json(&g.to_json());
+        assert_eq!(back, g);
+        let (ins, _) = back.dynamic_ports(&back.nodes[0]);
+        assert_eq!(ins[0].access, Access::Tree);
+    }
+
+    #[test]
+    fn dynamic_node_is_not_unknown() {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Script", &[]);
+        let mut ctx = Ctx::default();
+        let out = solve(&g, &mut ctx);
+        assert!(!ctx.diagnostics.get(&s).is_some_and(|d| d.iter().any(|x| x.message.starts_with("unknown component"))), "{:?}", ctx.diagnostics);
+        assert_eq!(out[&s].len(), 1, "one output tree per output port");
+    }
+
+    #[test]
+    fn ports_can_be_added_renamed_and_removed() {
+        let mut g = Graph::new();
+        let src = node(&mut g, "Number", &[]);
+        let s = node(&mut g, "Script", &[]);
+        assert_eq!(g.add_port(&s, false).as_deref(), Some("z"));
+        assert_eq!(g.add_port(&s, true).as_deref(), Some("b"));
+        g.connect(&src, 0, &s, 2); // into z
+        assert!(g.rename_port(&s, false, 2, "height"));
+        assert!(!g.rename_port(&s, false, 0, "y"), "names stay unique");
+        assert!(!g.rename_port(&s, false, 0, "bad name"), "names are identifiers");
+        g.remove_port(&s, false, 0); // x goes: the wire into height moves from 2 to 1
+        let (ins, outs) = g.dynamic_ports(g.node(&s).unwrap());
+        assert_eq!(names(&ins), ["y", "height"]);
+        assert_eq!(names(&outs), ["a", "b"]);
+        assert_eq!(g.source_of(&s, 1).map(|c| c.src.clone()), Some(src.clone()));
+        g.remove_port(&s, false, 1);
+        assert!(g.connections.is_empty(), "a removed port loses its wire");
+    }
+}

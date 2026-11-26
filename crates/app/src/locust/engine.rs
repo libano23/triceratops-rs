@@ -132,6 +132,13 @@ fn solve_cluster(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs, r
         .collect()
 }
 
+/// A Script or Expression node (the script engine comes with the Script task; for now its
+/// outputs are empty trees, one per output port).
+fn solve_dynamic(graph: &Graph, node: &Node, _ctx: &mut Ctx, _outputs: &Outputs) -> Vec<DataTree> {
+    let (_, outs) = graph.dynamic_ports(node);
+    vec![DataTree::empty(); outs.len()]
+}
+
 /// Every node's outputs as data trees, keyed by node uid.
 pub fn solve(graph: &Graph, ctx: &mut Ctx) -> Outputs {
     solve_with(graph, ctx, &HashMap::new(), registry())
@@ -149,6 +156,11 @@ pub fn solve_with(graph: &Graph, ctx: &mut Ctx, seeds: &HashMap<String, Vec<Data
         }
         if graph.is_cluster(node) {
             let o = solve_cluster(graph, node, ctx, &outputs, reg);
+            outputs.insert(uid, o);
+            continue;
+        }
+        if super::graph::is_dynamic(&node.kind) {
+            let o = solve_dynamic(graph, node, ctx, &outputs);
             outputs.insert(uid, o);
             continue;
         }

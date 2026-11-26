@@ -67,11 +67,15 @@ struct Ports {
 }
 
 fn ports_of(graph: &Graph, node: &Node) -> Ports {
+    if super::graph::is_dynamic(&node.kind) {
+        let (ins, outs) = graph.dynamic_ports(node);
+        return Ports { inputs: ins.into_iter().map(|d| (d.name, None)).collect(), outputs: outs.into_iter().map(|d| d.name).collect(), cluster: false };
+    }
     if let Some(c) = registry().get(&node.kind) {
         return Ports { inputs: c.inputs.iter().map(|i| (i.name.to_string(), Some(i.clone()))).collect(), outputs: c.outputs.iter().map(|o| o.to_string()).collect(), cluster: false };
     }
     if graph.is_cluster(node) {
-        let (ins, outs) = graph.cluster_ports(node);
+        let (ins, outs) = graph.node_ports(node);
         return Ports { inputs: ins.into_iter().map(|(n, _)| (n, None)).collect(), outputs: outs.into_iter().map(|(n, _)| n).collect(), cluster: true };
     }
     Ports { inputs: Vec::new(), outputs: Vec::new(), cluster: false }
@@ -98,6 +102,8 @@ enum Dialog {
     RenameGroup(String, String),
     EditComment(String, String),
     ClusterName(Vec<String>, String),
+    /// Node, output side, port index, new name.
+    RenamePort(String, bool, usize, String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1106,13 +1112,39 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
             let name = if out { ports.outputs.get(i).cloned().unwrap_or_default() } else { ports.inputs.get(i).map(|x| x.0.clone()).unwrap_or_default() };
             let kind = if out { String::new() } else { ports.inputs.get(i).and_then(|x| x.1.as_ref()).map(|s| format!(" ({})", s.kind.name())).unwrap_or_default() };
             let pr = pr.on_hover_text(format!("{name}{kind}\n{} item(s) in {} branch(es)\n{}", tree.count(), tree.branch_count(), tree.format(6, 5)));
-            if !out && ed.graph().source_of(uid, i).is_some() {
+            let dynamic = super::graph::is_dynamic(&n.kind);
+            if dynamic || (!out && ed.graph().source_of(uid, i).is_some()) {
                 pr.context_menu(|ui| {
-                    if ui.button("Disconnect").clicked() {
+                    if !out && ed.graph().source_of(uid, i).is_some() && ui.button("Disconnect").clicked() {
                         ed.record(None);
                         ed.graph_mut().disconnect(uid, i);
                         ed.changed();
                         ui.close();
+                    }
+                    if dynamic {
+                        if ui.button("Rename port…").clicked() {
+                            ed.dialog = Some(Dialog::RenamePort(uid.to_string(), out, i, name.clone()));
+                            ui.close();
+                        }
+                        if !out {
+                            let current = ed.graph().node(uid).map(|n| ed.graph().dynamic_ports(n).0).and_then(|p| p.get(i).map(|d| d.access)).unwrap_or_default();
+                            ui.menu_button("Access", |ui| {
+                                for (label, a) in [("Item", super::graph::Access::Item), ("List", super::graph::Access::List), ("Tree", super::graph::Access::Tree)] {
+                                    if ui.radio(current == a, label).clicked() {
+                                        ed.record(None);
+                                        ed.graph_mut().set_port_access(uid, i, a);
+                                        ed.changed();
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        }
+                        if ui.button("Remove port").clicked() {
+                            ed.record(None);
+                            ed.graph_mut().remove_port(uid, out, i);
+                            ed.changed();
+                            ui.close();
+                        }
                     }
                 });
             }
@@ -1191,6 +1223,17 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         if ui.button("Cluster selected…").clicked() {
             ed.dialog = Some(Dialog::ClusterName(ed.sorted_selection(), "Cluster".into()));
             ui.close();
+        }
+        if super::graph::is_dynamic(&n.kind) {
+            ui.separator();
+            for (label, out) in [("Add input", false), ("Add output", true)] {
+                if ui.button(label).clicked() {
+                    ed.record(None);
+                    ed.graph_mut().add_port(uid, out);
+                    ed.changed();
+                    ui.close();
+                }
+            }
         }
         if ports.cluster && ui.button("Open cluster").clicked() {
             ed.open_cluster(uid);
@@ -1310,10 +1353,11 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                 Dialog::RenameGroup(..) => ("Group", false),
                 Dialog::EditComment(..) => ("Comment", true),
                 Dialog::ClusterName(..) => ("Cluster", false),
+                Dialog::RenamePort(..) => ("Port name", false),
                 Dialog::Search { .. } => unreachable!(),
             };
             let mut text = match &other {
-                Dialog::RenameNode(_, s) | Dialog::RenameGroup(_, s) | Dialog::EditComment(_, s) | Dialog::ClusterName(_, s) => s.clone(),
+                Dialog::RenameNode(_, s) | Dialog::RenameGroup(_, s) | Dialog::EditComment(_, s) | Dialog::ClusterName(_, s) | Dialog::RenamePort(_, _, _, s) => s.clone(),
                 Dialog::Search { .. } => unreachable!(),
             };
             let mut ok = false;
@@ -1351,6 +1395,12 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                     Dialog::EditComment(uid, _) => {
                         if let Some(c) = ed.graph_mut().comments.iter_mut().find(|c| c.uid == *uid) {
                             c.text = text.clone();
+                        }
+                    }
+                    Dialog::RenamePort(uid, out, index, _) => {
+                        if !ed.graph_mut().rename_port(uid, *out, *index, text.trim()) {
+                            ed.undo.pop();
+                            ed.status = format!("\"{}\" is taken or is not a name (letters, digits, _).", text.trim());
                         }
                     }
                     Dialog::ClusterName(uids, _) => {
