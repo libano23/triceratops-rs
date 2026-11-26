@@ -10,6 +10,7 @@ pub mod components;
 pub mod data;
 pub mod engine;
 pub mod example;
+pub mod examples;
 pub mod graph;
 pub mod report;
 pub mod script;

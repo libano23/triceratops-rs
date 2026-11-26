@@ -32,7 +32,8 @@ pub fn register(r: &mut Registry) {
          surface_point(s, u, v), box(corner, x, y, z), cylinder(base, r, h), sphere(c, r), union, difference, intersection, \
          move(g, v), rotate(g, degrees, center, axis), scale(g, center, f), mirror(g, origin, normal), \
          array_polar(g, center, count, degrees), area(g), volume(g); run(\"Component\", [args]) calls any component \
-         (run_all gives every output). print() shows on the node. Maths in radians: sin, cos, pow, atan2, PI, E, deg, rad.",
+         (run_all gives every output). print() shows on the node. Maths in radians: sin, cos, pow, atan2, PI, E, deg, rad. \
+         Functions you define with fn see only their parameters: use PI() and E() inside them.",
     );
     r.elem("Geometry", "Params", vec![any("Objects")], &["Geometry"], |ctx, a| {
         let refs: Vec<Value> = match a.get(0) {

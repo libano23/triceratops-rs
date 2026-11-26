@@ -846,10 +846,23 @@ fn toolbar(ed: &mut Editor, ui: &mut egui::Ui, bake: &mut bool) {
             ed.graph_mut().add_comment(c.x as f64, c.y as f64, "Comment");
             ed.changed();
         }
-        if ui.button("Example").clicked() {
-            ed.record(None);
-            ed.set_root(build_example());
-        }
+        ui.menu_button("Examples", |ui| {
+            if ui.button("Starter (cylinder)").clicked() {
+                ed.record(None);
+                ed.set_root(build_example());
+                ui.close();
+            }
+            ui.separator();
+            for (name, _) in super::examples::EXAMPLES {
+                if ui.button(*name).clicked() {
+                    if let Some(g) = super::examples::load(name) {
+                        ed.record(None);
+                        ed.set_root(g);
+                    }
+                    ui.close();
+                }
+            }
+        });
         if ui.button("Group").clicked() {
             ed.group_selected();
         }

@@ -1,0 +1,173 @@
+{
+  "nodes": [
+    {
+      "type": "Number",
+      "nickname": "Step",
+      "values": {
+        "Value": 0.2617993877991494
+      }
+    },
+    {
+      "type": "Integer",
+      "nickname": "Samples",
+      "values": {
+        "Value": 25
+      }
+    },
+    {
+      "type": "Series",
+      "nickname": "X"
+    },
+    {
+      "type": "Series",
+      "nickname": "Y"
+    },
+    {
+      "type": "Graft",
+      "nickname": "Rows"
+    },
+    {
+      "type": "Expression",
+      "nickname": "z = f(x, y)",
+      "values": {
+        "Expression": "sin(x) * cos(y)",
+        "_inputs": [
+          "x",
+          "y"
+        ]
+      }
+    },
+    {
+      "type": "Point",
+      "nickname": "Grid"
+    },
+    {
+      "type": "Surface from Grid",
+      "nickname": "Surface"
+    },
+    {
+      "type": "Integer",
+      "nickname": "Knot P",
+      "values": {
+        "Value": 2
+      }
+    },
+    {
+      "type": "Integer",
+      "nickname": "Knot Q",
+      "values": {
+        "Value": 3
+      }
+    },
+    {
+      "type": "Script",
+      "nickname": "Torus knot",
+      "values": {
+        "_inputs": [
+          "p",
+          "q",
+          "R",
+          "a",
+          "tube"
+        ],
+        "_outputs": [
+          "knot_tube"
+        ],
+        "R": 12,
+        "a": 4,
+        "tube": 1,
+        "code": "// a (p, q) torus knot, swept with a circle into a tube\nlet pts = [];\nlet n = 160;\nfor i in 0..n {\n    let t = 2.0 * PI * i / n;\n    let r = R + a * cos(q * t);\n    pts.push(point(r * cos(p * t), r * sin(p * t), a * sin(q * t) + 3.0));\n}\nlet rail = interpolate(pts, true);\nlet start = curve_point(rail, 0.0);\nlet ahead = curve_point(rail, 0.001);\nlet profile = circle(start, tube, ahead - start);\nknot_tube = sweep1(rail, profile);"
+      }
+    },
+    {
+      "type": "Preview"
+    },
+    {
+      "type": "Bake"
+    }
+  ],
+  "connections": [
+    {
+      "from": "Step",
+      "to": "X.Step"
+    },
+    {
+      "from": "Samples",
+      "to": "X.Count"
+    },
+    {
+      "from": "Step",
+      "to": "Y.Step"
+    },
+    {
+      "from": "Samples",
+      "to": "Y.Count"
+    },
+    {
+      "from": "X",
+      "to": "Rows.Tree"
+    },
+    {
+      "from": "Rows",
+      "to": "z = f(x, y).x"
+    },
+    {
+      "from": "Y",
+      "to": "z = f(x, y).y"
+    },
+    {
+      "from": "Rows",
+      "to": "Grid.X"
+    },
+    {
+      "from": "Y",
+      "to": "Grid.Y"
+    },
+    {
+      "from": "z = f(x, y)",
+      "to": "Grid.Z"
+    },
+    {
+      "from": "Grid",
+      "to": "Surface.Grid"
+    },
+    {
+      "from": "Surface",
+      "to": "Preview.Geometry"
+    },
+    {
+      "from": "Surface",
+      "to": "Bake.Geometry"
+    },
+    {
+      "from": "Knot P",
+      "to": "Torus knot.p"
+    },
+    {
+      "from": "Knot Q",
+      "to": "Torus knot.q"
+    }
+  ],
+  "groups": [
+    {
+      "name": "z = sin(x)\u00b7cos(y)",
+      "nodes": [
+        "Step",
+        "Samples",
+        "X",
+        "Y",
+        "Rows",
+        "z = f(x, y)",
+        "Grid",
+        "Surface"
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "text": "Change the formula on the Expression node: the surface follows.",
+      "x": 40,
+      "y": 620
+    }
+  ]
+}
