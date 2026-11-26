@@ -986,7 +986,7 @@ mod tests {
         let scale = DVec2::new(2.0, 15.0);
         let w = 0.06; // band width in u
         let band = vec![DVec2::new(0.1, 0.0), DVec2::new(0.1 + w, 0.0), DVec2::new(0.9 + w, 4.0), DVec2::new(0.9, 4.0)];
-        let samples = interior_uv_samples(&[band.clone()], scale, 5);
+        let samples = interior_uv_samples(std::slice::from_ref(&band), scale, 5);
         assert!(samples.len() >= 3, "{samples:?}");
         for p in samples {
             // distance across the band, on the surface: half the width is 0.06 units
