@@ -766,6 +766,8 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     let diag = a.bounding_box().union(&b.bounding_box()).diagonal().max(1e-6);
     let tol = tol.max(diag * 1e-7);
     let debug = std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok();
+    // every (u, v) of every path: long lines, only on request
+    let debug_paths = std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok_and(|v| v == "2");
     let ma: Vec<FaceMesh> = a.faces.iter().map(face_mesh).collect();
     let mb: Vec<FaceMesh> = b.faces.iter().map(face_mesh).collect();
     let mut mesh_a = Mesh::new();
@@ -937,7 +939,7 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     for (src, paths, other_mesh, from_b) in [(a, &paths_a, &mesh_b, false), (b, &paths_b, &mesh_a, true)] {
         for (fi, f) in src.faces.iter().enumerate() {
             crate::job::checkpoint(fi as u64).map_err(|e| e.to_string())?;
-            if debug && !paths[fi].is_empty() {
+            if debug_paths && !paths[fi].is_empty() {
                 for p in &paths[fi] {
                     eprintln!("  {}{} path: {}", if from_b { "B" } else { "A" }, fi, p.iter().map(|q| format!("({:.17e},{:.17e})", q.x, q.y)).collect::<Vec<_>>().join(" "));
                 }
@@ -949,7 +951,8 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
                 let piece = if split { densify_original_segments(f, piece) } else { piece };
                 let Some(class) = classify(&piece, other_mesh, on_tol) else { continue };
                 if debug {
-                    eprintln!("  {}{} piece ({} loops, area {:.4}): {:?}", if from_b { "B" } else { "A" }, fi, piece.loops.len(), piece.loops.first().map_or(1.0, |l| signed_area(l)), class);
+                    let c = piece.loops.first().map(|l| l.iter().fold(DVec2::ZERO, |s, p| s + *p) / l.len().max(1) as f64).unwrap_or_default();
+                    eprintln!("  {}{} piece ({} loops, area {:.4}, centre {:.4},{:.4}): {:?}", if from_b { "B" } else { "A" }, fi, piece.loops.len(), piece.loops.first().map_or(1.0, |l| signed_area(l)), c.x, c.y, class);
                 }
                 if keep(class, op, from_b) {
                     let mut piece = piece;
