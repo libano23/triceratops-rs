@@ -889,6 +889,15 @@ mod acceptance_tests {
     }
 
     #[test]
+    fn locust_components_lists_script_and_expression() {
+        let r = ok_reply(handle(&mut App::new(), "locust_components", &json!({ "category": "Script" })));
+        let names: Vec<&str> = r.as_array().unwrap().iter().filter_map(|c| c["name"].as_str()).collect();
+        assert_eq!(names, ["Expression", "Script"]);
+        let script = &r[1]["description"];
+        assert!(script.as_str().unwrap().contains("_inputs"), "{script}");
+    }
+
+    #[test]
     fn locust_components_search() {
         let r = ok_reply(handle(&mut App::new(), "locust_components", &json!({ "query": "extrude" })));
         let list = r.as_array().unwrap();

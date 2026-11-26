@@ -12,6 +12,7 @@ pub mod engine;
 pub mod example;
 pub mod graph;
 pub mod report;
+pub mod script;
 pub mod ui;
 
 #[cfg(test)]

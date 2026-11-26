@@ -13,6 +13,19 @@ pub fn register(r: &mut Registry) {
     r.elem("Point", "Params", vec![num("X", 0.0), num("Y", 0.0), num("Z", 0.0)], &["Point"], |_, a| one(p(DVec3::new(a.num(0), a.num(1), a.num(2)))));
     r.elem("Vector", "Params", vec![num("X", 0.0), num("Y", 0.0), num("Z", 1.0)], &["Vector"], |_, a| one(p(DVec3::new(a.num(0), a.num(1), a.num(2)))));
     r.elem("Plane", "Params", vec![pt("Origin", 0.0, 0.0, 0.0), pt("Normal", 0.0, 0.0, 1.0)], &["Plane"], |_, a| one(Value::Plane(a.pt(0), a.pt_or(1, DVec3::Z))));
+    // Script and Expression solve in `locust::script` (their ports are the node's own); these
+    // entries put them in the catalogue
+    r.elem("Expression", "Script", vec![], &["Result"], |_, _| None).describe(
+        "A formula of the node's inputs in Rhai syntax, e.g. sin(x)*cos(y), pow(x, 2) + y, if x > 0 { x } else { 0 }. \
+         The formula is values.Expression. Inputs default to x, y, z (values._inputs to change them); the output is Result. \
+         Lists are matched like any component's. Trigonometry in radians; PI, E, deg(), rad(), pow, atan2, min, max, clamp.",
+    );
+    r.elem("Script", "Script", vec![], &["a"], |_, _| None).describe(
+        "Rhai code with its own inputs and outputs: values.code is the code, values._inputs and values._outputs list the \
+         ports as names or {name, kind, access: item|list|tree} (default inputs x, y; output a). Inputs are variables; \
+         whatever each output variable holds at the end goes out, an array as a list. Item inputs run the code once per \
+         matched item; list inputs get the whole branch as an array; tree inputs an array of branches.",
+    );
     r.elem("Geometry", "Params", vec![any("Objects")], &["Geometry"], |ctx, a| {
         let refs: Vec<Value> = match a.get(0) {
             Value::Null => return None,

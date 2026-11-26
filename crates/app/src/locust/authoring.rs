@@ -160,7 +160,7 @@ impl Handles {
 /// The three registry names closest to `kind`.
 fn suggestions(kind: &str) -> Vec<String> {
     let k = kind.to_lowercase();
-    let mut all: Vec<(usize, &str)> = registry().components.keys().copied().chain(["Script", "Expression"]).map(|n| (edit_distance(&k, &n.to_lowercase()), n)).collect();
+    let mut all: Vec<(usize, &str)> = registry().components.keys().copied().map(|n| (edit_distance(&k, &n.to_lowercase()), n)).collect();
     all.sort();
     all.into_iter().take(3).map(|(_, n)| n.to_string()).collect()
 }

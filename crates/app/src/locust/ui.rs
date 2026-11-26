@@ -64,21 +64,23 @@ struct Ports {
     inputs: Vec<(String, Option<InputSpec>)>,
     outputs: Vec<String>,
     cluster: bool,
+    /// An Expression: a row for its formula under the ports.
+    formula: bool,
 }
 
 fn ports_of(graph: &Graph, node: &Node) -> Ports {
     if super::graph::is_dynamic(&node.kind) {
         let (ins, outs) = graph.dynamic_ports(node);
-        return Ports { inputs: ins.into_iter().map(|d| (d.name, None)).collect(), outputs: outs.into_iter().map(|d| d.name).collect(), cluster: false };
+        return Ports { inputs: ins.into_iter().map(|d| (d.name, None)).collect(), outputs: outs.into_iter().map(|d| d.name).collect(), cluster: false, formula: node.kind == "Expression" };
     }
     if let Some(c) = registry().get(&node.kind) {
-        return Ports { inputs: c.inputs.iter().map(|i| (i.name.to_string(), Some(i.clone()))).collect(), outputs: c.outputs.iter().map(|o| o.to_string()).collect(), cluster: false };
+        return Ports { inputs: c.inputs.iter().map(|i| (i.name.to_string(), Some(i.clone()))).collect(), outputs: c.outputs.iter().map(|o| o.to_string()).collect(), cluster: false, formula: false };
     }
     if graph.is_cluster(node) {
         let (ins, outs) = graph.node_ports(node);
-        return Ports { inputs: ins.into_iter().map(|(n, _)| (n, None)).collect(), outputs: outs.into_iter().map(|(n, _)| n).collect(), cluster: true };
+        return Ports { inputs: ins.into_iter().map(|(n, _)| (n, None)).collect(), outputs: outs.into_iter().map(|(n, _)| n).collect(), cluster: true, formula: false };
     }
-    Ports { inputs: Vec::new(), outputs: Vec::new(), cluster: false }
+    Ports { inputs: Vec::new(), outputs: Vec::new(), cluster: false, formula: false }
 }
 
 fn in_y(i: usize) -> f32 {
@@ -90,7 +92,7 @@ fn out_y(n_in: usize, i: usize) -> f32 {
 }
 
 fn node_height(p: &Ports, display: &str) -> f32 {
-    let rows = (p.inputs.len() + p.outputs.len() + 1) as f32;
+    let rows = (p.inputs.len() + p.outputs.len() + 1 + usize::from(p.formula)) as f32;
     let extra = if display.is_empty() { 0.0 } else { ROW_H * display.lines().take(8).count() as f32 + 6.0 };
     HEADER_H + ROW_H * rows + 8.0 + extra
 }
@@ -1275,8 +1277,17 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         let y = rect.min.y + out_y(ports.inputs.len(), i);
         painter.text(Pos2::new(rect.max.x - 12.0, y), Align2::RIGHT_CENTER, name, font.clone(), MUTED);
     }
+    if ports.formula {
+        let top = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len()) as f32 + 8.0;
+        let wr = Rect::from_min_size(Pos2::new(rect.min.x + 8.0, top), Vec2::new(NODE_W - 16.0, ROW_H - 4.0));
+        let mut text = n.values.get("Expression").and_then(|v| v.as_str()).unwrap_or("x").to_string();
+        let edit = ui.put(wr, egui::TextEdit::singleline(&mut text).font(egui::TextStyle::Monospace).hint_text("formula, e.g. sin(x)*y"));
+        if edit.changed() {
+            ed.set_value(uid, "Expression", json!(text));
+        }
+    }
     if !display.is_empty() {
-        let base = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len()) as f32 + 8.0;
+        let base = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len() + usize::from(ports.formula)) as f32 + 8.0;
         for (k, line) in display.lines().take(8).enumerate() {
             let text: String = line.chars().take(34).collect();
             painter.text(Pos2::new(rect.min.x + 8.0, base + ROW_H * k as f32 + ROW_H / 2.0), Align2::LEFT_CENTER, text, FontId::monospace(11.0), TEXT);
