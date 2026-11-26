@@ -130,7 +130,6 @@ footer .brand img { width: 30px; height: 30px; }
       <tr><th>System</th><th>File</th><th>How to start</th></tr>
       <tr><td>Linux (x86_64)</td><td><code>Triceratops-&lt;version&gt;-x86_64.AppImage</code></td><td><code>chmod +x</code> it, then run it</td></tr>
       <tr><td>Windows 10/11</td><td><code>Triceratops-&lt;version&gt;-windows-x64.zip</code></td><td>Unzip and run <code>triceratops.exe</code></td></tr>
-      <tr><td>macOS 11+</td><td><code>Triceratops-&lt;version&gt;-macos-universal.dmg</code></td><td>Drag it to Applications; the first time, right-click it and choose Open</td></tr>
     </table>
     <h3>The window</h3>
     <ul>
@@ -281,7 +280,7 @@ for i in 0..n {
 claude mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp
 # Codex
 codex mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp</code></pre>
-    <p>On Windows use <code>C:\path\to\triceratops.exe mcp</code>, and on macOS <code>/Applications/Triceratops.app/Contents/MacOS/triceratops mcp</code>. Then ask, for example:</p>
+    <p>On Windows use <code>C:\path\to\triceratops.exe mcp</code> instead. Then ask, for example:</p>
     <ul>
       <li><i>"Make a 60×40×8 mm plate with two 6 mm holes 40 mm apart."</i> The assistant runs commands and gives you fixed geometry.</li>
       <li><i>"Build a parametric M8 bolt and nut in Locust."</i> or <i>"A gear where I can change the number of teeth."</i> The assistant builds a Locust definition, and you keep adjusting it with the sliders.</li>
@@ -340,7 +339,7 @@ BooleanDifference
     <ul>
       <li>Snaps, Ortho, Grid Snap, Planar, Gumball, the window layout, the theme and the export folders are saved automatically. <b>Options › Appearance</b> saves or loads a layout and resets to the defaults.</li>
       <li><code>Theme</code> (or View › Theme) switches between Triceratops Light, Triceratops Dark and Blender; your own themes are JSON files in <code>&lt;config&gt;/triceratops/themes</code>.</li>
-      <li>Settings live in <code>&lt;config&gt;/triceratops/options.json</code>, where <code>&lt;config&gt;</code> is <code>~/.config</code> on Linux, <code>%APPDATA%</code> on Windows and <code>~/Library/Application Support</code> on macOS.</li>
+      <li>Settings live in <code>&lt;config&gt;/triceratops/options.json</code>, where <code>&lt;config&gt;</code> is <code>~/.config</code> on Linux and <code>%APPDATA%</code> on Windows.</li>
     </ul>
   </section>
 
@@ -348,7 +347,6 @@ BooleanDifference
     <h2>Troubleshooting</h2>
     <ul>
       <li><b>Graphics problems</b>: start with <code>TRICERATOPS_BACKEND=gl</code> (or <code>vulkan</code>) to pick the graphics backend.</li>
-      <li><b>macOS says the app cannot be opened</b>: it is not notarized; right-click it in Applications and choose Open the first time.</li>
       <li><b>A Boolean fails</b>: check that both objects are closed solids (<code>What</code> or the Properties panel). <code>TRICERATOPS_BOOL_DEBUG=1</code> prints diagnostics to the terminal.</li>
       <li><b>Something feels slow</b>: <code>TRICERATOPS_SLOW=1</code> names any command step that takes over a second.</li>
       <li>Found a bug? <a href="https://github.com/libano23/triceratops-rs/issues">Open an issue</a> with the steps or a command script that shows it.</li>
