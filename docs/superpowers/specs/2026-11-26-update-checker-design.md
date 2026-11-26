@@ -64,7 +64,8 @@ bodies of the newer releases.
 - New options (saved with the others, all with serde defaults): `check_updates: bool`
   (default true), `last_update_check: u64` (Unix seconds), `skipped_version: String`,
   `notified_version: String` (the last version whose dialog opened by itself).
-  A new Options page "Updates" holds the checkbox, the last check time and "Check now".
+  A new Options page "General" holds the checkbox, the last check time and "Check now"
+  (and the autosave settings below).
 
 ### What the user sees
 
@@ -110,6 +111,37 @@ bodies of the newer releases.
   `generate_release_notes`; the job fails if the section is missing, so a release cannot
   go out without its changelog.
 
+## Addendum (2026-11-26): unsaved changes and autosave
+
+Asked by the user while approving this design. Today nothing asks before discarding the
+model: closing the window, `Exit`, `New` and `Open` all drop unsaved changes silently,
+and the existing `Autosave` command only writes on request to a fixed file.
+
+### Ask before discarding unsaved changes
+
+- Closing the window (the window manager's close request), `Exit`, `New`, `Open` and the
+  updater's "Restart now" go through one guard. If `doc.modified` is false the action runs
+  at once; otherwise a modal dialog asks "Save changes to <title>?" with **Save**,
+  **Don't Save** and **Cancel**. Save runs the normal Save (with its file dialog for a new
+  model) and continues only if the model is then saved; Cancel (or Esc) abandons the
+  action. A background job still running is cancelled before the action continues.
+- Scripted runs (`--script`) and assistants are not blocked by the dialog: in a
+  `--script` run the program never quits on its own anyway, and an assistant's `Exit`,
+  `New` or `Open` shows the same dialog to the user, who decides.
+
+### Autosave to a separate file
+
+- Options › General: "Autosave every N minutes", on by default, N = 5 (1–60).
+- Every N minutes, if the model changed since the last save or autosave (document
+  revision), a snapshot (clones of `doc.state` and `doc.settings`) is written on a
+  background thread to `<config>/triceratops/autosave/<file stem>.autosave.3dm`
+  (`Untitled.autosave.3dm` for a model never saved). The working file is never touched.
+- A successful Save, and a clean exit, delete the current model's autosave file.
+- At start, autosave files left in that folder mean a session ended badly: a dialog lists
+  them (name, time) with **Open** (opens it as an unsaved model, title "<stem> (recovered)"),
+  **Delete** and **Later** (keeps them for the next start).
+- The existing `Autosave` command writes the same file at once.
+
 ## Testing
 
 - Version parsing and comparison (`0.10.0 > 0.9.1`, `v` prefix, malformed tags ignored).
@@ -124,6 +156,11 @@ bodies of the newer releases.
 - `changelog_section.py`: extracts one section, fails on a missing one.
 - Options round-trip for the four new fields; the 24-hour rule; no automatic check with
   `--script` or the environment variable; the dialog opens once per version.
+- Discard guard: an unmodified model quits/opens/clears at once; a modified one shows the
+  dialog; Don't Save proceeds, Cancel leaves everything as it was; Save proceeds only once
+  saved.
+- Autosave: written after the interval only when modified, to the right path, not when
+  disabled; deleted after Save; leftover files are found at start; the option round-trips.
 
 ## Left to the builder
 
