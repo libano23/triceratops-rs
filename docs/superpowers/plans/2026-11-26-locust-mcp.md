@@ -7,8 +7,9 @@ model directly (as today) or build a live, parametric Locust definition — incl
 Script and Expression nodes and new Helix / Populate / Voronoi components — with Booleans
 that always finish.
 
-**Architecture:** Booleans get a polygon budget and a time limit in `tri_geom::mesh_csg`
-and become fallible. The Locust engine collects per-node diagnostics in `Ctx`. A headless
+**Architecture:** Booleans get a polygon budget in `tri_geom::mesh_csg` and become fallible;
+long operations (Booleans, Locust solves) run as background jobs that Esc cancels and that
+report progress to the status bar and to MCP clients. The Locust engine collects per-node diagnostics in `Ctx`. A headless
 `locust::authoring` module turns assistant JSON (names instead of uids/indices, optional
 positions) into a validated `Graph`; `mcp::handler` exposes six `locust_*` methods that
 drive `App::locust` (the editor), and `mcp::bridge` publishes them as tools. Script and
@@ -49,28 +50,47 @@ Expression are *dynamic-port* nodes solved by `locust::script` on one shared Rha
 - Test: `crates/geom/src/mesh_csg.rs` (`#[cfg(test)]`), `crates/app/src/mcp/handler.rs` (`thread_repro`, already in the working tree)
 
 **Interfaces:**
-- Produces: `pub enum BooleanError { TooComplex { polygons: usize }, TimedOut { seconds: u64 }, Empty }` with `Display`:
+- Produces: `pub enum BooleanError { TooComplex { polygons: usize }, Cancelled, Empty }` with `Display`:
   - TooComplex → `"Boolean too complex ({polygons} polygons) — simplify the inputs or use a coarser mesh"`
-  - TimedOut → `"Boolean gave up after {seconds} s — simplify the inputs"`
+  - Cancelled → `"cancelled"`
   - Empty → `"Boolean produced nothing"`
 - `pub fn mesh_boolean(a: &Mesh, b: &Mesh, op: BooleanOp) -> Result<Mesh, BooleanError>` (was infallible)
 - `pub fn mesh_boolean_tagged(...) -> Result<Vec<TaggedPolygon>, BooleanError>`
-- `pub struct Budget { pub max_polygons: usize, pub time_limit: Duration }`, `impl Budget { pub fn for_inputs(na: usize, nb: usize) -> Self }` = `max_polygons: max(200_000, 40 * (na + nb))`, `time_limit: 30 s`; env `TRICERATOPS_BOOL_BUDGET` (polygons) overrides for experiments.
+- `pub struct Budget { pub max_polygons: usize }`, `impl Budget { pub fn for_inputs(na: usize, nb: usize) -> Self }` = `max_polygons: max(200_000, 40 * (na + nb))`; env `TRICERATOPS_BOOL_BUDGET` (polygons) overrides for experiments. No time limit (Task 1B makes it cancellable instead).
 - `brep_boolean_verbose` maps a `BooleanError` into its `Err(String)` with the Display text.
-- Deviation from the spec, on purpose: no Esc cancel. The Boolean runs while the GUI thread waits on it, so Esc cannot be read; the time limit is what ends a stuck Boolean for both the user and the MCP path.
 
 - [ ] **Step 1: Find the root cause.** Run the repro under a memory cap so it cannot eat the machine:
   `(ulimit -v 8000000; TRICERATOPS_BOOL_DEBUG=1 timeout 300 cargo test -p triceratops --release thread_repro -- --ignored --nocapture)`.
   Use superpowers:systematic-debugging. Record (in the commit message) why the exact Boolean failed and why BSP splitting exploded (expected suspect: near-coplanar slivers of the swept thread re-split at every level). If it is a defect (e.g. a sliver used as a splitting plane, an epsilon mismatch), fix it there with a geom unit test reproducing the minimal shape.
 - [ ] **Step 2: Write failing tests** in `mesh_csg.rs`:
-  - `budget_trips_with_clear_error`: two `Mesh` spheres of 20k triangles each, offset by half a radius, with `TRICERATOPS_BOOL_BUDGET` unset but calling the internal `boolean_nodes_budgeted(.., Budget { max_polygons: 1000, time_limit: 30s })` → `Err(BooleanError::TooComplex { .. })`.
+  - `budget_trips_with_clear_error`: two `Mesh` spheres of 20k triangles each, offset by half a radius, with `TRICERATOPS_BOOL_BUDGET` unset but calling the internal `boolean_nodes_budgeted(.., Budget { max_polygons: 1000 })` → `Err(BooleanError::TooComplex { .. })`.
   - `ordinary_boolean_unaffected`: box minus cylinder via `mesh_boolean` → `Ok`, closed mesh, same triangle count as before this change (capture the number first).
 - [ ] **Step 3: Run, confirm FAIL** (`cargo test -p tri-geom budget_`): does not compile / no budget.
-- [ ] **Step 4: Implement.** Thread a `&mut Tracker { count, limit, deadline }` through `Node::new / build / clip_to / clip_polygons / invert` (the BSP recursion); increment on every polygon created by a split and on every node built; check deadline every 4096 increments; bail with `Err` up the stack. `with_big_stack` stays; a panic inside the thread becomes `Err(BooleanError::Empty)` instead of `expect`.
+- [ ] **Step 4: Implement.** Thread a `&mut Tracker { count, limit, deadline }` through `Node::new / build / clip_to / clip_polygons / invert` (the BSP recursion); increment on every polygon created by a split and on every node built; every 4096 increments call `tri_geom::job::checkpoint(count)` (Task 1B; until then a no-op stub in `geom/src/job.rs`) which returns `Err(Cancelled)` when cancelled; bail with `Err` up the stack. `with_big_stack` stays; a panic inside the thread becomes `Err(BooleanError::Empty)` instead of `expect`.
 - [ ] **Step 5: Update callers.** Commands print the error text to the log and leave the document unchanged; Locust Solid components push the error to `ctx` diagnostics (after Task 3 lands they use `ctx.error`; until then return `None`).
 - [ ] **Step 6: Run** `cargo test --workspace` and `(ulimit -v 8000000; timeout 120 cargo test -p triceratops --release thread_repro -- --ignored --nocapture)`. Expected: the repro finishes within 120 s with either a closed union or the clear error; peak memory < 8 GB.
 - [ ] **Step 7: Make the repro a normal test**: rename `thread_repro::screw_thread_boolean` to `acceptance_tests::screw_thread_boolean_is_bounded`, drop `#[ignore]` if it runs < 20 s in debug, assert "added 1 object" or log contains `"Boolean"` error text.
 - [ ] **Step 8: Commit** `Booleans: polygon budget and time limit, fallible mesh_boolean`.
+
+### Task 1B: Background jobs — Esc cancels, live feedback for user and assistant
+
+**Files:**
+- Create: `crates/geom/src/job.rs` (token), `crates/app/src/jobs.rs` (job runner + status-bar widget)
+- Modify: `crates/geom/src/{lib.rs,mesh_csg.rs,brep_boolean.rs,brep_boolean_exact.rs}` (checkpoints, stage names), `crates/app/src/commands/mod.rs` (`Step::Work`, `Input::Work`), `crates/app/src/app.rs` (poll job each frame, Esc, overlay, resume pending script lines), the Boolean commands (`commands/{mesh2,mesh3,mesh_cmds,misc4,misc5,misc6,surface2,surface_edit,surfaces3}.rs` — every call to `brep_boolean*` / `mesh_boolean*`), `crates/app/src/mcp/{handler,host,socket,bridge}.rs`
+- Test: `geom/src/job.rs`, `app/src/jobs.rs`, `mcp/handler.rs` acceptance tests
+
+**Interfaces:**
+- `tri_geom::job`: `pub struct Token` (Clone, `Arc` of `cancelled: AtomicBool`, `count: AtomicU64`, `stage: Mutex<&'static str>`); `Token::new()`, `cancel()`, `is_cancelled()`, `snapshot() -> (&'static str, u64)`; `pub fn install(t: Token) -> Guard` (thread-local, restored on drop); `pub fn current() -> Option<Token>`; `pub fn stage(name: &'static str)`; `pub fn checkpoint(count: u64) -> Result<(), Cancelled>` (no token installed → always Ok); `pub struct Cancelled`. `with_big_stack` installs the caller's current token in the spawned thread.
+- `commands`: `Step::Work(Job)`; `Input::Work(WorkResult)` with `pub enum WorkResult { Done(Box<dyn Any + Send>), Cancelled }`; `impl CmdCtx { pub fn work<T: Send + 'static>(&mut self, label: impl Into<String>, f: impl FnOnce() -> T + Send + 'static) -> Step }` — spawns the worker with a fresh `Token` installed; the command gets `Input::Work(Done(Box<T>))` later and downcasts. A command that receives `Input::Work(Cancelled)` returns `Step::Cancelled` and leaves the document as it was.
+- `app::App`: `pub fn job_status(&self) -> Option<JobStatus>` with `pub struct JobStatus { pub label: String, pub elapsed: Duration, pub stage: &'static str, pub count: u64 }`; `pub fn cancel_job(&mut self) -> bool`. While a job runs: Esc cancels it (no other key reaches the command), the viewport stays interactive (orbit/zoom), commands can't be started, the status bar shows `⟳ <label> — 12 s · <stage> · 1.3 M · Esc to cancel` (count formatted k/M; repaint every 100 ms). History replay that hits `Step::Work` waits for the job inline (replay is not interactive).
+- `run_script_lines` stops at a line that started a job and keeps the rest in `App::pending_lines`; when the job ends they run. MCP `run_commands` then returns `Outcome::Deferred` (a new `Deferred::Job(u64)` variant next to the capture one) and `Host` answers when `pending_lines` is empty and no job runs.
+- MCP: `get_state` adds `"busy": null | {label, elapsed_s, stage, count}`; new method/tool `cancel` → `{"cancelled": bool}`; changing methods during a job → `Err("busy: <label> running for <n> s (call cancel to stop it)")`; a job cancelled by Esc answers the waiting `run_commands` with the log including `"<label> cancelled by the user"`. Socket: while a call waits, the window sends a progress frame `{"id", "progress": {label, elapsed_s, stage, count}}` every second; `Client::call` resets its deadline on each progress frame (timeout becomes "60 s of silence"), and the bridge forwards them as MCP progress notifications when the tool call carried a `progressToken`.
+- `TRICERATOPS_SLOW=1`: any synchronous command step over 1 s logs `slow step: <Command> <n> ms` to stderr.
+
+- [ ] **Step 1: Failing tests**: `job.rs` `checkpoint_sees_cancel` and `token_crosses_big_stack`; `mesh_csg` `cancelled_boolean_returns_quickly` (two 20k-triangle spheres, cancel from another thread after 50 ms → `Err(Cancelled)` within 500 ms); `jobs.rs`/acceptance `boolean_runs_as_job` (BooleanUnion of two boxes through `App`: after submit `job_status()` is `Some`, poll until done, one object, `job_status()` None); `esc_cancels_boolean_job` (start a heavy union, `cancel_job()`, poll: document unchanged, log contains "cancelled"); `mcp_run_commands_waits_for_job` (handler returns Deferred, host answers after completion with added ids); `mcp_cancel_tool`; `mcp_busy_refusal`; `get_state_reports_busy`; `socket` `progress_frames_extend_deadline` (fake slow server sending progress every 200 ms for 2 s with a 1 s timeout → success).
+- [ ] **Step 2: FAIL. Step 3: Implement** the token, then `CmdCtx::work` + App polling + status bar, then convert every Boolean call site (each command: gather/clone inputs at the last prompt, `ctx.work("BooleanUnion", move || …)`, apply on `Input::Work`), then MCP.
+- [ ] **Step 4: PASS, clippy; manual check** in the running app: a heavy BooleanUnion shows the counter moving, the viewport orbits during it, Esc stops it within half a second.
+- [ ] **Step 5: Commit** `Long operations run as jobs: Esc cancels, progress shown`.
 
 ### Task 2: Reap the window started by the bridge
 
@@ -152,6 +172,18 @@ Expression are *dynamic-port* nodes solved by `locust::script` on one shared Rha
 - [ ] **Step 5: PASS; run the MCP stdio smoke test** used in CI (`.github/workflows/release.yml` shows the command) locally and confirm `tools/list` contains the six `locust_*` tools.
 - [ ] **Step 6: Commit** `MCP: Locust tools`.
 
+### Task 6B: Locust solves as jobs
+
+**Files:** Modify `crates/app/src/locust/ui.rs`, `locust/components/mod.rs` (Ctx reads a geometry snapshot), `locust/components/params.rs` (Geometry parameter), `crates/app/src/mcp/handler.rs`; tests in `locust/tests.rs` and handler acceptance tests.
+
+**Interfaces:**
+- `Ctx.doc: Option<&Document>` becomes `Ctx.objects: Arc<HashMap<ObjectId, Arc<Geometry>>>` (snapshot of only the ids the definition's Geometry parameters reference, taken on the GUI thread; `Ctx::with_objects(..)`); `Ctx::with_doc(doc)` stays as a convenience that snapshots everything (tests).
+- `Editor::solve(&mut self, doc: &Document)` starts a job (graph clone + snapshot) and returns; `Editor::poll(&mut self) -> bool` (called every frame) installs results when the job ends; a new edit while solving cancels and restarts; `pub fn solving(&self) -> Option<Duration>`; Esc over the editor or the viewport cancels; the canvas status line shows `Solving… 3 s · Esc to cancel`; the previous preview stays until replaced. `Editor::solve_blocking(&mut self, doc)` for tests and history-free callers.
+- MCP `locust_set_graph` / `locust_set_values` / `locust_solve` return `Outcome::Deferred(Job)` and are answered with the report when the solve ends (cancel → `Err("solve cancelled")`); `get_state.busy` reports `"Locust solve"`.
+
+- [ ] **Step 1: Failing tests**: `solve_runs_in_background_and_installs` (poll until done; preview count 1); `edit_during_solve_restarts` (Script sleeping via a 2e7-op loop; change a slider mid-solve; final outputs reflect the new value); `esc_cancels_solve`; `mcp_locust_set_graph_deferred_answer`.
+- [ ] **Step 2: FAIL. Step 3: Implement. Step 4: PASS. Step 5: Commit** `Locust: solve in the background`.
+
 ### Task 7: Rhai engine and the Expression node
 
 **Files:**
@@ -161,12 +193,12 @@ Expression are *dynamic-port* nodes solved by `locust::script` on one shared Rha
 - Test: `crates/app/src/locust/script/tests.rs`
 
 **Interfaces:**
-- `pub fn engine() -> &'static rhai::Engine` (OnceLock): `set_max_operations(50_000_000)`, `set_max_call_levels(64)`, `set_max_string_size(1 << 20)`, `set_max_array_size(1_000_000)`, `set_max_map_size(100_000)`, `on_progress` aborting when a thread-local deadline (`5 s` per node solve) has passed with message `"script took longer than 5 s"`; constants `PI`, `E`; `deg(x)`, `rad(x)`.
+- `pub fn engine() -> &'static rhai::Engine` (OnceLock): `set_max_operations(50_000_000)`, `set_max_call_levels(64)`, `set_max_string_size(1 << 20)`, `set_max_array_size(1_000_000)`, `set_max_map_size(100_000)`, `on_progress` aborting when `tri_geom::job::current()` is cancelled (message `"cancelled"`) — no wall-clock limit; operation count still caps runaway loops; constants `PI`, `E`; `deg(x)`, `rad(x)`.
 - `convert.rs`: `pub fn to_dynamic(v: &Value) -> Dynamic`, `pub fn from_dynamic(d: Dynamic) -> Result<Value, String>`; Number↔FLOAT, Int↔INT, Bool, Text↔String, List↔Array, Point↔custom `Point` (getters/setters `x y z`, `+ - * /` with FLOAT, `dot`, `cross`, `length`, `unit`), Geometry↔custom `Geo` (`kind` getter), Plane/Pair/Colour↔custom types with getters. Unsupported (Map, FnPtr…) → `Err("expected number, point, geometry or array, got <type>")`.
 - `pub fn solve_node(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs) -> Vec<DataTree>`: builds input trees by port (wired, else inline value by name, else Null), applies access (List: each branch → one `Value::List` item at that path; Tree: whole tree → one `Value::List` of branch lists), matches with `match_trees`, evaluates once per combination with inputs as scope variables, collects outputs (Array → `Out::Many`, `()` → `Out::Skip`, else `Out::One`). Compiled `AST` cached in a `Mutex<HashMap<u64, Arc<AST>>>` keyed by source hash. Errors → `ctx.error` with Rhai's message and position (`"line 3, column 9: …"`), once per node (not per combination).
 - Expression: source = `node.values["Expression"]` (default `"x"`), compiled with `compile_expression`, output port 0 gets the value.
 
-- [ ] **Step 1: Failing tests**: `expression_maps_over_list` (`x*x` with Series 0..4 → 0,1,4,9,16), `expression_radians` (`sin(x)` at `PI/2` → 1), `expression_two_vars_broadcast` (`x+y`, x list of 3, y single), `expression_unknown_variable` (Review Focus 5: `sin(xx)` → error containing `xx` and `column`), `script_infinite_loop_is_cut` (Script source `loop {}` through `solve_node` → error containing `"longer than"` or `"operations"` within 6 s).
+- [ ] **Step 1: Failing tests**: `expression_maps_over_list` (`x*x` with Series 0..4 → 0,1,4,9,16), `expression_radians` (`sin(x)` at `PI/2` → 1), `expression_two_vars_broadcast` (`x+y`, x list of 3, y single), `expression_unknown_variable` (Review Focus 5: `sin(xx)` → error containing `xx` and `column`), `script_infinite_loop_is_cut` (Script source `loop {}` through `solve_node` → error containing `"operations"`; and with a token cancelled after 100 ms, error `"cancelled"` within 500 ms).
 - [ ] **Step 2: FAIL. Step 3: Implement.** UI: Expression node shows its formula as an inline text field on the node.
 - [ ] **Step 4: PASS; check binary size growth** (`ls -l target/release/triceratops` before/after; note in commit, expect < 3 MB). **Step 5: Commit** `Locust: Rhai engine and Expression node`.
 

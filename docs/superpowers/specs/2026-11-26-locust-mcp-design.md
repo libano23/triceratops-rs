@@ -122,6 +122,38 @@ triangular profile, Sweep1, Cap, BooleanUnion.
 - Test: the repro finishes in bounded time (success or the clear error), and a test that
   forces the budget to trip.
 
+## Long operations: Esc and live feedback (added 2026-11-26)
+
+User requirement: every operation can be stopped with Esc, and long ones (Booleans above
+all) show that they are running and not stuck — to the user and to the assistant.
+
+- **Every command** can already be cancelled with Esc at any prompt; that stays.
+- **Operations that can take long run as background jobs**: the window keeps drawing and
+  responding while the work runs on a worker thread. The status bar shows a spinner and
+  `<label> — 12 s · 1.3 M polygons · Esc to cancel`; Esc cancels, the result is
+  discarded, the document is unchanged and the log says `<label> cancelled`.
+  Covered in this work: every Boolean command (B-rep, mesh, planar/curve Booleans,
+  BooleanSplit, Boolean2Objects), every other command that calls a Boolean, the Locust
+  solve and Script nodes. A synchronous command step that takes over 1 s is logged under
+  `TRICERATOPS_SLOW=1`, naming the command, so further commands can be moved to jobs.
+- **Kernel side**: a cancel/progress token (`tri_geom::job`) is installed per worker
+  thread (and carried into `with_big_stack`); the mesh-CSG recursion, the exact Boolean's
+  loops and tessellation check it and report a stage text and a live counter. A cancelled
+  kernel call returns `Err(Cancelled)` promptly (< 0.5 s).
+- **Locust**: the solve runs as a job on a snapshot of the definition and of the document
+  geometry it reads. Moving a slider during a solve cancels it and starts again; the last
+  preview stays until the new one arrives; Esc cancels.
+- **Assistant**: a request that starts a job is answered when the job ends, with no
+  60-second cutoff while the window keeps reporting progress; the bridge forwards
+  progress as MCP progress notifications when the client asked for them, `get_state`
+  answers during a job with `busy: {label, elapsed_s, stage, count}`, and a new tool
+  `cancel` stops the running job. If the user presses Esc the reply says
+  `cancelled by the user`. Other changing requests during a job are refused with
+  `busy: <label> running for 12 s (call cancel to stop it)`.
+- **Budget**: the polygon budget stays, as a guard against memory blow-ups that would hurt
+  the machine before anyone presses Esc. The 30-second time limit is dropped: Esc and
+  `cancel` replace it.
+
 ## 2. Bridge zombies
 
 `triceratops mcp` spawns the window and never waits on it. Reap the child (a thread that
