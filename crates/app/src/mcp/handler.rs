@@ -563,4 +563,25 @@ mod acceptance_tests {
         assert!(app.capture_requests.is_empty(), "nothing queued for a later dialog");
         assert!(r["log"].to_string().contains("needs a file path when run by an assistant"), "{r}");
     }
+
+    /// The screw thread modelled in the 0.2.0 session (once seen to run for 11 minutes):
+    /// it must finish quickly with a solid or a clear Boolean message.
+    #[test]
+    fn screw_thread_boolean_is_bounded() {
+        let mut app = App::new();
+        let t = std::time::Instant::now();
+        for lines in [
+            json!(["Cylinder", "0,0,0", "5", "20"]),
+            json!(["Helix", "0,0,0", "0,0,20", "Turns", "10", "5"]),
+            json!(["Polyline", "5,0,-0.8", "5.9,0,0", "5,0,0.8", "Close"]),
+            json!(["Sweep1", "#2", "#3", ""]),
+            json!(["Cap", "last"]),
+        ] {
+            let _ = handle(&mut app, "run_commands", &json!({ "lines": lines }));
+        }
+        let r = run(&mut app, &["BooleanUnion", "#1,#4", ""]);
+        let log = r["log"].to_string();
+        assert!(r["added"].as_array().map_or(0, |a| a.len()) == 1 || log.contains("Boolean"), "{r}");
+        assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
+    }
 }

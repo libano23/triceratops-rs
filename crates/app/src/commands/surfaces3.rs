@@ -2,7 +2,8 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{curve_plane, mesh_boolean, mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane, Ray};
+use super::mesh_bool;
+use tri_geom::{curve_plane, mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane, Ray};
 
 use super::create::planar_cap;
 use super::misc4::{prism_mesh, solid_mesh};
@@ -1202,7 +1203,13 @@ pub fn hydrostatics() -> SeqCmd {
             let plane = Plane::from_normal(DVec3::new(c.x, c.y, z - diag), DVec3::Z);
             let poly = vec![plane.point_at(-diag, -diag), plane.point_at(diag, -diag), plane.point_at(diag, diag), plane.point_at(-diag, diag)];
             let Some(water) = prism_mesh(&poly, &plane, diag) else { continue };
-            let below = mesh_boolean(&m, &water, BooleanOp::Intersection);
+            let below = match mesh_bool(&m, &water, BooleanOp::Intersection) {
+                Ok(b) => b,
+                Err(e) => {
+                    ctx.log(e.to_string());
+                    continue;
+                }
+            };
             let (vol, centroid) = Document::volume_of(&Geometry::Mesh(below.clone())).unwrap_or((0.0, c));
             let wl = Mesh::section(&m, &Plane::from_normal(DVec3::new(c.x, c.y, z), DVec3::Z), diag * 1e-6);
             let area: f64 = wl.iter().filter_map(|p| NurbsCurve::polyline(p.clone()).ok()).filter_map(|cv| Document::area_of(&Geometry::Curve(cv))).sum();
@@ -1220,7 +1227,13 @@ pub fn cut_volume() -> SeqCmd {
         let min = p.min(q);
         let max = DVec3::new(p.max(q).x, p.max(q).y, p.max(q).z + h);
         let bx = Mesh::cuboid(min.min(max), min.max(max));
-        let inter = mesh_boolean(&m, &bx, BooleanOp::Intersection);
+        let inter = match mesh_bool(&m, &bx, BooleanOp::Intersection) {
+            Ok(i) => i,
+            Err(e) => {
+                ctx.log(e.to_string());
+                return Step::Cancelled;
+            }
+        };
         let v = Document::volume_of(&Geometry::Mesh(inter)).map(|v| v.0).unwrap_or(0.0);
         ctx.log(format!("Volume inside the box = {}", fmt_num(v)));
         Step::Done

@@ -49,6 +49,15 @@ use glam::DVec3;
 use tri_doc::{Document, ObjectId};
 use tri_geom::{Brep, NurbsCurve, NurbsSurface, Plane};
 
+/// A mesh Boolean for the commands: "nothing came out" is an empty mesh, as it always was;
+/// a Boolean over budget or cancelled is an error whose text goes to the log.
+pub fn mesh_bool(a: &tri_geom::Mesh, b: &tri_geom::Mesh, op: tri_geom::BooleanOp) -> Result<tri_geom::Mesh, tri_geom::BooleanError> {
+    match tri_geom::mesh_boolean(a, b, op) {
+        Err(tri_geom::BooleanError::Empty) => Ok(tri_geom::Mesh::default()),
+        r => r,
+    }
+}
+
 pub use registry::{all_commands, command_info, find_command, is_implemented, lookup};
 #[allow(unused_imports)]
 pub use registry::CommandInfo;

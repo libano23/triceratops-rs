@@ -2,7 +2,8 @@
 
 use glam::DVec3;
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{mesh_boolean, BooleanOp, Brep, Mesh, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{BooleanOp, Brep, Mesh, NurbsSurface, Plane};
 
 use super::create::plane_at;
 use super::{fmt_num, optv, CmdCtx, Command, Input, ObjFilter, Preview, Prompt, Step};
@@ -167,7 +168,13 @@ impl Command for MeshBooleanCmd {
                     }
                     let mut r = meshes[0].clone();
                     for m in &meshes[1..] {
-                        r = mesh_boolean(&r, m, BooleanOp::Union);
+                        r = match mesh_bool(&r, m, BooleanOp::Union) {
+                            Ok(u) => u,
+                            Err(e) => {
+                                ctx.log(e.to_string());
+                                return Step::Cancelled;
+                            }
+                        };
                     }
                     ctx.doc.begin_undo("MeshBooleanUnion");
                     for id in &self.first {
@@ -184,27 +191,31 @@ impl Command for MeshBooleanCmd {
                 if b.is_empty() {
                     return Step::Cancelled;
                 }
-                let mut cutter = b[0].clone();
-                for m in &b[1..] {
-                    cutter = mesh_boolean(&cutter, m, BooleanOp::Union);
-                }
                 let label = if self.split { "MeshBooleanSplit" } else if self.op == BooleanOp::Difference { "MeshBooleanDifference" } else { "MeshBooleanIntersection" };
+                let results = (|| -> Result<_, tri_geom::BooleanError> {
+                    let mut cutter = b[0].clone();
+                    for m in &b[1..] {
+                        cutter = mesh_bool(&cutter, m, BooleanOp::Union)?;
+                    }
+                    let mut results = Vec::new();
+                    for id in self.first.clone() {
+                        let Some(m) = mesh_of(ctx.doc, id, 12) else { continue };
+                        let parts = if self.split { vec![mesh_bool(&m, &cutter, BooleanOp::Difference)?, mesh_bool(&m, &cutter, BooleanOp::Intersection)?] } else { vec![mesh_bool(&m, &cutter, self.op)?] };
+                        results.push((id, parts));
+                    }
+                    Ok(results)
+                })();
+                let results = match results {
+                    Ok(r) => r,
+                    Err(e) => {
+                        ctx.log(e.to_string());
+                        return Step::Cancelled;
+                    }
+                };
                 ctx.doc.begin_undo(label);
                 let mut out = Vec::new();
-                for id in self.first.clone() {
-                    let Some(m) = mesh_of(ctx.doc, id, 12) else { continue };
-                    if self.split {
-                        for part in [mesh_boolean(&m, &cutter, BooleanOp::Difference), mesh_boolean(&m, &cutter, BooleanOp::Intersection)] {
-                            if part.triangle_count() > 0 {
-                                out.push(Geometry::Mesh(part));
-                            }
-                        }
-                    } else {
-                        let r = mesh_boolean(&m, &cutter, self.op);
-                        if r.triangle_count() > 0 {
-                            out.push(Geometry::Mesh(r));
-                        }
-                    }
+                for (id, parts) in results {
+                    out.extend(parts.into_iter().filter(|p| p.triangle_count() > 0).map(Geometry::Mesh));
                     ctx.doc.remove(id);
                 }
                 for id in &second {

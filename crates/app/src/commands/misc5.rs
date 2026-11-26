@@ -3,7 +3,8 @@
 
 use glam::{DAffine3, DVec2, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{curve_plane, mesh_boolean, BooleanOp, Mesh, NurbsCurve, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{curve_plane, BooleanOp, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::annotate::text_curves;
 use super::misc4::{prism_mesh, solid_mesh};
@@ -198,12 +199,20 @@ impl Command for MeshSplitCmd {
                     ctx.log("The cutting object must be a closed mesh, a solid, a planar surface or a closed planar curve.");
                     return Step::Cancelled;
                 };
-                ctx.doc.begin_undo(if self.trim { "MeshTrim" } else { "MeshSplit" });
-                let mut out = Vec::new();
+                let mut parts = Vec::new();
                 for id in self.first.clone() {
                     let Some(m) = solid_mesh(ctx.doc, id) else { continue };
-                    let inside = mesh_boolean(&m, &cutter, BooleanOp::Intersection);
-                    let outside = mesh_boolean(&m, &cutter, BooleanOp::Difference);
+                    match (mesh_bool(&m, &cutter, BooleanOp::Intersection), mesh_bool(&m, &cutter, BooleanOp::Difference)) {
+                        (Ok(inside), Ok(outside)) => parts.push((id, inside, outside)),
+                        (Err(e), _) | (_, Err(e)) => {
+                            ctx.log(e.to_string());
+                            return Step::Cancelled;
+                        }
+                    }
+                }
+                ctx.doc.begin_undo(if self.trim { "MeshTrim" } else { "MeshSplit" });
+                let mut out = Vec::new();
+                for (id, inside, outside) in parts {
                     ctx.doc.remove(id);
                     if self.trim {
                         // keep the part away from the pick point
@@ -491,8 +500,8 @@ mod tests {
         let bb = bx.bounding_box();
         let cutter = cutter_mesh(&doc, pid, DVec3::new(5.0, 5.0, 5.0), &bb).unwrap();
         eprintln!("cutter bbox {:?} closed {}", cutter.bounding_box(), cutter.is_closed());
-        let a = mesh_boolean(&bx, &cutter, BooleanOp::Intersection);
-        let b = mesh_boolean(&bx, &cutter, BooleanOp::Difference);
+        let a = tri_geom::mesh_boolean(&bx, &cutter, BooleanOp::Intersection).unwrap();
+        let b = tri_geom::mesh_boolean(&bx, &cutter, BooleanOp::Difference).unwrap();
         eprintln!("inside {} tris bbox {:?}; outside {} tris bbox {:?}", a.triangle_count(), a.bounding_box(), b.triangle_count(), b.bounding_box());
         assert!(a.triangle_count() > 0 && b.triangle_count() > 0);
     }

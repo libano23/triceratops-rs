@@ -481,7 +481,13 @@ pub fn shrink_wrap() -> SeqCmd {
         }
         let mut r = meshes[0].clone();
         for m in &meshes[1..] {
-            r = tri_geom::mesh_boolean(&r, m, tri_geom::BooleanOp::Union);
+            r = match super::mesh_bool(&r, m, tri_geom::BooleanOp::Union) {
+                Ok(u) => u,
+                Err(e) => {
+                    ctx.log(e.to_string());
+                    return Step::Cancelled;
+                }
+            };
         }
         ctx.log("ShrinkWrap: union of the objects' meshes (no offset or hole closing).");
         add_all(ctx, "ShrinkWrap", vec![Geometry::Mesh(r)])

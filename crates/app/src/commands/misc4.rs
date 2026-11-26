@@ -4,7 +4,8 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{brep_boolean, curve_plane, mesh_boolean, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{brep_boolean, curve_plane, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::annotate::text_curves;
 use super::create::{planar_cap, planar_faces};
@@ -105,7 +106,7 @@ pub fn region_boolean(a: &[NurbsCurve], b: &[NurbsCurve], op: BooleanOp) -> Vec<
         let mut it = cs.iter().filter(|c| c.is_closed()).filter_map(|c| region_prism(c, &plane, half));
         let mut m = it.next()?;
         for n in it {
-            m = mesh_boolean(&m, &n, BooleanOp::Union);
+            m = mesh_bool(&m, &n, BooleanOp::Union).ok()?;
         }
         Some(m)
     };
@@ -113,7 +114,10 @@ pub fn region_boolean(a: &[NurbsCurve], b: &[NurbsCurve], op: BooleanOp) -> Vec<
     let result = match (op, union(b)) {
         (BooleanOp::Union, None) => ma,
         (_, None) => return vec![],
-        (o, Some(mb)) => mesh_boolean(&ma, &mb, o),
+        (o, Some(mb)) => match mesh_bool(&ma, &mb, o) {
+            Ok(m) => m,
+            Err(_) => return vec![],
+        },
     };
     let tol = bb.diagonal().max(1e-3) * 1e-6;
     result
@@ -264,7 +268,7 @@ pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geo
         return brep_boolean(&ba, &bb, op).filter(|r| r.closed).map(Geometry::Brep);
     }
     let (ma, mb) = (geometry_mesh(a)?, geometry_mesh(b)?);
-    Some(Geometry::Mesh(mesh_boolean(&ma, &mb, op)))
+    mesh_bool(&ma, &mb, op).ok().filter(|m| m.triangle_count() > 0).map(Geometry::Mesh)
 }
 
 /// Extrusion solid of a closed planar curve, `half` on each side of its plane, as a polysurface
@@ -990,7 +994,7 @@ mod tests {
         assert!(cutter.is_closed(), "cutter closed");
         let bx = Brep::cuboid(&Plane::world_xy(), 10.0, 10.0, 10.0).unwrap().tessellate(12, 12);
         assert!(bx.is_closed(), "box closed");
-        let result = mesh_boolean(&bx, &cutter, BooleanOp::Difference);
+        let result = tri_geom::mesh_boolean(&bx, &cutter, BooleanOp::Difference).unwrap();
         let welded = super::super::mesh_cmds::weld(&result, 1e-7);
         let mut counts: std::collections::HashMap<(u32, u32), usize> = Default::default();
         for t in welded.indices.chunks(3) {
@@ -1068,7 +1072,7 @@ mod hole_tests {
         let diag = bx.bounding_box().diagonal();
         let prism = region_prism(&circle, &cp, diag).unwrap();
         eprintln!("prism closed {} bbox {:?}", prism.is_closed(), prism.bounding_box());
-        let result = mesh_boolean(&bx, &prism, BooleanOp::Difference);
+        let result = tri_geom::mesh_boolean(&bx, &prism, BooleanOp::Difference).unwrap();
         eprintln!("result closed {} tris {}", result.is_closed(), result.triangle_count());
         assert!(result.is_closed());
     }

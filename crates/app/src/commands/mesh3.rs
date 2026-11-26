@@ -3,7 +3,8 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Geometry, ObjectId};
-use tri_geom::{mesh_boolean, mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::create::planar_cap;
 use super::mesh_cmds::{components, weld};
@@ -458,7 +459,16 @@ pub fn multipipe() -> SeqCmd {
             brep.orient_outward();
             let m = brep.tessellate(24, 12);
             let m = mesh_ops::fill_holes(&m).0;
-            result = Some(match result { Some(acc) => mesh_boolean(&acc, &m, BooleanOp::Union), None => m });
+            result = Some(match result {
+                Some(acc) => match mesh_bool(&acc, &m, BooleanOp::Union) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        ctx.log(e.to_string());
+                        return Step::Cancelled;
+                    }
+                },
+                None => m,
+            });
         }
         let Some(m) = result else { return Step::Cancelled };
         ctx.doc.begin_undo("MultiPipe");

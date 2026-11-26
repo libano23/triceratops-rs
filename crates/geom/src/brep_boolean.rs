@@ -80,7 +80,7 @@ pub fn brep_boolean_verbose(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Resu
             eprintln!("operand {name}: {} triangles, closed {} (after weld {}), signed volume {:.3}", t.mesh.triangle_count(), t.mesh.is_closed(), welded.is_closed(), vol);
         }
     }
-    let polys = mesh_boolean_tagged(&ta.mesh, &ta.uv, &ta.tags, &tb.mesh, &tb.uv, &tb.tags, op);
+    let polys = mesh_boolean_tagged(&ta.mesh, &ta.uv, &ta.tags, &tb.mesh, &tb.uv, &tb.tags, op).map_err(|e| e.to_string())?;
     if polys.is_empty() {
         return Err("empty result".into());
     }
