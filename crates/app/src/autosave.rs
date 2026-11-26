@@ -13,9 +13,10 @@ pub fn dir() -> Option<PathBuf> {
     crate::app::options_path().and_then(|p| p.parent().map(|d| d.join("autosave")))
 }
 
-/// Autosave file of a model in `dir`: `<stem>.autosave.3dm`, `Untitled` for a new model.
+/// Autosave file of a model in `dir`: `<stem>.autosave.3dm`; a new model is
+/// `Untitled-<process id>`, so two open windows never write the same file.
 pub fn path_in(dir: &Path, doc_path: Option<&Path>) -> PathBuf {
-    let stem = doc_path.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled".into());
+    let stem = doc_path.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| format!("Untitled-{}", std::process::id()));
     dir.join(format!("{stem}.autosave.3dm"))
 }
 
@@ -140,7 +141,8 @@ mod tests {
     fn path_uses_the_file_stem() {
         let d = Path::new("/cfg/autosave");
         assert_eq!(path_in(d, Some(Path::new("/x/plate.3dm"))), PathBuf::from("/cfg/autosave/plate.autosave.3dm"));
-        assert_eq!(path_in(d, None), PathBuf::from("/cfg/autosave/Untitled.autosave.3dm"));
+        // a new model is named after this process, so two open windows never share a file
+        assert_eq!(path_in(d, None), PathBuf::from(format!("/cfg/autosave/Untitled-{}.autosave.3dm", std::process::id())));
     }
 
     #[test]

@@ -338,6 +338,8 @@ BooleanDifference
   <section id="settings">
     <h2>Settings</h2>
     <ul>
+      <li><b>Saving and autosave</b>: closing the window, Exit, New and Open ask whether to save unsaved changes. Every 5 minutes (<b>Options › General</b>) a modified model is also saved to its own file in <code>&lt;config&gt;/triceratops/autosave</code>, never over yours; if Triceratops ends badly, it offers to recover that file at the next start.</li>
+      <li><b>Updates</b>: once a day Triceratops looks for a newer version and shows what changed. The AppImage updates itself and restarts; on Windows the new zip is downloaded and checked. <b>Help › Check for Updates…</b> checks at any time, and <b>Options › General</b> switches the automatic check off. The check only asks GitHub for the list of releases.</li>
       <li>Snaps, Ortho, Grid Snap, Planar, Gumball, the window layout, the theme and the export folders are saved automatically. <b>Options › Appearance</b> saves or loads a layout and resets to the defaults.</li>
       <li><code>Theme</code> (or View › Theme) switches between Triceratops Light, Triceratops Dark and Blender; your own themes are JSON files in <code>&lt;config&gt;/triceratops/themes</code>.</li>
       <li>Settings live in <code>&lt;config&gt;/triceratops/options.json</code>, where <code>&lt;config&gt;</code> is <code>~/.config</code> on Linux and <code>%APPDATA%</code> on Windows.</li>
