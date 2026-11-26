@@ -582,7 +582,8 @@ impl CommandRunner {
         true
     }
 
-    /// Block until the job ends and apply it (history replay, which is not interactive).
+    /// Block until the job ends and apply it (tests that step through commands).
+    #[cfg(test)]
     pub fn wait_job(&mut self, ctx: &mut CmdCtx) {
         while self.job.is_some() {
             if !self.poll_job(ctx) {

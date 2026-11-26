@@ -292,4 +292,45 @@ mod tests {
         assert_eq!(app.doc.objects().count(), 1, "the hole curve is gone too: {:?}", app.log);
         assert!((volume(&app) - 4000.0).abs() < 1.0);
     }
+
+    fn history_difference() -> (App, f64) {
+        let mut app = App::new();
+        app.aids.record_history = true;
+        run(&mut app, &["Box", "0,0,0", "20,20,0", "10", "Sphere", "20,20,10", "6"]);
+        run(&mut app, &["BooleanDifference", "DeleteInput", "#1", "#2"]);
+        wait(&mut app, Duration::from_secs(60));
+        assert!(app.log.iter().any(|l| l.contains("History recorded for BooleanDifference")), "{:?}", app.log);
+        let v = output_volume(&app);
+        (app, v)
+    }
+
+    fn output_volume(app: &App) -> f64 {
+        let rec = &app.doc.state.history.records[0];
+        rec.outputs.iter().filter_map(|id| app.doc.get(*id)).filter_map(|o| tri_doc::Document::volume_of(&o.geometry)).map(|v| v.0).sum()
+    }
+
+    /// A history update that runs a Boolean is a job too: the window is not held while it
+    /// recomputes, and the dependent object follows when it is done.
+    #[test]
+    fn history_replay_runs_as_a_job() {
+        let (mut app, before) = history_difference();
+        run(&mut app, &["SelNone", "Move", "#2", "0,0,0", "-10,-10,0"]);
+        assert_eq!(app.job_status().map(|s| s.label), Some("BooleanDifference".to_string()), "{:?}", app.log);
+        wait(&mut app, Duration::from_secs(60));
+        let after = output_volume(&app);
+        assert!((after - before).abs() > 50.0, "the cut followed the sphere: {before} -> {after}");
+        assert!(!app.runner.is_active());
+    }
+
+    /// Esc during a history update keeps the previous result instead of losing it.
+    #[test]
+    fn cancelled_history_replay_keeps_the_old_result() {
+        let (mut app, before) = history_difference();
+        run(&mut app, &["SelNone", "Move", "#2", "0,0,0", "-10,-10,0"]);
+        assert!(app.job_status().is_some());
+        app.cancel();
+        wait(&mut app, Duration::from_secs(60));
+        assert!((output_volume(&app) - before).abs() < 1e-6, "the previous result stays");
+        assert!(app.log.iter().any(|l| l.contains("History update of BooleanDifference cancelled")), "{:?}", app.log);
+    }
 }
