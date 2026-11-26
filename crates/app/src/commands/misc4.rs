@@ -5,7 +5,7 @@
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
 use super::mesh_bool;
-use tri_geom::{brep_boolean, curve_plane, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use tri_geom::{curve_plane, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::annotate::text_curves;
 use super::create::{planar_cap, planar_faces};
@@ -263,12 +263,22 @@ pub fn geometry_nonempty(g: &Geometry) -> bool {
 /// Boolean between two solids: a NURBS polysurface when both operands are surfaces or
 /// polysurfaces and the face outlines can be rebuilt, otherwise a mesh (meshes stay meshes).
 pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geometry> {
+    boolean_geometry_checked(a, b, op).ok()
+}
+
+/// `boolean_geometry` saying why there is no result ("cancelled", "Boolean too complex …").
+pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Result<Geometry, String> {
     if let (Some(ba), Some(bb)) = (geometry_brep(a), geometry_brep(b)) {
         // surfaces and polysurfaces always give a polysurface (no mesh fallback)
-        return brep_boolean(&ba, &bb, op).filter(|r| r.closed).map(Geometry::Brep);
+        let r = tri_geom::brep_boolean::brep_boolean_verbose(&ba, &bb, op, tri_geom::brep_boolean::DEFAULT_TOLERANCE)?;
+        return if r.closed { Ok(Geometry::Brep(r)) } else { Err("the result is not a closed solid".into()) };
     }
-    let (ma, mb) = (geometry_mesh(a)?, geometry_mesh(b)?);
-    mesh_bool(&ma, &mb, op).ok().filter(|m| m.triangle_count() > 0).map(Geometry::Mesh)
+    let (Some(ma), Some(mb)) = (geometry_mesh(a), geometry_mesh(b)) else { return Err("these objects cannot be combined".into()) };
+    let m = mesh_bool(&ma, &mb, op).map_err(|e| e.to_string())?;
+    if m.triangle_count() == 0 {
+        return Err("the result is empty".into());
+    }
+    Ok(Geometry::Mesh(m))
 }
 
 /// Extrusion solid of a closed planar curve, `half` on each side of its plane, as a polysurface

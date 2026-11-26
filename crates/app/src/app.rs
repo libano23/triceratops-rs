@@ -600,6 +600,9 @@ pub struct App {
     pub assistant_mode: bool,
     /// The running command was started by an assistant.
     pub assistant_owns_command: bool,
+    /// Script lines waiting for the running job to end, and whether an assistant sent them.
+    pub pending_lines: Vec<String>,
+    pending_assistant: bool,
     /// Assistants may connect (Options > General); saved with the options.
     pub allow_assistants: bool,
     /// A `triceratops mcp` bridge is attached right now (status bar).
@@ -713,6 +716,8 @@ impl App {
             message_box: None,
             assistant_mode: false,
             assistant_owns_command: false,
+            pending_lines: Vec::new(),
+            pending_assistant: false,
             allow_assistants: true,
             assistant_connected: false,
             scene_batches: (0..n).map(|_| Batch::default()).collect(),
@@ -1386,7 +1391,61 @@ impl App {
             requests: &mut self.requests,
             memory: &mut self.memory,
         };
-        f(&mut self.runner, &mut ctx)
+        let slow = std::env::var_os("TRICERATOPS_SLOW").is_some().then(std::time::Instant::now);
+        let r = f(&mut self.runner, &mut ctx);
+        if let Some(t) = slow {
+            if t.elapsed() > std::time::Duration::from_secs(1) {
+                eprintln!("slow step: {} {} ms", self.runner.last_command.as_deref().unwrap_or("?"), t.elapsed().as_millis());
+            }
+        }
+        r
+    }
+
+    // ----- background jobs -------------------------------------------------
+
+    /// The job the running command waits for, as the status bar shows it.
+    pub fn job_status(&self) -> Option<crate::jobs::JobStatus> {
+        let j = self.runner.job()?;
+        let (stage, count) = j.token.snapshot();
+        Some(crate::jobs::JobStatus { label: j.label.clone(), elapsed: j.started.elapsed(), stage, count, cancelling: j.cancelled.is_some() })
+    }
+
+    /// Stop the running job (Esc does this through `cancel`). False when none runs.
+    pub fn cancel_job(&mut self, reason: &str) -> bool {
+        self.pending_lines.clear();
+        self.runner.cancel_job(reason)
+    }
+
+    /// Wait for the running job and the script lines queued behind it (tests and headless use).
+    #[cfg(test)]
+    pub fn settle(&mut self) {
+        while self.runner.job().is_some() || !self.pending_lines.is_empty() {
+            if !self.poll_job() {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
+
+    /// Called every frame: when the job has ended, apply its result and run the script lines
+    /// that waited for it. True when a job ended.
+    pub fn poll_job(&mut self) -> bool {
+        if !self.runner.job().is_some_and(|j| j.is_finished()) {
+            return false;
+        }
+        let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
+        let was = self.assistant_mode;
+        self.assistant_mode = self.assistant_owns_command;
+        self.with_ctx(|r, ctx| r.poll_job(ctx));
+        self.after_command_step(&before);
+        self.process_requests();
+        self.assistant_mode = was;
+        if self.runner.job().is_none() && !self.pending_lines.is_empty() {
+            let lines = std::mem::take(&mut self.pending_lines);
+            self.assistant_mode = self.pending_assistant;
+            self.run_script_lines(&lines);
+            self.assistant_mode = was;
+        }
+        true
     }
 
     // ----- command line ---------------------------------------------------
@@ -1480,6 +1539,8 @@ impl App {
                     break;
                 }
                 run.feed(inp, ctx);
+                // replay is not interactive: long work runs inline
+                run.wait_job(ctx);
             }
             if run.is_active() {
                 run.cancel(ctx);
@@ -1590,6 +1651,11 @@ impl App {
     pub fn submit(&mut self) {
         let text = std::mem::take(&mut self.cmd_text).trim().to_string();
         self.autocomplete_index = None;
+        if let Some(j) = self.runner.job() {
+            let msg = format!("{} is running — wait for it or press Esc to cancel it.", j.label);
+            self.log.push(msg);
+            return;
+        }
         if self.runner.is_active() {
             if text.is_empty() {
                 self.submit_enter();
@@ -1791,7 +1857,10 @@ impl App {
         self.window_drag = None;
         self.drag_move = None;
         self.popup_toolbar = None;
-        if self.runner.is_active() {
+        if self.runner.job().is_some() {
+            let reason = if self.assistant_mode { "cancelled" } else { "cancelled by the user" };
+            self.cancel_job(reason);
+        } else if self.runner.is_active() {
             self.with_ctx(|r, ctx| r.cancel(ctx));
             self.constraints = Constraints::default();
         } else if self.any_grip_selected() || !self.doc.selection.is_empty() {
@@ -4129,7 +4198,20 @@ impl App {
     /// Run command-line entries as if typed: an empty line (or "_Enter") presses Enter in
     /// the running command, "_Cancel" presses Esc, and lines starting with "//" are comments.
     pub fn run_script_lines(&mut self, lines: &[String]) {
-        for line in lines.iter().map(|l| l.trim()).filter(|l| !l.starts_with("//")) {
+        for (k, line) in lines.iter().map(|l| l.trim()).enumerate() {
+            if line.starts_with("//") {
+                continue;
+            }
+            if self.runner.job().is_some() {
+                if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
+                    self.cancel();
+                    continue;
+                }
+                // the rest runs when the job has ended (`poll_job`)
+                self.pending_lines = lines[k..].to_vec();
+                self.pending_assistant = self.assistant_mode;
+                return;
+            }
             if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
                 self.cancel();
                 continue;
@@ -5349,6 +5431,7 @@ mod assistant_tests {
     fn script_lines_build_and_boolean() {
         let mut app = App::new();
         app.run_script_lines(&lines(&["Box", "0,0,0", "10,10,0", "5", "Cylinder", "5,5,-1", "2", "7", "BooleanDifference", "#1", "#2"]));
+        app.settle();
         assert_eq!(app.doc.objects().count(), 1);
         assert!(!app.runner.is_active());
     }

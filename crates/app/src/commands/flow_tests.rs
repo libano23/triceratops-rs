@@ -30,7 +30,10 @@ impl Harness {
             requests: &mut self.requests,
             memory: &mut self.memory,
         };
-        f(&mut self.runner, &mut ctx)
+        let r = f(&mut self.runner, &mut ctx);
+        // long work (Booleans) runs as a job: these tests step through commands synchronously
+        self.runner.wait_job(&mut ctx);
+        r
     }
     fn start(&mut self, name: &str) {
         let pre = self.doc.selected_ids();

@@ -20,6 +20,14 @@ pub fn status_bar(app: &mut App, root: &mut egui::Ui) {
     egui::Panel::bottom("status_bar").frame(app.theme.region_frame().inner_margin(egui::Margin::symmetric(6, 2))).exact_size(22.0 + 2.0 * gap).show(root, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
+            if let Some(job) = app.job_status() {
+                ui.add(egui::Spinner::new().size(14.0));
+                ui.label(RichText::new(job.text()).strong());
+                if !job.cancelling && ui.small_button("Cancel").on_hover_text("Stop it (Esc)").clicked() {
+                    app.cancel();
+                }
+                return;
+            }
             if !app.status_hint.is_empty() {
                 ui.label(&app.status_hint);
                 return;

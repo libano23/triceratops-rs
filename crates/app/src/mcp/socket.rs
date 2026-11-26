@@ -182,36 +182,81 @@ impl Drop for Listener {
     }
 }
 
+/// One connection: requests are read as they come and each waits for its reply on its own
+/// thread, so a long one (a job) does not hold up `get_state` or `cancel` behind it.
 fn serve(stream: Stream, stop: &AtomicBool, clients: &AtomicUsize, on_request: &(dyn Fn(Request, Sender<Response>) + Send + Sync)) {
     clients.fetch_add(1, Ordering::SeqCst);
-    let mut reader = BufReader::new(&stream);
-    let mut line = String::new();
-    loop {
-        line.clear();
-        match reader.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        if stop.load(Ordering::SeqCst) {
-            break;
-        }
-        let reply = match serde_json::from_str::<Request>(line.trim()) {
-            // the bridge is going away: closing our end also ends its reader thread
-            Ok(req) if req.method == BYE => break,
-            Ok(req) => {
-                let id = req.id;
-                let (tx, rx) = mpsc::channel();
-                on_request(req, tx);
-                // the window answers or gives up on captures well within this
-                rx.recv_timeout(Duration::from_secs(120)).unwrap_or_else(|_| Response::err(id, "Triceratops did not answer"))
+    let write_lock = std::sync::Mutex::new(());
+    let send = |r: &Response| -> bool {
+        let _g = write_lock.lock().unwrap_or_else(|e| e.into_inner());
+        write_line(&stream, r).is_ok()
+    };
+    std::thread::scope(|scope| {
+        let mut reader = BufReader::new(&stream);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
             }
-            Err(e) => Response::err(0, format!("bad request: {e}")),
-        };
-        if write_line(&stream, &reply).is_err() {
-            break;
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            match serde_json::from_str::<Request>(line.trim()) {
+                // the bridge is going away: closing our end also ends its reader thread
+                Ok(req) if req.method == BYE => break,
+                Ok(req) => {
+                    let id = req.id;
+                    let (tx, rx) = mpsc::channel();
+                    on_request(req, tx);
+                    let send = &send;
+                    scope.spawn(move || wait_reply(id, &rx, send, stop, on_request));
+                }
+                Err(e) => {
+                    if !send(&Response::err(0, format!("bad request: {e}"))) {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    clients.fetch_sub(1, Ordering::SeqCst);
+}
+
+/// Pass progress frames and then the reply on to the bridge. While waiting, wake the GUI
+/// thread every second (it polls jobs even with no frames drawn); give up after two minutes
+/// with no word from the window.
+fn wait_reply(id: u64, rx: &Receiver<Response>, send: &dyn Fn(&Response) -> bool, stop: &AtomicBool, on_request: &(dyn Fn(Request, Sender<Response>) + Send + Sync)) {
+    let mut heard = Instant::now();
+    loop {
+        match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok(r) if r.is_progress() => {
+                heard = Instant::now();
+                if !send(&r) {
+                    return;
+                }
+            }
+            Ok(r) => {
+                send(&r);
+                return;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                if stop.load(Ordering::SeqCst) {
+                    return;
+                }
+                if heard.elapsed() > Duration::from_secs(120) {
+                    send(&Response::err(id, "Triceratops did not answer"));
+                    return;
+                }
+                on_request(Request { id: 0, method: crate::mcp::protocol::TICK.into(), params: Value::Null }, mpsc::channel().0);
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                send(&Response::err(id, "Triceratops did not answer"));
+                return;
+            }
         }
     }
-    clients.fetch_sub(1, Ordering::SeqCst);
 }
 
 fn write_line<T: Serialize>(mut w: impl Write, v: &T) -> io::Result<()> {
@@ -251,19 +296,23 @@ pub fn live_sockets_in(dir: &Path) -> Vec<String> {
 /// Sent by a [`Client`] that is dropped, so the window closes the connection.
 const BYE: &str = "bye";
 
-/// The bridge side of one connection to a window.
+type Waiters = Arc<std::sync::Mutex<std::collections::HashMap<u64, Sender<Response>>>>;
+
+/// The bridge side of one connection to a window. Calls may run concurrently from several
+/// threads: replies are matched to their calls by id.
 pub struct Client {
     stream: Arc<Stream>,
-    replies: Receiver<Response>,
-    next_id: u64,
+    waiters: Waiters,
+    next_id: AtomicU64,
+    write_lock: std::sync::Mutex<()>,
 }
 
 impl Client {
     /// Connect and check that the window runs the same version as this bridge.
     pub fn connect(name: &str) -> io::Result<Client> {
         let stream = Arc::new(Stream::connect(to_name(name)?)?);
-        let (tx, replies) = mpsc::channel();
-        let incoming = stream.clone();
+        let waiters: Waiters = Default::default();
+        let (incoming, routes) = (stream.clone(), waiters.clone());
         std::thread::Builder::new().name("mcp-replies".into()).spawn(move || {
             let mut reader = BufReader::new(&*incoming);
             let mut line = String::new();
@@ -272,16 +321,20 @@ impl Client {
                 match reader.read_line(&mut line) {
                     Ok(0) | Err(_) => break,
                     Ok(_) => {
-                        if let Ok(r) = serde_json::from_str::<Response>(line.trim()) {
-                            if tx.send(r).is_err() {
-                                break;
-                            }
+                        let Ok(r) = serde_json::from_str::<Response>(line.trim()) else { continue };
+                        let mut w = routes.lock().unwrap_or_else(|e| e.into_inner());
+                        // a reply nobody waits for (its call timed out) is dropped
+                        let tx = if r.is_progress() { w.get(&r.id).cloned() } else { w.remove(&r.id) };
+                        if let Some(tx) = tx {
+                            let _ = tx.send(r);
                         }
                     }
                 }
             }
+            // the window is gone: every waiting call hears it
+            routes.lock().unwrap_or_else(|e| e.into_inner()).clear();
         })?;
-        let mut client = Client { stream, replies, next_id: 1 };
+        let client = Client { stream, waiters, next_id: AtomicU64::new(1), write_lock: Default::default() };
         let hello = client.call("hello", json!({ "version": VERSION }), Duration::from_secs(10)).map_err(io::Error::other)?;
         let theirs = hello["version"].as_str().unwrap_or("unknown");
         if theirs != VERSION {
@@ -293,20 +346,31 @@ impl Client {
     }
 
     /// Send one request and wait for its reply.
-    pub fn call(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
-        let id = self.next_id;
-        self.next_id += 1;
-        if write_line(&*self.stream, &Request { id, method: method.into(), params }).is_err() {
+    pub fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
+        self.call_with_progress(method, params, timeout, &mut |_| {})
+    }
+
+    /// Send one request and wait for its reply, handing progress frames to `on_progress`;
+    /// the call times out only after `silence` without any frame.
+    pub fn call_with_progress(&self, method: &str, params: Value, silence: Duration, on_progress: &mut dyn FnMut(&Value)) -> Result<Value, String> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = mpsc::channel();
+        self.waiters.lock().unwrap_or_else(|e| e.into_inner()).insert(id, tx);
+        let written = {
+            let _g = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+            write_line(&*self.stream, &Request { id, method: method.into(), params })
+        };
+        if written.is_err() {
+            self.waiters.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
             return Err("Triceratops was closed".into());
         }
-        let deadline = Instant::now() + timeout;
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match self.replies.recv_timeout(left) {
-                Ok(r) if r.id == id => return r.into_result(),
-                Ok(_) => continue, // a late reply to an earlier call that timed out
+            match rx.recv_timeout(silence) {
+                Ok(r) if r.is_progress() => on_progress(r.progress.as_ref().unwrap_or(&Value::Null)),
+                Ok(r) => return r.into_result(),
                 Err(RecvTimeoutError::Timeout) => {
-                    return Err(format!("timed out after {} s; the command is still running in Triceratops (Esc cancels it)", timeout.as_secs()));
+                    self.waiters.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                    return Err(format!("timed out after {} s without an answer from Triceratops", silence.as_secs()));
                 }
                 Err(RecvTimeoutError::Disconnected) => return Err("Triceratops was closed".into()),
             }
@@ -316,6 +380,7 @@ impl Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
+        let _g = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         let _ = write_line(&*self.stream, &Request { id: 0, method: BYE.into(), params: Value::Null });
     }
 }
@@ -348,7 +413,7 @@ mod tests {
     fn roundtrip_echo() {
         let dir = temp_dir("echo");
         let l = Listener::start_in(&dir, echo(crate::mcp::protocol::VERSION)).unwrap();
-        let mut c = Client::connect(l.name()).unwrap();
+        let c = Client::connect(l.name()).unwrap();
         assert_eq!(c.call("run_commands", json!({ "x": 1 }), T).unwrap(), json!({ "x": 1 }));
         assert_eq!(c.call("get_state", json!({ "y": 2 }), T).unwrap(), json!({ "y": 2 }));
     }
@@ -391,9 +456,61 @@ mod tests {
     fn closed_window_is_reported() {
         let dir = temp_dir("closed");
         let l = Listener::start_in(&dir, echo(crate::mcp::protocol::VERSION)).unwrap();
-        let mut c = Client::connect(l.name()).unwrap();
+        let c = Client::connect(l.name()).unwrap();
         drop(l);
         assert_eq!(c.call("get_state", json!({}), T).unwrap_err(), "Triceratops was closed");
+    }
+
+    #[test]
+    fn progress_frames_extend_deadline() {
+        let dir = temp_dir("progress");
+        let l = Listener::start_in(&dir, |req: Request, tx: Sender<Response>| {
+            if req.method == "hello" {
+                let _ = tx.send(Response::ok(req.id, json!({ "version": crate::mcp::protocol::VERSION })));
+            } else if req.method == "work" {
+                std::thread::spawn(move || {
+                    for i in 0..10 {
+                        std::thread::sleep(Duration::from_millis(200));
+                        let _ = tx.send(Response::progress(req.id, json!({ "count": i })));
+                    }
+                    let _ = tx.send(Response::ok(req.id, json!("done")));
+                });
+            }
+        })
+        .unwrap();
+        let c = Client::connect(l.name()).unwrap();
+        let mut frames = 0;
+        let r = c.call_with_progress("work", json!({}), Duration::from_secs(1), &mut |_| frames += 1);
+        assert_eq!(r.unwrap(), json!("done"), "two seconds of work with a one-second silence timeout");
+        assert!(frames >= 5, "{frames}");
+    }
+
+    #[test]
+    fn calls_on_one_connection_run_concurrently() {
+        let dir = temp_dir("concurrent");
+        let l = Listener::start_in(&dir, |req: Request, tx: Sender<Response>| {
+            if req.method == "hello" {
+                let _ = tx.send(Response::ok(req.id, json!({ "version": crate::mcp::protocol::VERSION })));
+            } else if req.method == "slow" {
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(800));
+                    let _ = tx.send(Response::ok(req.id, json!("slow")));
+                });
+            } else {
+                let _ = tx.send(Response::ok(req.id, json!("fast")));
+            }
+        })
+        .unwrap();
+        let c = std::sync::Arc::new(Client::connect(l.name()).unwrap());
+        let slow = {
+            let c = c.clone();
+            std::thread::spawn(move || c.call("slow", json!({}), Duration::from_secs(5)))
+        };
+        std::thread::sleep(Duration::from_millis(100));
+        let t = std::time::Instant::now();
+        assert_eq!(c.call("fast", json!({}), Duration::from_secs(5)).unwrap(), json!("fast"));
+        assert!(t.elapsed() < Duration::from_millis(400), "fast call waited for the slow one: {:?}", t.elapsed());
+        assert_eq!(slow.join().unwrap().unwrap(), json!("slow"));
     }
 
     #[test]
@@ -410,7 +527,7 @@ mod tests {
             }
         })
         .unwrap();
-        let mut c = Client::connect(l.name()).unwrap();
+        let c = Client::connect(l.name()).unwrap();
         let e = c.call("run_commands", json!({}), Duration::from_millis(50)).unwrap_err();
         assert!(e.starts_with("timed out"), "{e}");
         // the late reply to the first call is skipped, the next call gets its own

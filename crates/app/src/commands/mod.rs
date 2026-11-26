@@ -268,6 +268,28 @@ pub enum Step {
     Prompt(Prompt),
     Done,
     Cancelled,
+    /// Long work started on a worker thread (`CmdCtx::work`); the command waits for it.
+    Work(Job),
+}
+
+type WorkResult = Box<dyn std::any::Any + Send>;
+type ApplyFn = Box<dyn for<'c> FnOnce(WorkResult, &mut CmdCtx<'c>) -> Step>;
+
+/// A computation running on a worker thread for a command, and what to do with its result.
+pub struct Job {
+    pub label: String,
+    pub token: tri_geom::job::Token,
+    pub started: std::time::Instant,
+    /// Why it was cancelled ("cancelled", "cancelled by the user"), once it was.
+    pub cancelled: Option<String>,
+    handle: std::thread::JoinHandle<WorkResult>,
+    apply: ApplyFn,
+}
+
+impl Job {
+    pub fn is_finished(&self) -> bool {
+        self.handle.is_finished()
+    }
 }
 
 /// Requests that commands send to the application (things outside the document).
@@ -416,6 +438,32 @@ pub struct CmdCtx<'a> {
 }
 
 impl CmdCtx<'_> {
+    /// Run `compute` on a worker thread (cancellable, with progress) and, when it ends, hand
+    /// its result to `apply` on the GUI thread, where the document may be changed. The
+    /// command waits meanwhile; Esc cancels it and leaves the document as it was.
+    pub fn work<T, F, A>(&mut self, label: impl Into<String>, compute: F, apply: A) -> Step
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+        A: FnOnce(T, &mut CmdCtx) -> Step + 'static,
+    {
+        let label = label.into();
+        let token = tri_geom::job::Token::new();
+        let worker_token = token.clone();
+        let handle = std::thread::Builder::new()
+            .name(format!("job: {label}"))
+            .spawn(move || {
+                let _guard = tri_geom::job::install(worker_token);
+                Box::new(compute()) as WorkResult
+            })
+            .expect("spawn job thread");
+        let apply: ApplyFn = Box::new(move |r: WorkResult, ctx: &mut CmdCtx| match r.downcast::<T>() {
+            Ok(v) => apply(*v, ctx),
+            Err(_) => Step::Cancelled,
+        });
+        Step::Work(Job { label, token, started: std::time::Instant::now(), cancelled: None, handle, apply })
+    }
+
     pub fn log(&mut self, msg: impl Into<String>) {
         self.log.push(msg.into());
     }
@@ -466,11 +514,64 @@ pub struct CommandRunner {
     recorded: Vec<Input>,
     /// The last command that finished successfully and the inputs it received.
     pub finished: Option<(String, Vec<Input>)>,
+    /// Work the active command is waiting for.
+    job: Option<Job>,
 }
 
 impl CommandRunner {
     pub fn is_active(&self) -> bool {
         self.active.is_some()
+    }
+
+    /// The job the active command waits for.
+    pub fn job(&self) -> Option<&Job> {
+        self.job.as_ref()
+    }
+
+    /// Ask the running job to stop (`reason` goes to the log when it has). False when no job runs.
+    pub fn cancel_job(&mut self, reason: &str) -> bool {
+        let Some(j) = self.job.as_mut() else { return false };
+        j.token.cancel();
+        j.cancelled.get_or_insert_with(|| reason.to_string());
+        true
+    }
+
+    /// When the job has ended, apply its result (or the cancellation). True when it ended.
+    pub fn poll_job(&mut self, ctx: &mut CmdCtx) -> bool {
+        if !self.job.as_ref().is_some_and(|j| j.is_finished()) {
+            return false;
+        }
+        self.finish_job(ctx);
+        true
+    }
+
+    /// Block until the job ends and apply it (history replay, which is not interactive).
+    pub fn wait_job(&mut self, ctx: &mut CmdCtx) {
+        while self.job.is_some() {
+            if !self.poll_job(ctx) {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
+
+    fn finish_job(&mut self, ctx: &mut CmdCtx) {
+        let Some(job) = self.job.take() else { return };
+        let Job { label, cancelled, handle, apply, .. } = job;
+        let result = handle.join();
+        match (cancelled, result) {
+            (Some(reason), _) => {
+                ctx.log(format!("{label} {reason}"));
+                self.cancel(ctx);
+            }
+            (None, Err(_)) => {
+                ctx.log(format!("{label} failed (internal error)."));
+                self.cancel(ctx);
+            }
+            (None, Ok(r)) => {
+                let step = apply(r, ctx);
+                self.finish_step(step, ctx);
+            }
+        }
     }
 
     pub fn name(&self) -> Option<&str> {
@@ -502,6 +603,10 @@ impl CommandRunner {
 
     /// Start a command by canonical name (as typed or from a button; `typed` is echoed).
     pub fn start(&mut self, name: &str, typed: &str, ctx: &mut CmdCtx, preselected: &[ObjectId]) {
+        if let Some(j) = &self.job {
+            ctx.log(format!("{} is running — wait for it or press Esc to cancel it.", j.label));
+            return;
+        }
         if self.active.is_some() {
             self.cancel(ctx);
         }
@@ -537,8 +642,16 @@ impl CommandRunner {
             self.cancel(ctx);
             return;
         }
+        if self.job.is_some() {
+            // the command is waiting for its work: only Esc (above) reaches it
+            return;
+        }
         self.recorded.push(input.clone());
         let step = cmd.input(input, ctx);
+        self.finish_step(step, ctx);
+    }
+
+    fn finish_step(&mut self, step: Step, ctx: &mut CmdCtx) {
         let done = matches!(step, Step::Done);
         let name = self.active.as_ref().map(|(n, _)| n.clone());
         self.apply_step(step, ctx);
@@ -586,6 +699,15 @@ impl CommandRunner {
     }
 
     pub fn cancel(&mut self, ctx: &mut CmdCtx) {
+        self.cancel_with(ctx, "cancelled");
+    }
+
+    /// Cancel the active command; a running job is asked to stop and the command ends when
+    /// it has (`poll_job`), logging `<label> <reason>`.
+    pub fn cancel_with(&mut self, ctx: &mut CmdCtx, reason: &str) {
+        if self.cancel_job(reason) {
+            return;
+        }
         if let Some((_, mut cmd)) = self.active.take() {
             let _ = cmd.input(Input::Cancel, ctx);
             self.echo_prompt(ctx);
@@ -606,6 +728,10 @@ impl CommandRunner {
             Step::Cancelled => {
                 self.active = None;
                 self.prompt = None;
+            }
+            Step::Work(job) => {
+                self.prompt = None;
+                self.job = Some(job);
             }
         }
     }

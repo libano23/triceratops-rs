@@ -370,7 +370,7 @@ impl BooleanCmd {
         }
     }
     fn finish(&self, ctx: &mut CmdCtx, second: &[ObjectId]) -> Step {
-        use super::misc4::{boolean_geometry, geometry_nonempty};
+        use super::misc4::geometry_nonempty;
         let closed_geometry = |ctx: &mut CmdCtx, id: ObjectId| -> Option<Geometry> {
             let o = ctx.doc.get(id)?;
             let closed = match &o.geometry {
@@ -394,41 +394,48 @@ impl BooleanCmd {
             ctx.log(format!("{} failed: nothing to combine.", self.label()));
             return Step::Cancelled;
         }
-        let mut result = set_a.remove(0);
-        for g in set_a.into_iter().chain(if self.op == BooleanOp::Union { std::mem::take(&mut set_b) } else { Vec::new() }) {
-            match boolean_geometry(&result, &g, BooleanOp::Union) {
-                Some(r) => result = r,
-                None => {
-                    ctx.log(format!("{} failed.", self.label()));
-                    return Step::Cancelled;
+        let (op, label, delete_input) = (self.op, self.label(), self.delete_input);
+        let inputs: Vec<ObjectId> = self.first.iter().chain(second.iter()).copied().collect();
+        ctx.work(
+            label,
+            move || -> Result<Geometry, String> {
+                use super::misc4::boolean_geometry_checked;
+                let mut result = set_a.remove(0);
+                let unite = if op == BooleanOp::Union { std::mem::take(&mut set_b) } else { Vec::new() };
+                for g in set_a.into_iter().chain(unite) {
+                    result = boolean_geometry_checked(&result, &g, BooleanOp::Union)?;
                 }
-            }
-        }
-        for g in set_b {
-            match boolean_geometry(&result, &g, self.op) {
-                Some(r) => result = r,
-                None => {
-                    ctx.log(format!("{} failed.", self.label()));
-                    return Step::Cancelled;
+                for g in set_b {
+                    result = boolean_geometry_checked(&result, &g, op)?;
                 }
-            }
-        }
-        if !geometry_nonempty(&result) {
-            ctx.log(format!("{} produced an empty result.", self.label()));
-            return Step::Cancelled;
-        }
-        ctx.doc.begin_undo(self.label());
-        if self.delete_input {
-            for id in self.first.iter().chain(second.iter()) {
-                ctx.doc.remove(*id);
-            }
-        }
-        ctx.doc.clear_selection();
-        let kind = result.type_name().to_string();
-        let id = ctx.doc.add(result);
-        ctx.doc.select(id, true);
-        ctx.log(format!("{}: created 1 {kind}.", self.label()));
-        Step::Done
+                Ok(result)
+            },
+            move |result, ctx| {
+                let result = match result {
+                    Ok(r) if geometry_nonempty(&r) => r,
+                    Ok(_) => {
+                        ctx.log(format!("{label} produced an empty result."));
+                        return Step::Cancelled;
+                    }
+                    Err(e) => {
+                        ctx.log(format!("{label} failed: {e}."));
+                        return Step::Cancelled;
+                    }
+                };
+                ctx.doc.begin_undo(label);
+                if delete_input {
+                    for id in &inputs {
+                        ctx.doc.remove(*id);
+                    }
+                }
+                ctx.doc.clear_selection();
+                let kind = result.type_name().to_string();
+                let id = ctx.doc.add(result);
+                ctx.doc.select(id, true);
+                ctx.log(format!("{label}: created 1 {kind}."));
+                Step::Done
+            },
+        )
     }
 }
 

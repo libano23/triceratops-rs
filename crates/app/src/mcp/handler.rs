@@ -10,11 +10,24 @@ use tri_doc::{Geometry, Object, ObjectId};
 use crate::app::App;
 use crate::commands::{self, Prompt, PromptKind};
 
-/// What a request produced: an answer now, or an answer once the capture with this id
-/// has been rendered (see [`take_capture`]).
+/// What a request produced: an answer now, an answer once the capture with this id has
+/// been rendered (see [`take_capture`]), or one once the job the commands started has ended
+/// (see [`finish_run`]).
 pub enum Outcome {
     Reply(Result<Value, String>),
     Deferred(u64),
+    Run(RunState),
+}
+
+/// A `run_commands` waiting for its job: what the document looked like before it.
+pub struct RunState {
+    before: HashMap<ObjectId, u64>,
+    start: usize,
+}
+
+/// Methods that change the model, refused while a job runs.
+fn changes_model(method: &str) -> bool {
+    matches!(method, "run_commands" | "undo" | "redo") || method.starts_with("locust_")
 }
 
 fn ok(v: Value) -> Outcome {
@@ -28,7 +41,12 @@ fn fail(e: impl Into<String>) -> Outcome {
 /// Execute one request. Commands run exactly as typed ones do, with `assistant_mode` set
 /// so that nothing waits for a person.
 pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
-    if matches!(method, "run_commands" | "undo" | "redo") && busy_with_user(app) {
+    if changes_model(method) {
+        if let Some(job) = app.job_status().filter(|_| app.assistant_owns_command) {
+            return fail(format!("busy: {} running for {} s (call cancel to stop it)", job.label, job.elapsed.as_secs()));
+        }
+    }
+    if changes_model(method) && busy_with_user(app) {
         return fail("the user is running a command in Triceratops");
     }
     match method {
@@ -51,6 +69,7 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
             ok(json!({ "log": log_since(app, start) }))
         }
         "capture_view" => capture_view(app, params),
+        "cancel" => ok(json!({ "cancelled": app.assistant_owns_command && app.cancel_job("cancelled") })),
         other => fail(format!("unknown method {other}")),
     }
 }
@@ -87,9 +106,20 @@ fn fingerprints(app: &App) -> HashMap<ObjectId, u64> {
 fn run_commands(app: &mut App, params: &Value) -> Outcome {
     let Some(lines) = params["lines"].as_array() else { return fail("run_commands needs \"lines\": an array of strings") };
     let lines: Vec<String> = lines.iter().map(|l| l.as_str().map(str::to_string).unwrap_or_else(|| l.to_string())).collect();
-    let before = fingerprints(app);
-    let start = app.log.len();
+    let state = RunState { before: fingerprints(app), start: app.log.len() };
     run_lines(app, &lines);
+    match finish_run(app, &state) {
+        Some(v) => ok(v),
+        None => Outcome::Run(state),
+    }
+}
+
+/// The `run_commands` reply once no job runs and no script lines wait for one; `None` before.
+pub fn finish_run(app: &mut App, state: &RunState) -> Option<Value> {
+    if app.runner.job().is_some() || !app.pending_lines.is_empty() {
+        return None;
+    }
+    let (before, start) = (&state.before, state.start);
     let after = fingerprints(app);
     let mut added: Vec<ObjectId> = after.keys().filter(|id| !before.contains_key(id)).copied().collect();
     let mut changed: Vec<ObjectId> = after.iter().filter(|(id, h)| before.get(id).is_some_and(|b| b != *h)).map(|(id, _)| *id).collect();
@@ -97,13 +127,21 @@ fn run_commands(app: &mut App, params: &Value) -> Outcome {
     added.sort_unstable();
     changed.sort_unstable();
     deleted.sort_unstable();
-    ok(json!({
+    Some(json!({
         "log": log_since(app, start),
         "added": added,
         "changed": changed,
         "deleted": deleted,
         "prompt": prompt_json(app.runner.prompt()),
     }))
+}
+
+/// The running job for `get_state` and progress frames, or null.
+pub fn busy_json(app: &App) -> Value {
+    match app.job_status() {
+        Some(j) => json!({ "label": j.label, "elapsed_s": j.elapsed.as_secs(), "stage": j.stage, "count": j.count, "cancelling": j.cancelling }),
+        None => Value::Null,
+    }
 }
 
 fn prompt_json(p: Option<&Prompt>) -> Value {
@@ -137,6 +175,7 @@ fn state(app: &App) -> Value {
         "viewports": app.viewports.iter().map(|v| v.name.clone()).collect::<Vec<_>>(),
         "units": app.doc.settings.units,
         "layers": layers,
+        "busy": busy_json(app),
     })
 }
 
@@ -286,6 +325,7 @@ mod tests {
             Outcome::Reply(Ok(v)) => v,
             Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
             Outcome::Deferred(_) => panic!("deferred"),
+            Outcome::Run(_) => panic!("job"),
         }
     }
 
@@ -491,10 +531,19 @@ mod acceptance_tests {
     use serde_json::json;
 
     fn run(app: &mut App, lines: &[&str]) -> Value {
+        run_json(app, &json!(lines))
+    }
+
+    /// run_commands as the host answers it: a run that started a job waits for the job.
+    fn run_json(app: &mut App, lines: &Value) -> Value {
         match handle(app, "run_commands", &json!({ "lines": lines })) {
             Outcome::Reply(Ok(v)) => v,
             Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
             Outcome::Deferred(_) => panic!("deferred"),
+            Outcome::Run(state) => {
+                app.settle();
+                finish_run(app, &state).expect("finished")
+            }
         }
     }
 
@@ -509,7 +558,7 @@ mod acceptance_tests {
             json!(["Cylinder", "10,16,-1", "3", "10", "Cylinder", "50,16,-1", "3", "10"]),
             json!(["BooleanDifference", "#3", "#4,#5"]),
         ] {
-            let _ = handle(&mut app, "run_commands", &json!({ "lines": lines }));
+            let _ = run_json(&mut app, &lines);
         }
         assert_eq!(app.doc.objects().count(), 1, "log: {:?}", app.log);
         let vol = tri_doc::Document::volume_of(&app.doc.objects().next().unwrap().geometry).unwrap().0;
@@ -577,11 +626,45 @@ mod acceptance_tests {
             json!(["Sweep1", "#2", "#3", ""]),
             json!(["Cap", "last"]),
         ] {
-            let _ = handle(&mut app, "run_commands", &json!({ "lines": lines }));
+            let _ = run_json(&mut app, &lines);
         }
         let r = run(&mut app, &["BooleanUnion", "#1,#4", ""]);
         let log = r["log"].to_string();
         assert!(r["added"].as_array().map_or(0, |a| a.len()) == 1 || log.contains("Boolean"), "{r}");
         assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn mcp_run_commands_waits_for_job() {
+        let mut app = App::new();
+        let _ = handle(&mut app, "run_commands", &json!({ "lines": ["Box", "0,0,0", "10,10,0", "10", "Box", "5,5,5", "15,15,5", "10"] }));
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("expected a deferred run") };
+        assert!(finish_run(&mut app, &state).is_none(), "still running");
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("finished");
+        assert_eq!(r["added"].as_array().unwrap().len(), 1, "{r}");
+        assert_eq!(r["deleted"].as_array().unwrap().len(), 2, "{r}");
+    }
+
+    #[test]
+    fn mcp_busy_refusal_and_state() {
+        let mut app = App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("expected a deferred run") };
+        let Outcome::Reply(Err(e)) = handle(&mut app, "run_commands", &json!({ "lines": ["Sphere", "0,0,0", "5"] })) else { panic!("expected a refusal") };
+        assert!(e.starts_with("busy: BooleanUnion running for "), "{e}");
+        assert!(e.contains("call cancel to stop it"), "{e}");
+        let Outcome::Reply(Ok(st)) = handle(&mut app, "get_state", &json!({})) else { panic!() };
+        assert_eq!(st["busy"]["label"], "BooleanUnion", "{st}");
+        let Outcome::Reply(Ok(c)) = handle(&mut app, "cancel", &json!({})) else { panic!() };
+        assert_eq!(c["cancelled"], true);
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("finished");
+        assert!(r["log"].to_string().contains("BooleanUnion cancelled"), "{r}");
+        assert_eq!(r["added"].as_array().unwrap().len(), 0);
+        let Outcome::Reply(Ok(st)) = handle(&mut app, "get_state", &json!({})) else { panic!() };
+        assert!(st["busy"].is_null(), "{st}");
+        let Outcome::Reply(Ok(c)) = handle(&mut app, "cancel", &json!({})) else { panic!() };
+        assert_eq!(c["cancelled"], false, "nothing left to cancel");
     }
 }

@@ -6,6 +6,7 @@ mod file_dialog;
 mod camera;
 mod commands;
 mod input;
+mod jobs;
 mod locust;
 mod mcp;
 mod render;
@@ -181,6 +182,7 @@ impl Runner {
         let mut repaint = repaint;
         if let Some(host) = &mut self.mcp {
             host.finish_captures(&mut self.app);
+            host.finish_runs(&mut self.app);
             // keep drawing until every requested capture has been rendered
             repaint |= host.waiting_for_frame();
         }
