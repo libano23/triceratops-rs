@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "type": "Number",
+      "nickname": "Module",
+      "values": {
+        "Value": 2
+      }
+    },
+    {
+      "type": "Integer",
+      "nickname": "Teeth",
+      "values": {
+        "Value": 20
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Pressure Angle",
+      "values": {
+        "Value": 20
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Helix Angle",
+      "values": {
+        "Value": 0
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Face Width",
+      "values": {
+        "Value": 10
+      }
+    },
+    {
+      "type": "Script",
+      "nickname": "Involute gear",
+      "values": {
+        "_inputs": [
+          "m",
+          "z",
+          "PA",
+          "HA",
+          "T"
+        ],
+        "_outputs": [
+          "gear",
+          "tip_diameter",
+          "pitch_diameter"
+        ],
+        "code": "// Involute spur gear (helical when Helix Angle is not 0): module m, z teeth, pressure angle.\nfn inv(a) { a.tan() - a }\nlet alpha = rad(PA);\nlet rp = m * z / 2.0;\nlet ra = rp + m;\nlet rf = rp - 1.25 * m;\nlet rb = rp * cos(alpha);\nlet half = PI / (2.0 * z) + inv(alpha);\n// half the angular width of a tooth at radius r\nfn psi(r, rb, half) { if r <= rb { half } else { half - inv(acos(rb / r)) } }\nlet flank = [];\nlet n = 10;\nlet r0 = if rf > rb { rf } else { rb };\nfor i in 0..=n { flank.push(r0 + (ra - r0) * i / n); }\nlet profile = [];\nfor k in 0..z {\n    let c = 2.0 * PI * k / z;\n    // root, up the right flank, across the tip, down the left flank\n    let pitch = 2.0 * PI / z;\n    let root_mid = c - pitch / 2.0;\n    profile.push(point(rf * cos(root_mid), rf * sin(root_mid), 0.0));\n    if rf < rb { profile.push(point(rf * cos(c - half), rf * sin(c - half), 0.0)); }\n    for r in flank { let a = c - psi(r, rb, half); profile.push(point(r * cos(a), r * sin(a), 0.0)); }\n    let tip = psi(ra, rb, half);\n    for j in 1..4 { let a = c - tip + 2.0 * tip * j / 4; profile.push(point(ra * cos(a), ra * sin(a), 0.0)); }\n    let back = flank;\n    back.reverse();\n    for r in back { let a = c + psi(r, rb, half); profile.push(point(r * cos(a), r * sin(a), 0.0)); }\n    if rf < rb { profile.push(point(rf * cos(c + half), rf * sin(c + half), 0.0)); }\n}\n// sections up the face width, each turned by the helix angle\nlet turns = if HA == 0.0 { 1 } else { 12 };\nlet sections = [];\nfor s in 0..=turns {\n    let h = T * s / turns;\n    let twist = h * rad(HA).tan() / rp;\n    let pts = [];\n    for p in profile { pts.push(point(p.x * cos(twist) - p.y * sin(twist), p.x * sin(twist) + p.y * cos(twist), h)); }\n    sections.push(polyline(pts, true));\n}\ngear = cap(loft(sections));\ntip_diameter = 2.0 * ra;\npitch_diameter = 2.0 * rp;"
+      }
+    },
+    {
+      "type": "Panel",
+      "nickname": "Tip diameter"
+    },
+    {
+      "type": "Panel",
+      "nickname": "Pitch diameter"
+    },
+    {
+      "type": "Preview"
+    },
+    {
+      "type": "Bake"
+    }
+  ],
+  "connections": [
+    {
+      "from": "Module",
+      "to": "Involute gear.m"
+    },
+    {
+      "from": "Teeth",
+      "to": "Involute gear.z"
+    },
+    {
+      "from": "Pressure Angle",
+      "to": "Involute gear.PA"
+    },
+    {
+      "from": "Helix Angle",
+      "to": "Involute gear.HA"
+    },
+    {
+      "from": "Face Width",
+      "to": "Involute gear.T"
+    },
+    {
+      "from": "Involute gear.tip_diameter",
+      "to": "Tip diameter.Data"
+    },
+    {
+      "from": "Involute gear.pitch_diameter",
+      "to": "Pitch diameter.Data"
+    },
+    {
+      "from": "Involute gear.gear",
+      "to": "Preview.Geometry"
+    },
+    {
+      "from": "Involute gear.gear",
+      "to": "Bake.Geometry"
+    }
+  ],
+  "comments": [
+    {
+      "text": "Spur gear; set Helix Angle (e.g. 20) for a helical one."
+    }
+  ]
+}

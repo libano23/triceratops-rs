@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+delaunator = "1.1.0"
 earcutr = "0.4"
 glam.workspace = true
 serde.workspace = true

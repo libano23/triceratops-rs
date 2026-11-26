@@ -34,6 +34,7 @@ rmcp = { version = "3", features = ["server", "transport-io", "macros", "schemar
 schemars = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "time"] }
 serde_json.workspace = true
+rhai = { version = "1.27.0", features = ["sync", "no_module"] }
 
 [build-dependencies]
 winresource = "0.1"

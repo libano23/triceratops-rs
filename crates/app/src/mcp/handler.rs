@@ -10,11 +10,32 @@ use tri_doc::{Geometry, Object, ObjectId};
 use crate::app::App;
 use crate::commands::{self, Prompt, PromptKind};
 
-/// What a request produced: an answer now, or an answer once the capture with this id
-/// has been rendered (see [`take_capture`]).
+/// What a request produced: an answer now, an answer once the capture with this id has
+/// been rendered (see [`take_capture`]), or one once the job the commands started has ended
+/// (see [`finish_run`]).
 pub enum Outcome {
     Reply(Result<Value, String>),
     Deferred(u64),
+    Run(RunState),
+}
+
+/// A request waiting for a job: a `run_commands` (with what the document looked like
+/// before it) or a Locust solve.
+pub struct RunState {
+    before: HashMap<ObjectId, u64>,
+    start: usize,
+    locust: bool,
+}
+
+impl RunState {
+    fn locust() -> Self {
+        RunState { before: HashMap::new(), start: 0, locust: true }
+    }
+}
+
+/// Methods that change the model, refused while a job runs.
+fn changes_model(method: &str) -> bool {
+    matches!(method, "run_commands" | "undo" | "redo" | "locust_set_graph" | "locust_set_values" | "locust_solve" | "locust_bake")
 }
 
 fn ok(v: Value) -> Outcome {
@@ -28,8 +49,21 @@ fn fail(e: impl Into<String>) -> Outcome {
 /// Execute one request. Commands run exactly as typed ones do, with `assistant_mode` set
 /// so that nothing waits for a person.
 pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
-    if matches!(method, "run_commands" | "undo" | "redo") && busy_with_user(app) {
+    if changes_model(method) {
+        if let Some(job) = app.job_status().filter(|_| app.assistant_owns_command) {
+            return fail(format!("busy: {} running for {} s (call cancel to stop it)", job.label, job.elapsed.as_secs()));
+        }
+    }
+    if changes_model(method) && busy_with_user(app) {
         return fail("the user is running a command in Triceratops");
+    }
+    if method == "locust_bake" {
+        if let Some(t) = app.locust.solving() {
+            return fail(format!("busy: Locust solve running for {} s (wait for it, or call cancel)", t.as_secs()));
+        }
+    }
+    if matches!(method, "locust_set_graph" | "locust_set_values" | "locust_bake") && app.locust.busy() {
+        return fail("the user is working in Locust — try again shortly");
     }
     match method {
         "hello" => ok(json!({ "version": crate::mcp::protocol::VERSION })),
@@ -51,6 +85,41 @@ pub fn handle(app: &mut App, method: &str, params: &Value) -> Outcome {
             ok(json!({ "log": log_since(app, start) }))
         }
         "capture_view" => capture_view(app, params),
+        "locust_components" => ok(locust_components(params)),
+        "locust_get_graph" => {
+            app.locust.ensure_loaded();
+            ok(app.locust.root.to_json())
+        }
+        "locust_set_graph" => match crate::locust::authoring::prepare(&params["graph"]) {
+            Ok(g) => {
+                app.locust.replace_root(g);
+                locust_solve(app)
+            }
+            Err(e) => fail(e),
+        },
+        "locust_set_values" => {
+            let Some(values) = params["values"].as_object() else { return fail("locust_set_values needs \"values\": an object of input → value") };
+            match app.locust.set_inputs(values) {
+                Ok(_) => locust_solve(app),
+                Err(e) => fail(e),
+            }
+        }
+        "locust_solve" => {
+            app.locust.ensure_loaded();
+            locust_solve(app)
+        }
+        "locust_bake" => {
+            let before: std::collections::HashSet<ObjectId> = app.doc.objects().map(|o| o.id).collect();
+            let n = app.locust.bake_into(&mut app.doc);
+            if n == 0 {
+                return fail("nothing to bake: wire geometry into a Bake component");
+            }
+            app.log.push(format!("Locust: baked {n} object(s)."));
+            let mut added: Vec<ObjectId> = app.doc.objects().map(|o| o.id).filter(|id| !before.contains(id)).collect();
+            added.sort_unstable();
+            ok(json!({ "added": added }))
+        }
+        "cancel" => ok(json!({ "cancelled": (app.assistant_owns_command && app.cancel_job("cancelled")) || app.locust.cancel_solve() })),
         other => fail(format!("unknown method {other}")),
     }
 }
@@ -87,9 +156,24 @@ fn fingerprints(app: &App) -> HashMap<ObjectId, u64> {
 fn run_commands(app: &mut App, params: &Value) -> Outcome {
     let Some(lines) = params["lines"].as_array() else { return fail("run_commands needs \"lines\": an array of strings") };
     let lines: Vec<String> = lines.iter().map(|l| l.as_str().map(str::to_string).unwrap_or_else(|| l.to_string())).collect();
-    let before = fingerprints(app);
-    let start = app.log.len();
+    let state = RunState { before: fingerprints(app), start: app.log.len(), locust: false };
     run_lines(app, &lines);
+    match finish_run(app, &state) {
+        Some(r) => Outcome::Reply(r),
+        None => Outcome::Run(state),
+    }
+}
+
+/// The `run_commands` reply once no job runs and no script lines wait for one; `None` before.
+pub fn finish_run(app: &mut App, state: &RunState) -> Option<Result<Value, String>> {
+    if state.locust {
+        // a cancelled or failed solve is an error: its report would be the previous one
+        return app.locust.solving().is_none().then(|| app.locust.last_outcome().map(|_| app.locust.report()));
+    }
+    if app.runner.job().is_some() || !app.pending_lines.is_empty() {
+        return None;
+    }
+    let (before, start) = (&state.before, state.start);
     let after = fingerprints(app);
     let mut added: Vec<ObjectId> = after.keys().filter(|id| !before.contains_key(id)).copied().collect();
     let mut changed: Vec<ObjectId> = after.iter().filter(|(id, h)| before.get(id).is_some_and(|b| b != *h)).map(|(id, _)| *id).collect();
@@ -97,13 +181,69 @@ fn run_commands(app: &mut App, params: &Value) -> Outcome {
     added.sort_unstable();
     changed.sort_unstable();
     deleted.sort_unstable();
-    ok(json!({
+    Some(Ok(json!({
         "log": log_since(app, start),
         "added": added,
         "changed": changed,
         "deleted": deleted,
         "prompt": prompt_json(app.runner.prompt()),
-    }))
+    })))
+}
+
+/// Start solving the Locust definition; the report follows when the solve ends.
+fn locust_solve(app: &mut App) -> Outcome {
+    app.locust.solve(&app.doc);
+    Outcome::Run(RunState::locust())
+}
+
+/// The Locust component catalogue, filtered by words (all must appear in the name, category
+/// or description) and category.
+fn locust_components(params: &Value) -> Value {
+    let words: Vec<String> = params["query"].as_str().unwrap_or("").split_whitespace().map(str::to_lowercase).collect();
+    let category = params["category"].as_str().map(str::to_lowercase);
+    let limit = params["limit"].as_u64().unwrap_or(40).clamp(1, 1000) as usize;
+    let list: Vec<Value> = crate::locust::components::registry()
+        .components
+        .values()
+        .filter(|c| category.as_ref().is_none_or(|k| c.category.to_lowercase() == *k))
+        .filter(|c| {
+            let hay = format!("{} {} {}", c.name, c.category, c.description).to_lowercase();
+            words.iter().all(|w| hay.contains(w))
+        })
+        .take(limit)
+        .map(|c| {
+            let inputs: Vec<Value> = c
+                .inputs
+                .iter()
+                .map(|i| {
+                    let mut v = json!({ "name": i.name, "kind": i.kind.name() });
+                    if let Some(d) = &i.default {
+                        v["default"] = json!(d.repr());
+                    }
+                    if let Some((lo, hi)) = i.slider {
+                        v["slider"] = json!([lo, hi]);
+                    }
+                    if i.optional {
+                        v["optional"] = json!(true);
+                    }
+                    v
+                })
+                .collect();
+            json!({ "name": c.name, "category": c.category, "description": c.description, "inputs": inputs, "outputs": c.outputs })
+        })
+        .collect();
+    Value::Array(list)
+}
+
+/// The running job for `get_state` and progress frames, or null.
+pub fn busy_json(app: &App) -> Value {
+    if let Some(j) = app.job_status() {
+        return json!({ "label": j.label, "elapsed_s": j.elapsed.as_secs(), "stage": j.stage, "count": j.count, "cancelling": j.cancelling });
+    }
+    match app.locust.solve_progress() {
+        Some((t, stage, count)) => json!({ "label": "Locust solve", "elapsed_s": t.as_secs(), "stage": stage, "count": count, "cancelling": false }),
+        None => Value::Null,
+    }
 }
 
 fn prompt_json(p: Option<&Prompt>) -> Value {
@@ -137,6 +277,7 @@ fn state(app: &App) -> Value {
         "viewports": app.viewports.iter().map(|v| v.name.clone()).collect::<Vec<_>>(),
         "units": app.doc.settings.units,
         "layers": layers,
+        "busy": busy_json(app),
     })
 }
 
@@ -286,6 +427,7 @@ mod tests {
             Outcome::Reply(Ok(v)) => v,
             Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
             Outcome::Deferred(_) => panic!("deferred"),
+            Outcome::Run(_) => panic!("job"),
         }
     }
 
@@ -491,10 +633,19 @@ mod acceptance_tests {
     use serde_json::json;
 
     fn run(app: &mut App, lines: &[&str]) -> Value {
+        run_json(app, &json!(lines))
+    }
+
+    /// run_commands as the host answers it: a run that started a job waits for the job.
+    fn run_json(app: &mut App, lines: &Value) -> Value {
         match handle(app, "run_commands", &json!({ "lines": lines })) {
             Outcome::Reply(Ok(v)) => v,
             Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
             Outcome::Deferred(_) => panic!("deferred"),
+            Outcome::Run(state) => {
+                app.settle();
+                finish_run(app, &state).expect("finished").unwrap()
+            }
         }
     }
 
@@ -509,7 +660,7 @@ mod acceptance_tests {
             json!(["Cylinder", "10,16,-1", "3", "10", "Cylinder", "50,16,-1", "3", "10"]),
             json!(["BooleanDifference", "#3", "#4,#5"]),
         ] {
-            let _ = handle(&mut app, "run_commands", &json!({ "lines": lines }));
+            let _ = run_json(&mut app, &lines);
         }
         assert_eq!(app.doc.objects().count(), 1, "log: {:?}", app.log);
         let vol = tri_doc::Document::volume_of(&app.doc.objects().next().unwrap().geometry).unwrap().0;
@@ -562,5 +713,221 @@ mod acceptance_tests {
         let r = run(&mut app, &["Render"]);
         assert!(app.capture_requests.is_empty(), "nothing queued for a later dialog");
         assert!(r["log"].to_string().contains("needs a file path when run by an assistant"), "{r}");
+    }
+
+    /// The screw thread modelled in the 0.2.0 session (once seen to run for 11 minutes):
+    /// it must finish quickly with a solid or a clear Boolean message.
+    #[test]
+    fn screw_thread_boolean_is_bounded() {
+        let mut app = App::new();
+        let t = std::time::Instant::now();
+        for lines in [
+            json!(["Cylinder", "0,0,0", "5", "20"]),
+            json!(["Helix", "0,0,0", "0,0,20", "Turns", "10", "5"]),
+            json!(["Polyline", "5,0,-0.8", "5.9,0,0", "5,0,0.8", "Close"]),
+            json!(["Sweep1", "#2", "#3", ""]),
+            json!(["Cap", "last"]),
+        ] {
+            let _ = run_json(&mut app, &lines);
+        }
+        let r = run(&mut app, &["BooleanUnion", "#1,#4", ""]);
+        assert_eq!(r["added"].as_array().map_or(0, |a| a.len()), 1, "the thread and its rod make one solid: {r}");
+        assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn mcp_run_commands_waits_for_job() {
+        let mut app = App::new();
+        let _ = handle(&mut app, "run_commands", &json!({ "lines": ["Box", "0,0,0", "10,10,0", "10", "Box", "5,5,5", "15,15,5", "10"] }));
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("expected a deferred run") };
+        assert!(finish_run(&mut app, &state).is_none(), "still running");
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("finished").unwrap();
+        assert_eq!(r["added"].as_array().unwrap().len(), 1, "{r}");
+        assert_eq!(r["deleted"].as_array().unwrap().len(), 2, "{r}");
+    }
+
+    #[test]
+    fn mcp_busy_refusal_and_state() {
+        let mut app = App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("expected a deferred run") };
+        let Outcome::Reply(Err(e)) = handle(&mut app, "run_commands", &json!({ "lines": ["Sphere", "0,0,0", "5"] })) else { panic!("expected a refusal") };
+        assert!(e.starts_with("busy: BooleanUnion running for "), "{e}");
+        assert!(e.contains("call cancel to stop it"), "{e}");
+        let Outcome::Reply(Ok(st)) = handle(&mut app, "get_state", &json!({})) else { panic!() };
+        assert_eq!(st["busy"]["label"], "BooleanUnion", "{st}");
+        let Outcome::Reply(Ok(c)) = handle(&mut app, "cancel", &json!({})) else { panic!() };
+        assert_eq!(c["cancelled"], true);
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("finished").unwrap();
+        assert!(r["log"].to_string().contains("BooleanUnion cancelled"), "{r}");
+        assert_eq!(r["added"].as_array().unwrap().len(), 0);
+        let Outcome::Reply(Ok(st)) = handle(&mut app, "get_state", &json!({})) else { panic!() };
+        assert!(st["busy"].is_null(), "{st}");
+        let Outcome::Reply(Ok(c)) = handle(&mut app, "cancel", &json!({})) else { panic!() };
+        assert_eq!(c["cancelled"], false, "nothing left to cancel");
+    }
+
+    // ---------------------------------------------------------------- Locust
+
+    fn ok_reply(o: Outcome) -> Value {
+        match o {
+            Outcome::Reply(Ok(v)) => v,
+            Outcome::Reply(Err(e)) => panic!("error reply: {e}"),
+            _ => panic!("not an immediate reply"),
+        }
+    }
+
+    /// A request as the host answers it: a solve that runs as a job is waited for.
+    fn ok_settled(app: &mut App, method: &str, params: &Value) -> Value {
+        match handle(app, method, params) {
+            Outcome::Run(state) => {
+                app.settle();
+                finish_run(app, &state).expect("finished").unwrap()
+            }
+            o => ok_reply(o),
+        }
+    }
+
+    #[test]
+    fn mcp_locust_set_graph_deferred_answer() {
+        let mut app = App::new();
+        let Outcome::Run(state) = handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })) else { panic!("the solve runs as a job") };
+        assert_eq!(busy_json(&app)["label"], "Locust solve");
+        let e = err_reply(handle(&mut app, "locust_bake", &json!({})));
+        assert!(e.starts_with("busy: Locust solve running"), "{e}");
+        app.settle();
+        let r = finish_run(&mut app, &state).expect("answered once solved").unwrap();
+        assert_eq!(r["errors"], 0, "{r}");
+    }
+
+    fn err_reply(o: Outcome) -> String {
+        match o {
+            Outcome::Reply(Err(e)) => e,
+            Outcome::Reply(Ok(v)) => panic!("expected an error, got {v}"),
+            _ => panic!("not an immediate reply"),
+        }
+    }
+
+    fn cylinder_graph() -> Value {
+        json!({
+            "nodes": [
+                { "type": "Number", "nickname": "Radius", "values": { "Value": 6 } },
+                { "type": "Number", "nickname": "Height", "values": { "Value": 12 } },
+                { "type": "Circle" },
+                { "type": "Extrude" },
+                { "type": "Preview" },
+                { "type": "Bake" }
+            ],
+            "connections": [
+                { "from": "Radius", "to": "Circle.Radius" },
+                { "from": "Circle", "to": "Extrude.Curve" },
+                { "from": "Height", "to": "Extrude.Distance" },
+                { "from": "Extrude", "to": "Preview.Geometry" },
+                { "from": "Extrude", "to": "Bake.Geometry" }
+            ]
+        })
+    }
+
+    fn volume_of(report: &Value) -> f64 {
+        report["results"].as_array().unwrap().iter().find_map(|r| r["volume"].as_f64()).unwrap_or_else(|| panic!("no volume in {report}"))
+    }
+
+    #[test]
+    fn locust_set_graph_solves_and_reports() {
+        let mut app = App::new();
+        let r = ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        assert_eq!(r["errors"], 0, "{r}");
+        assert!(r["results"].as_array().unwrap().iter().any(|x| x["kinds"]["brep"] == 1), "{r}");
+        let v = volume_of(&r);
+        let expect = std::f64::consts::PI * 36.0 * 12.0;
+        assert!((v - expect).abs() < expect * 0.01, "volume {v}");
+        assert!(app.locust.open, "the editor shows the definition");
+    }
+
+    #[test]
+    fn locust_set_values_by_nickname() {
+        let mut app = App::new();
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let r = ok_settled(&mut app, "locust_set_values", &json!({ "values": { "Radius": 3, "Extrude.Cap": true } }));
+        let expect = std::f64::consts::PI * 9.0 * 12.0;
+        assert!((volume_of(&r) - expect).abs() < expect * 0.01, "{r}");
+        let e = err_reply(handle(&mut app, "locust_set_values", &json!({ "values": { "Nope": 3 } })));
+        assert_eq!(e, "unknown node \"Nope\"");
+        let e = err_reply(handle(&mut app, "locust_set_values", &json!({ "values": { "Circle.Radius": 3 } })));
+        assert!(e.contains("is wired"), "{e}");
+    }
+
+    #[test]
+    fn locust_set_values_sets_formula_and_code() {
+        let mut app = App::new();
+        let g = json!({
+            "nodes": [{ "type": "Expression", "nickname": "F", "values": { "Expression": "x", "x": 2 } }, { "type": "Script", "nickname": "S", "values": { "code": "a = 1;" } }, { "type": "Panel", "nickname": "P" }, { "type": "Panel", "nickname": "Q" }],
+            "connections": [{ "from": "F", "to": "P.Data" }, { "from": "S", "to": "Q.Data" }]
+        });
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": g }));
+        let r = ok_settled(&mut app, "locust_set_values", &json!({ "values": { "F.Expression": "x * 10", "S.code": "a = 7;" } }));
+        let panels = r["panels"].to_string();
+        assert!(panels.contains("20") && panels.contains('7'), "{r}");
+    }
+
+    #[test]
+    fn read_only_locust_tools_work_while_the_user_types() {
+        let mut app = App::new();
+        app.cmd_text = "Box".into();
+        ok_reply(handle(&mut app, "locust_get_graph", &json!({})));
+        ok_reply(handle(&mut app, "locust_components", &json!({ "query": "circle" })));
+        assert!(err_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }))).contains("the user"));
+    }
+
+    #[test]
+    fn locust_bad_graph_leaves_canvas() {
+        let mut app = App::new();
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let before = ok_settled(&mut app, "locust_get_graph", &json!({}));
+        let e = err_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": { "nodes": [{ "type": "Extrud" }] } })));
+        assert!(e.contains("did you mean"), "{e}");
+        assert_eq!(ok_settled(&mut app, "locust_get_graph", &json!({})), before);
+    }
+
+    #[test]
+    fn locust_refused_while_user_busy() {
+        let mut app = App::new();
+        app.locust.set_busy_for_test(true);
+        let e = err_reply(handle(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() })));
+        assert_eq!(e, "the user is working in Locust — try again shortly");
+    }
+
+    #[test]
+    fn locust_bake_adds_objects() {
+        let mut app = App::new();
+        ok_settled(&mut app, "locust_set_graph", &json!({ "graph": cylinder_graph() }));
+        let r = ok_settled(&mut app, "locust_bake", &json!({}));
+        assert_eq!(r["added"].as_array().unwrap().len(), 1, "{r}");
+        assert_eq!(app.doc.objects().count(), 1);
+        run(&mut app, &["Undo"]);
+        assert_eq!(app.doc.objects().count(), 0, "one undo step");
+    }
+
+    #[test]
+    fn locust_components_lists_script_and_expression() {
+        let r = ok_reply(handle(&mut App::new(), "locust_components", &json!({ "category": "Script" })));
+        let names: Vec<&str> = r.as_array().unwrap().iter().filter_map(|c| c["name"].as_str()).collect();
+        assert_eq!(names, ["Expression", "Script"]);
+        let script = &r[1]["description"];
+        assert!(script.as_str().unwrap().contains("_inputs"), "{script}");
+    }
+
+    #[test]
+    fn locust_components_search() {
+        let r = ok_reply(handle(&mut App::new(), "locust_components", &json!({ "query": "extrude" })));
+        let list = r.as_array().unwrap();
+        let ex = list.iter().find(|c| c["name"] == "Extrude").expect("Extrude listed");
+        assert_eq!(ex["inputs"][0]["name"], "Curve");
+        assert_eq!(ex["outputs"][0], "Extrusion");
+        assert!(list.len() < 20, "a search, not the catalogue");
+        let r = ok_reply(handle(&mut App::new(), "locust_components", &json!({ "category": "Math", "limit": 500 })));
+        assert!(r.as_array().unwrap().iter().all(|c| c["category"] == "Math"));
     }
 }

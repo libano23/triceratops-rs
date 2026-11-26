@@ -1,0 +1,174 @@
+{
+  "nodes": [
+    {
+      "type": "Rectangle",
+      "nickname": "Panel",
+      "values": {
+        "Width": 120,
+        "Height": 80
+      }
+    },
+    {
+      "type": "Integer",
+      "nickname": "Cells",
+      "values": {
+        "Value": 40
+      }
+    },
+    {
+      "type": "Integer",
+      "nickname": "Seed",
+      "values": {
+        "Value": 3
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Rib",
+      "values": {
+        "Value": 1.5
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Thickness",
+      "values": {
+        "Value": 4
+      }
+    },
+    {
+      "type": "Populate 2D",
+      "nickname": "Sites"
+    },
+    {
+      "type": "Voronoi"
+    },
+    {
+      "type": "Offset Curve",
+      "nickname": "Shrink"
+    },
+    {
+      "type": "Extrude",
+      "nickname": "Tiles"
+    },
+    {
+      "type": "Preview",
+      "nickname": "Show tiles"
+    },
+    {
+      "type": "Bake",
+      "nickname": "Bake tiles"
+    },
+    {
+      "type": "Number",
+      "nickname": "Wave",
+      "values": {
+        "Value": 8
+      }
+    },
+    {
+      "type": "Script",
+      "nickname": "Wavy curves",
+      "values": {
+        "_inputs": [
+          "A"
+        ],
+        "_outputs": [
+          "curves"
+        ],
+        "code": "// three wavy curves to loft into a surface\ncurves = [];\nfor k in 0..3 {\n    let y = 40.0 * k;\n    let pts = [];\n    for i in 0..=12 {\n        let x = 10.0 * i;\n        pts.push(point(x, y + 100.0, A * sin(x / 15.0 + k)));\n    }\n    curves.push(interpolate(pts));\n}"
+      }
+    },
+    {
+      "type": "Loft",
+      "nickname": "Wavy surface"
+    },
+    {
+      "type": "Surface Voronoi",
+      "nickname": "Cells on surface",
+      "values": {
+        "Count": 30,
+        "Seed": 5
+      }
+    },
+    {
+      "type": "Custom Preview",
+      "nickname": "Show surface cells",
+      "values": {
+        "Colour": [
+          0.2,
+          0.5,
+          0.9,
+          1.0
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "Panel",
+      "to": "Sites.Region"
+    },
+    {
+      "from": "Cells",
+      "to": "Sites.Count"
+    },
+    {
+      "from": "Seed",
+      "to": "Sites.Seed"
+    },
+    {
+      "from": "Sites",
+      "to": "Voronoi.Points"
+    },
+    {
+      "from": "Panel",
+      "to": "Voronoi.Boundary"
+    },
+    {
+      "from": "Voronoi",
+      "to": "Shrink.Curve"
+    },
+    {
+      "from": "Shrink",
+      "to": "Tiles.Curve"
+    },
+    {
+      "from": "Thickness",
+      "to": "Tiles.Distance"
+    },
+    {
+      "from": "Tiles",
+      "to": "Show tiles.Geometry"
+    },
+    {
+      "from": "Tiles",
+      "to": "Bake tiles.Geometry"
+    },
+    {
+      "from": "Wave",
+      "to": "Wavy curves.A"
+    },
+    {
+      "from": "Wavy curves.curves",
+      "to": "Wavy surface.Curves"
+    },
+    {
+      "from": "Wavy surface",
+      "to": "Cells on surface.Surface"
+    },
+    {
+      "from": "Cells on surface.Cells",
+      "to": "Show surface cells.Geometry"
+    },
+    {
+      "from": "Rib",
+      "to": "Shrink.Distance"
+    }
+  ],
+  "comments": [
+    {
+      "text": "Voronoi tiles in a panel, and Voronoi cells on a lofted surface."
+    }
+  ]
+}

@@ -12,11 +12,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{epaint::CubicBezierShape, Align2, Color32, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{epaint::CubicBezierShape, Align2, Color32, FontId, Key, Modifiers, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use serde_json::{json, Value as J};
 use tri_doc::{Document, Geometry};
 
-use super::components::{registry, Ctx, InputSpec};
+use super::components::{registry, Ctx, Diagnostic, InputSpec, Level};
 use super::data::{DataTree, Kind, Value};
 use super::engine::{self, Outputs};
 use super::example::build_example;
@@ -64,17 +64,23 @@ struct Ports {
     inputs: Vec<(String, Option<InputSpec>)>,
     outputs: Vec<String>,
     cluster: bool,
+    /// An Expression: a row for its formula under the ports.
+    formula: bool,
 }
 
 fn ports_of(graph: &Graph, node: &Node) -> Ports {
+    if super::graph::is_dynamic(&node.kind) {
+        let (ins, outs) = graph.dynamic_ports(node);
+        return Ports { inputs: ins.into_iter().map(|d| (d.name, None)).collect(), outputs: outs.into_iter().map(|d| d.name).collect(), cluster: false, formula: node.kind == "Expression" };
+    }
     if let Some(c) = registry().get(&node.kind) {
-        return Ports { inputs: c.inputs.iter().map(|i| (i.name.to_string(), Some(i.clone()))).collect(), outputs: c.outputs.iter().map(|o| o.to_string()).collect(), cluster: false };
+        return Ports { inputs: c.inputs.iter().map(|i| (i.name.to_string(), Some(i.clone()))).collect(), outputs: c.outputs.iter().map(|o| o.to_string()).collect(), cluster: false, formula: false };
     }
     if graph.is_cluster(node) {
-        let (ins, outs) = graph.cluster_ports(node);
-        return Ports { inputs: ins.into_iter().map(|(n, _)| (n, None)).collect(), outputs: outs.into_iter().map(|(n, _)| n).collect(), cluster: true };
+        let (ins, outs) = graph.node_ports(node);
+        return Ports { inputs: ins.into_iter().map(|(n, _)| (n, None)).collect(), outputs: outs.into_iter().map(|(n, _)| n).collect(), cluster: true, formula: false };
     }
-    Ports { inputs: Vec::new(), outputs: Vec::new(), cluster: false }
+    Ports { inputs: Vec::new(), outputs: Vec::new(), cluster: false, formula: false }
 }
 
 fn in_y(i: usize) -> f32 {
@@ -86,7 +92,7 @@ fn out_y(n_in: usize, i: usize) -> f32 {
 }
 
 fn node_height(p: &Ports, display: &str) -> f32 {
-    let rows = (p.inputs.len() + p.outputs.len() + 1) as f32;
+    let rows = (p.inputs.len() + p.outputs.len() + 1 + usize::from(p.formula)) as f32;
     let extra = if display.is_empty() { 0.0 } else { ROW_H * display.lines().take(8).count() as f32 + 6.0 };
     HEADER_H + ROW_H * rows + 8.0 + extra
 }
@@ -98,12 +104,51 @@ enum Dialog {
     RenameGroup(String, String),
     EditComment(String, String),
     ClusterName(Vec<String>, String),
+    /// Node, output side, port index, new name.
+    RenamePort(String, bool, usize, String),
+    /// A Script node's code being edited.
+    EditCode(String, String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PortRef {
     out: bool,
     index: usize,
+}
+
+/// A solve running on a worker thread.
+struct SolveJob {
+    token: tri_geom::job::Token,
+    started: Instant,
+    handle: std::thread::JoinHandle<SolveResult>,
+    cancelled: bool,
+}
+
+/// Everything a solve produces, handed back to the GUI thread.
+struct SolveResult {
+    root_out: Outputs,
+    preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
+    bake: Vec<Arc<Geometry>>,
+    diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// Outputs and messages of the nested graph on screen, inside a cluster.
+    nested: Option<(Outputs, HashMap<String, Vec<Diagnostic>>)>,
+    elapsed: Duration,
+    /// The MCP report, measured here (volumes can take a while) rather than on the GUI thread.
+    report: serde_json::Value,
+}
+
+/// Solve a definition (and the nested graph on screen, if any) — runs on the worker thread.
+fn solve_definition(root: &Graph, nested: Option<&Graph>, objects: super::components::Objects) -> SolveResult {
+    let started = Instant::now();
+    let mut ctx = Ctx::with_objects(objects.clone());
+    let root_out = engine::solve(root, &mut ctx);
+    let nested = nested.map(|g| {
+        let mut inner = Ctx::with_objects(objects);
+        (engine::solve(g, &mut inner), inner.diagnostics)
+    });
+    let elapsed = started.elapsed();
+    let report = super::report::solve_report(root, &root_out, &ctx.diagnostics, ctx.preview.len(), ctx.bake.len(), elapsed);
+    SolveResult { root_out, preview: ctx.preview, bake: ctx.bake, diagnostics: ctx.diagnostics, nested, elapsed, report }
 }
 
 /// The editor state, kept by the application.
@@ -133,6 +178,19 @@ pub struct Editor {
     /// Outputs of the graph on screen (the nested one inside a cluster).
     outputs: Outputs,
     displays: HashMap<String, String>,
+    /// Messages of the nodes on screen, and of the whole definition (the MCP report).
+    diagnostics: HashMap<String, Vec<Diagnostic>>,
+    pub root_diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// Outputs of the whole definition (what the MCP report summarises) and how long it took.
+    root_outputs: Outputs,
+    last_solve: std::time::Duration,
+    /// Tests stand in for a person busy on the canvas.
+    forced_busy: bool,
+    /// The solve running on a worker thread, if any.
+    solve_job: Option<SolveJob>,
+    last_report: Option<serde_json::Value>,
+    /// How the last solve ended: Err when it was cancelled or failed (its report is stale).
+    last_outcome: Result<(), String>,
     /// Geometry shown in the viewports, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Bumped whenever `preview` changes (the viewports rebuild their batches).
@@ -167,6 +225,14 @@ impl Default for Editor {
             doc_revision: None,
             outputs: HashMap::new(),
             displays: HashMap::new(),
+            diagnostics: HashMap::new(),
+            root_diagnostics: HashMap::new(),
+            root_outputs: Outputs::new(),
+            last_solve: std::time::Duration::ZERO,
+            forced_busy: false,
+            solve_job: None,
+            last_report: None,
+            last_outcome: Ok(()),
             preview: Vec::new(),
             preview_rev: 0,
             bake: Vec::new(),
@@ -205,6 +271,85 @@ impl Editor {
                 let _ = self.root.save(&p);
             }
         }
+    }
+
+    // ------------------------------------------------------------ assistants
+
+    /// Load the canvas of the last session (if not yet), without opening the window.
+    pub fn ensure_loaded(&mut self) {
+        if !self.loaded {
+            self.loaded = true;
+            let saved = autosave_path().and_then(|p| Graph::load(&p).ok()).filter(|g| !g.nodes.is_empty());
+            self.root = saved.unwrap_or_else(build_example);
+        }
+    }
+
+    /// A person is working on the canvas (a dialog, a wire or a selection band in progress).
+    pub fn busy(&self) -> bool {
+        self.forced_busy || self.dialog.is_some() || self.wire.is_some() || self.band.is_some()
+    }
+
+    #[cfg(test)]
+    pub fn set_busy_for_test(&mut self, busy: bool) {
+        self.forced_busy = busy;
+    }
+
+    /// Replace the whole definition (one undo step) and show it.
+    pub fn replace_root(&mut self, g: Graph) {
+        self.ensure_loaded();
+        self.record(None);
+        self.stack.clear();
+        self.clear_selection();
+        self.root = g;
+        self.open = true;
+        self.fit_pending = true;
+        self.changed();
+    }
+
+    /// Set inline input values: `"Node"` sets its first input, `"Node.Input"` a named one
+    /// (nodes by nickname, uid or unique type). One undo step; returns the keys set.
+    pub fn set_inputs(&mut self, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<String>, String> {
+        self.ensure_loaded();
+        let mut plan = Vec::new();
+        let mut texts = Vec::new();
+        for (key, v) in values {
+            // an Expression's formula or a Script's code, by "Node.Expression" / "Node.code"
+            if let Some((node, field)) = key.rsplit_once('.').filter(|(_, f)| *f == "Expression" || *f == "code") {
+                if let Ok((uid, _)) = super::authoring::resolve_input(&self.root, node) {
+                    if self.root.node(&uid).is_some_and(|n| super::graph::is_dynamic(&n.kind) && (field == "code") == (n.kind == "Script")) {
+                        texts.push((uid, field.to_string(), v.clone()));
+                        continue;
+                    }
+                }
+            }
+            let (uid, index) = super::authoring::resolve_input(&self.root, key)?;
+            if self.root.source_of(&uid, index).is_some() {
+                return Err(format!("input \"{key}\" is wired to another node; set that one instead"));
+            }
+            let n = self.root.node(&uid).expect("resolved");
+            let name = self.root.node_ports(n).0.get(index).map(|p| p.0.clone()).ok_or_else(|| format!("node \"{}\" has no inputs", n.label()))?;
+            plan.push((uid, index, name, v.clone()));
+        }
+        self.record(None);
+        for (uid, index, name, v) in &plan {
+            if let Some(n) = self.root.node_mut(uid) {
+                n.values.remove(&index.to_string());
+                n.values.insert(name.clone(), v.clone());
+            }
+        }
+        for (uid, field, v) in texts {
+            if let Some(n) = self.root.node_mut(&uid) {
+                n.values.insert(field, v);
+            }
+        }
+        self.changed();
+        Ok(values.keys().cloned().collect())
+    }
+
+    /// The solve report of the whole definition (see `report::solve_report`), as the last
+    /// finished solve measured it.
+    pub fn report(&self) -> serde_json::Value {
+        self.last_report.clone().unwrap_or_else(|| super::report::solve_report(&self.root, &self.root_outputs, &self.root_diagnostics, self.preview.len(), self.bake.len(), self.last_solve))
     }
 
     // ------------------------------------------------------------ graphs
@@ -466,8 +611,12 @@ impl Editor {
     /// Solve when something changed (debounced) or when the document changed under a
     /// Geometry parameter. Returns true when the preview changed.
     pub fn tick(&mut self, doc: &Document) -> bool {
+        let finished = self.poll();
+        if let Some(t) = self.solving().filter(|_| !self.solve_job.as_ref().is_some_and(|j| j.cancelled)) {
+            self.status = format!("Solving… {} s · Esc to cancel", t.as_secs());
+        }
         if !self.open {
-            return false;
+            return finished;
         }
         let refs_doc = self.root.nodes.iter().any(|n| n.kind == "Geometry") || !self.root.clusters.is_empty();
         if refs_doc && self.doc_revision != Some(doc.revision) && self.dirty.is_none() {
@@ -486,26 +635,133 @@ impl Editor {
         self.dirty.is_some()
     }
 
+    /// Start solving the definition on a worker thread (a solve still running is cancelled:
+    /// the newest edit wins). `poll` installs the result when it is ready.
     pub fn solve(&mut self, doc: &Document) {
         self.dirty = None;
         self.doc_revision = Some(doc.revision);
         self.sync();
-        let mut ctx = Ctx::with_doc(doc);
-        let root_out = engine::solve(&self.root, &mut ctx);
-        self.preview = ctx.preview;
-        self.bake = ctx.bake;
+        if let Some(old) = self.solve_job.take() {
+            old.token.cancel();
+        }
+        let root = self.root.clone();
+        let nested = (!self.stack.is_empty()).then(|| self.graph().clone());
+        let objects: super::components::Objects = std::sync::Arc::new(super::components::objects_for(&self.root, doc));
+        let token = tri_geom::job::Token::new();
+        let worker = token.clone();
+        let handle = std::thread::Builder::new()
+            .name("locust-solve".into())
+            .stack_size(64 << 20)
+            .spawn(move || {
+                let _guard = tri_geom::job::install(worker);
+                solve_definition(&root, nested.as_ref(), objects)
+            })
+            .expect("spawn the Locust solve");
+        self.solve_job = Some(SolveJob { token, started: Instant::now(), handle, cancelled: false });
+    }
+
+    /// Solve now and wait for the result (tests).
+    #[cfg(test)]
+    pub fn solve_blocking(&mut self, doc: &Document) {
+        self.solve(doc);
+        while self.solving().is_some() {
+            if !self.poll() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+
+    /// Install the result of a finished solve. True when one ended (or was cancelled).
+    pub fn poll(&mut self) -> bool {
+        if !self.solve_job.as_ref().is_some_and(|j| j.handle.is_finished()) {
+            return false;
+        }
+        let job = self.solve_job.take().expect("checked");
+        match (job.cancelled, job.handle.join()) {
+            (true, _) => {
+                self.status = "Solve cancelled — the preview shows the last finished solve.".into();
+                self.last_outcome = Err("the solve was cancelled".into());
+            }
+            (false, Err(_)) => {
+                self.status = "The solve failed (internal error).".into();
+                self.last_outcome = Err("the solve failed (internal error)".into());
+            }
+            (false, Ok(r)) => {
+                self.install(r);
+                self.last_outcome = Ok(());
+            }
+        }
+        true
+    }
+
+    /// How the last solve ended (`Err` with the reason when it was cancelled or failed).
+    pub fn last_outcome(&self) -> Result<(), String> {
+        self.last_outcome.clone()
+    }
+
+    /// How long the running solve has taken, if one runs.
+    pub fn solving(&self) -> Option<Duration> {
+        self.solve_job.as_ref().map(|j| j.started.elapsed())
+    }
+
+    /// The running solve's stage and counter (for the MCP `busy` state).
+    pub fn solve_progress(&self) -> Option<(Duration, &'static str, u64)> {
+        self.solve_job.as_ref().map(|j| {
+            let (stage, count) = j.token.snapshot();
+            (j.started.elapsed(), stage, count)
+        })
+    }
+
+    /// Stop the running solve (Esc). False when none runs.
+    pub fn cancel_solve(&mut self) -> bool {
+        let Some(j) = self.solve_job.as_mut() else { return false };
+        j.token.cancel();
+        j.cancelled = true;
+        self.status = "Cancelling the solve…".into();
+        true
+    }
+
+    fn install(&mut self, r: SolveResult) {
+        self.last_solve = r.elapsed;
+        self.last_report = Some(r.report);
+        self.root_outputs = r.root_out.clone();
+        self.preview = r.preview;
+        self.bake = r.bake;
+        self.root_diagnostics = r.diagnostics;
         self.preview_rev += 1;
         // what the canvas shows: the nested graph solves on its own inside a cluster
-        self.outputs = if self.stack.is_empty() { root_out } else { engine::solve(self.graph(), &mut Ctx::with_doc(doc)) };
+        match r.nested {
+            None => {
+                self.outputs = r.root_out;
+                self.diagnostics = self.root_diagnostics.clone();
+            }
+            Some((outputs, diagnostics)) => {
+                self.outputs = outputs;
+                self.diagnostics = diagnostics;
+            }
+        }
         self.displays = self.graph().nodes.iter().filter(|n| n.kind == "Panel").map(|n| {
             let tree = engine::input_preview(self.graph(), &n.uid, 0, &self.outputs);
             (n.uid.clone(), tree.format(6, 5))
         }).collect();
-        self.status = format!("{} components · {} preview object(s) · {} to bake", self.root.nodes.len(), self.preview.len(), self.bake.len());
+        let count = |level: Level| self.root_diagnostics.values().flatten().filter(|d| d.level == level).count();
+        let (errors, warnings) = (count(Level::Error), count(Level::Warning));
+        let mut problems = String::new();
+        if errors > 0 {
+            problems.push_str(&format!(" · {errors} error(s)"));
+        }
+        if warnings > 0 {
+            problems.push_str(&format!(" · {warnings} warning(s)"));
+        }
+        self.status = format!("{} components · {} preview object(s) · {} to bake{problems}", self.root.nodes.len(), self.preview.len(), self.bake.len());
     }
 
     /// Put the pending Bake geometry into the document. Returns the number of objects.
     pub fn bake_into(&mut self, doc: &mut Document) -> usize {
+        if self.solving().is_some() {
+            self.status = "Still solving — bake when the solve has finished.".into();
+            return 0;
+        }
         if self.bake.is_empty() {
             self.status = "Nothing to bake — connect an Output › Bake component.".into();
             return 0;
@@ -634,10 +890,23 @@ fn toolbar(ed: &mut Editor, ui: &mut egui::Ui, bake: &mut bool) {
             ed.graph_mut().add_comment(c.x as f64, c.y as f64, "Comment");
             ed.changed();
         }
-        if ui.button("Example").clicked() {
-            ed.record(None);
-            ed.set_root(build_example());
-        }
+        ui.menu_button("Examples", |ui| {
+            if ui.button("Starter (cylinder)").clicked() {
+                ed.record(None);
+                ed.set_root(build_example());
+                ui.close();
+            }
+            ui.separator();
+            for (name, _) in super::examples::EXAMPLES {
+                if ui.button(*name).clicked() {
+                    if let Some(g) = super::examples::load(name) {
+                        ed.record(None);
+                        ed.set_root(g);
+                    }
+                    ui.close();
+                }
+            }
+        });
         if ui.button("Group").clicked() {
             ed.group_selected();
         }
@@ -670,6 +939,9 @@ fn shortcuts(ed: &mut Editor, ctx: &egui::Context) {
     }
     let mut actions: Vec<&str> = Vec::new();
     ctx.input_mut(|i| {
+        if ed.solve_job.is_some() && i.consume_key(Modifiers::NONE, Key::Escape) {
+            actions.push("cancel_solve");
+        }
         if i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace) {
             actions.push("delete");
         }
@@ -685,6 +957,9 @@ fn shortcuts(ed: &mut Editor, ctx: &egui::Context) {
     for a in actions {
         match a {
             "delete" => ed.delete_selected(),
+            "cancel_solve" => {
+                ed.cancel_solve();
+            }
             "fit" => ed.fit_pending = true,
             "dup" => ed.duplicate_selected(),
             "copy" => ed.copy(),
@@ -1036,6 +1311,20 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
     let title = if ports.cluster { format!("⊞ {}", n.label()) } else { n.label().to_string() };
     let unknown = ports.inputs.is_empty() && ports.outputs.is_empty() && registry().get(&n.kind).is_none() && !ports.cluster;
     painter.text(head.left_center() + Vec2::new(8.0, 0.0), Align2::LEFT_CENTER, if unknown { format!("{title} (missing)") } else { title }, FontId::proportional(13.0), if n.disabled { MUTED } else { TEXT });
+    // errors and warnings: a dot in the header, the messages on hover
+    if let Some(list) = ed.diagnostics.get(uid).filter(|l| !l.is_empty()) {
+        let colour = if list.iter().any(|d| d.level == Level::Error) {
+            Color32::from_rgb(0xe5, 0x48, 0x4d)
+        } else if list.iter().any(|d| d.level == Level::Warning) {
+            Color32::from_rgb(0xf0, 0xa0, 0x30)
+        } else {
+            Color32::from_rgb(0x6a, 0xa8, 0xe8)
+        };
+        let c = Pos2::new(head.max.x - 10.0, head.center().y);
+        painter.circle_filled(c, 4.5, colour);
+        let text = list.iter().map(|d| format!("{}: {}", match d.level { Level::Error => "Error", Level::Warning => "Warning", Level::Info => "Print" }, d.message)).collect::<Vec<_>>().join("\n");
+        ui.interact(Rect::from_center_size(c, Vec2::splat(14.0)), ui.scope_id().with(("diag", uid)), Sense::hover()).on_hover_text(text);
+    }
     let font = FontId::proportional(12.0);
     // inputs
     for (i, (name, spec)) in ports.inputs.iter().enumerate() {
@@ -1053,8 +1342,17 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         let y = rect.min.y + out_y(ports.inputs.len(), i);
         painter.text(Pos2::new(rect.max.x - 12.0, y), Align2::RIGHT_CENTER, name, font.clone(), MUTED);
     }
+    if ports.formula {
+        let top = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len()) as f32 + 8.0;
+        let wr = Rect::from_min_size(Pos2::new(rect.min.x + 8.0, top), Vec2::new(NODE_W - 16.0, ROW_H - 4.0));
+        let mut text = n.values.get("Expression").and_then(|v| v.as_str()).unwrap_or("x").to_string();
+        let edit = ui.put(wr, egui::TextEdit::singleline(&mut text).font(egui::TextStyle::Monospace).hint_text("formula, e.g. sin(x)*y"));
+        if edit.changed() {
+            ed.set_value(uid, "Expression", json!(text));
+        }
+    }
     if !display.is_empty() {
-        let base = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len()) as f32 + 8.0;
+        let base = rect.min.y + HEADER_H + ROW_H * (ports.inputs.len() + ports.outputs.len() + usize::from(ports.formula)) as f32 + 8.0;
         for (k, line) in display.lines().take(8).enumerate() {
             let text: String = line.chars().take(34).collect();
             painter.text(Pos2::new(rect.min.x + 8.0, base + ROW_H * k as f32 + ROW_H / 2.0), Align2::LEFT_CENTER, text, FontId::monospace(11.0), TEXT);
@@ -1076,13 +1374,39 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
             let name = if out { ports.outputs.get(i).cloned().unwrap_or_default() } else { ports.inputs.get(i).map(|x| x.0.clone()).unwrap_or_default() };
             let kind = if out { String::new() } else { ports.inputs.get(i).and_then(|x| x.1.as_ref()).map(|s| format!(" ({})", s.kind.name())).unwrap_or_default() };
             let pr = pr.on_hover_text(format!("{name}{kind}\n{} item(s) in {} branch(es)\n{}", tree.count(), tree.branch_count(), tree.format(6, 5)));
-            if !out && ed.graph().source_of(uid, i).is_some() {
+            let dynamic = super::graph::is_dynamic(&n.kind);
+            if dynamic || (!out && ed.graph().source_of(uid, i).is_some()) {
                 pr.context_menu(|ui| {
-                    if ui.button("Disconnect").clicked() {
+                    if !out && ed.graph().source_of(uid, i).is_some() && ui.button("Disconnect").clicked() {
                         ed.record(None);
                         ed.graph_mut().disconnect(uid, i);
                         ed.changed();
                         ui.close();
+                    }
+                    if dynamic {
+                        if ui.button("Rename port…").clicked() {
+                            ed.dialog = Some(Dialog::RenamePort(uid.to_string(), out, i, name.clone()));
+                            ui.close();
+                        }
+                        if !out {
+                            let current = ed.graph().node(uid).map(|n| ed.graph().dynamic_ports(n).0).and_then(|p| p.get(i).map(|d| d.access)).unwrap_or_default();
+                            ui.menu_button("Access", |ui| {
+                                for (label, a) in [("Item", super::graph::Access::Item), ("List", super::graph::Access::List), ("Tree", super::graph::Access::Tree)] {
+                                    if ui.radio(current == a, label).clicked() {
+                                        ed.record(None);
+                                        ed.graph_mut().set_port_access(uid, i, a);
+                                        ed.changed();
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        }
+                        if ui.button("Remove port").clicked() {
+                            ed.record(None);
+                            ed.graph_mut().remove_port(uid, out, i);
+                            ed.changed();
+                            ui.close();
+                        }
                     }
                 });
             }
@@ -1121,6 +1445,9 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
             ed.clear_selection();
             ed.selected.insert(uid.to_string());
         }
+    }
+    if body.double_clicked() && n.kind == "Script" {
+        ed.dialog = Some(Dialog::EditCode(uid.to_string(), n.values.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string()));
     }
     if body.double_clicked() && ports.cluster {
         ed.open_cluster(uid);
@@ -1161,6 +1488,21 @@ fn node(ed: &mut Editor, ui: &mut egui::Ui, uid: &str) {
         if ui.button("Cluster selected…").clicked() {
             ed.dialog = Some(Dialog::ClusterName(ed.sorted_selection(), "Cluster".into()));
             ui.close();
+        }
+        if n.kind == "Script" && ui.button("Edit code…").clicked() {
+            ed.dialog = Some(Dialog::EditCode(uid.to_string(), n.values.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string()));
+            ui.close();
+        }
+        if super::graph::is_dynamic(&n.kind) {
+            ui.separator();
+            for (label, out) in [("Add input", false), ("Add output", true)] {
+                if ui.button(label).clicked() {
+                    ed.record(None);
+                    ed.graph_mut().add_port(uid, out);
+                    ed.changed();
+                    ui.close();
+                }
+            }
         }
         if ports.cluster && ui.button("Open cluster").clicked() {
             ed.open_cluster(uid);
@@ -1220,6 +1562,43 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
     let Some(d) = ed.dialog.clone() else { return };
     let mut keep = true;
     match d {
+        Dialog::EditCode(uid, mut code) => {
+            let error = ed.diagnostics.get(&uid).and_then(|d| d.iter().find(|x| x.level == Level::Error)).map(|d| d.message.clone());
+            let mut apply = false;
+            egui::Window::new("Script").id(egui::Id::unique("locust_code_dialog")).collapsible(false).resizable(true).default_size([560.0, 380.0]).show(ctx, |ui| {
+                if let Some(e) = &error {
+                    ui.colored_label(Color32::from_rgb(0xe5, 0x48, 0x4d), e);
+                }
+                egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut code).font(egui::TextStyle::Monospace).code_editor().desired_rows(16).desired_width(f32::INFINITY).lock_focus(true));
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        keep = false;
+                    }
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("OK").clicked() {
+                        apply = true;
+                        keep = false;
+                    }
+                    ui.label(RichText::new("Ctrl+Enter applies").small().color(MUTED));
+                });
+                if ui.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) {
+                    apply = true;
+                }
+            });
+            if apply {
+                ed.set_value(&uid, "code", json!(code));
+            }
+            if keep {
+                ed.dialog = Some(Dialog::EditCode(uid, code));
+            } else {
+                ed.dialog = None;
+            }
+            return;
+        }
         Dialog::Search { pos, mut text, mut sel, focus } => {
             let q = text.to_lowercase();
             let mut names: Vec<(&str, &str)> = registry().components.values().filter(|c| q.is_empty() || c.name.to_lowercase().contains(q.trim()) || c.category.to_lowercase().contains(q.trim())).map(|c| (c.category, c.name)).collect();
@@ -1280,11 +1659,12 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                 Dialog::RenameGroup(..) => ("Group", false),
                 Dialog::EditComment(..) => ("Comment", true),
                 Dialog::ClusterName(..) => ("Cluster", false),
-                Dialog::Search { .. } => unreachable!(),
+                Dialog::RenamePort(..) => ("Port name", false),
+                Dialog::Search { .. } | Dialog::EditCode(..) => unreachable!(),
             };
             let mut text = match &other {
-                Dialog::RenameNode(_, s) | Dialog::RenameGroup(_, s) | Dialog::EditComment(_, s) | Dialog::ClusterName(_, s) => s.clone(),
-                Dialog::Search { .. } => unreachable!(),
+                Dialog::RenameNode(_, s) | Dialog::RenameGroup(_, s) | Dialog::EditComment(_, s) | Dialog::ClusterName(_, s) | Dialog::RenamePort(_, _, _, s) => s.clone(),
+                Dialog::Search { .. } | Dialog::EditCode(..) => unreachable!(),
             };
             let mut ok = false;
             egui::Window::new(title).id(egui::Id::unique("locust_text_dialog")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
@@ -1323,12 +1703,18 @@ fn dialogs(ed: &mut Editor, ctx: &egui::Context) {
                             c.text = text.clone();
                         }
                     }
+                    Dialog::RenamePort(uid, out, index, _) => {
+                        if !ed.graph_mut().rename_port(uid, *out, *index, text.trim()) {
+                            ed.undo.pop();
+                            ed.status = format!("\"{}\" is taken or is not a name (letters, digits, _).", text.trim());
+                        }
+                    }
                     Dialog::ClusterName(uids, _) => {
                         let uids = uids.clone();
                         ed.undo.pop();
                         ed.cluster(uids, text.trim());
                     }
-                    Dialog::Search { .. } => {}
+                    Dialog::Search { .. } | Dialog::EditCode(..) => {}
                 }
                 ed.changed();
                 keep = false;
@@ -1387,7 +1773,7 @@ mod tests {
         let node = ed.root.node(&cl).unwrap().clone();
         let inner = Graph::from_json(&ed.root.cluster_of(&node).unwrap()["graph"]);
         assert!(inner.nodes.iter().any(|n| n.kind == "Text"));
-        ed.solve(&doc);
+        ed.solve_blocking(&doc);
         assert!(ed.status.contains("components"));
     }
 
@@ -1397,7 +1783,7 @@ mod tests {
         ed.root = build_example();
         let mut doc = Document::new();
         ed.open = true;
-        ed.solve(&doc);
+        ed.solve_blocking(&doc);
         assert_eq!(ed.preview.len(), 1);
         let panel = ed.root.nodes.iter().find(|n| n.kind == "Panel").unwrap().uid.clone();
         assert!(ed.displays[&panel].starts_with("{}  "), "{:?}", ed.displays[&panel]);
@@ -1415,5 +1801,143 @@ mod tests {
         let hit = port_at(&ports, p + Vec2::new(10.0, 6.0), None, 24.0).unwrap();
         assert_eq!(hit, (a, r));
         assert!(port_at(&ports, p + Vec2::new(60.0, 0.0), None, 24.0).is_none());
+    }
+}
+
+#[cfg(test)]
+mod solve_job_tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn graph(radius: f64) -> Graph {
+        super::super::authoring::prepare(&json!({
+            "nodes": [
+                { "type": "Number", "nickname": "Radius", "values": { "Value": radius } },
+                { "type": "Circle" }, { "type": "Extrude" }, { "type": "Preview" }
+            ],
+            "connections": [
+                { "from": "Radius", "to": "Circle.Radius" }, { "from": "Circle", "to": "Extrude.Curve" }, { "from": "Extrude", "to": "Preview.Geometry" }
+            ]
+        }))
+        .unwrap()
+    }
+
+    fn wait(ed: &mut Editor, limit: Duration) {
+        let t = Instant::now();
+        while ed.solving().is_some() {
+            ed.poll();
+            assert!(t.elapsed() < limit, "still solving after {limit:?}");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    fn volume(ed: &Editor) -> f64 {
+        ed.preview.iter().find_map(|(g, _)| tri_doc::Document::volume_of(g).map(|v| v.0)).expect("a solid in the preview")
+    }
+
+    #[test]
+    fn solve_runs_in_background_and_installs() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve(&doc);
+        assert!(ed.solving().is_some(), "the solve is a job");
+        wait(&mut ed, Duration::from_secs(30));
+        assert_eq!(ed.preview.len(), 1);
+        assert!((volume(&ed) - std::f64::consts::PI * 36.0 * 10.0).abs() < 10.0);
+    }
+
+    /// A newer solve wins even if an older one finishes after it started.
+    #[test]
+    fn edit_during_solve_restarts() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve(&doc);
+        let mut v = serde_json::Map::new();
+        v.insert("Radius".into(), json!(3.0));
+        ed.set_inputs(&v).unwrap();
+        ed.solve(&doc);
+        wait(&mut ed, Duration::from_secs(30));
+        assert!((volume(&ed) - std::f64::consts::PI * 9.0 * 10.0).abs() < 5.0, "the last edit is what shows");
+    }
+
+    #[test]
+    fn esc_cancels_solve() {
+        let mut app = crate::app::App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let g = super::super::authoring::prepare(&json!({
+            "nodes": [
+                { "type": "Geometry", "nickname": "A", "values": { "Objects": 1 } },
+                { "type": "Geometry", "nickname": "B", "values": { "Objects": 2 } },
+                { "type": "Union" }, { "type": "Preview" }
+            ],
+            "connections": [{ "from": "A", "to": "Union.A" }, { "from": "B", "to": "Union.B" }, { "from": "Union", "to": "Preview.Geometry" }]
+        }))
+        .unwrap();
+        app.locust.replace_root(g);
+        app.locust.solve(&app.doc);
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(app.locust.solving().is_some(), "still on the Boolean");
+        app.cancel(); // what Esc does
+        let t = Instant::now();
+        wait(&mut app.locust, Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_millis(1500), "took {:?}", t.elapsed());
+        assert!(app.locust.preview.is_empty());
+        assert!(app.locust.status.contains("cancelled"), "{}", app.locust.status);
+    }
+
+    fn slow_voronoi() -> Graph {
+        super::super::authoring::prepare(&json!({
+            "nodes": [{ "type": "Populate 2D", "nickname": "P", "values": { "Count": 5000 } }, { "type": "Voronoi" }, { "type": "Preview" }],
+            "connections": [{ "from": "P", "to": "Voronoi.Points" }, { "from": "Voronoi", "to": "Preview.Geometry" }]
+        }))
+        .unwrap()
+    }
+
+    /// Review: a cancelled solve must stop even in components that never call the kernel.
+    #[test]
+    fn cancel_stops_a_slow_component() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(ed.solving().is_some(), "still on the Voronoi");
+        ed.cancel_solve();
+        let t = Instant::now();
+        wait(&mut ed, Duration::from_secs(10));
+        assert!(t.elapsed() < Duration::from_millis(500), "took {:?}", t.elapsed());
+    }
+
+    /// Review: after a cancelled solve the report says so instead of showing the last one.
+    #[test]
+    fn report_after_cancel_says_cancelled() {
+        let doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve_blocking(&doc);
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        std::thread::sleep(Duration::from_millis(50));
+        ed.cancel_solve();
+        wait(&mut ed, Duration::from_secs(10));
+        assert_eq!(ed.last_outcome(), Err("the solve was cancelled".to_string()));
+    }
+
+    /// Bake waits for a running solve instead of baking the previous result.
+    #[test]
+    fn bake_waits_for_the_solve() {
+        let mut doc = Document::new();
+        let mut ed = Editor::default();
+        ed.replace_root(graph(6.0));
+        ed.solve_blocking(&doc);
+        ed.replace_root(slow_voronoi());
+        ed.solve(&doc);
+        assert_eq!(ed.bake_into(&mut doc), 0);
+        assert!(ed.status.contains("solving"), "{}", ed.status);
+        ed.cancel_solve();
+        wait(&mut ed, Duration::from_secs(5));
     }
 }

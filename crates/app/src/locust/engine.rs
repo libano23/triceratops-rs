@@ -45,9 +45,20 @@ fn input_tree(graph: &Graph, node: &Node, index: usize, comp: &Component, output
     tree
 }
 
-/// Run `f` and turn a panic in geometry code into "no result".
-fn guarded<T>(f: impl FnOnce() -> Option<T>) -> Option<T> {
-    catch_unwind(AssertUnwindSafe(f)).ok().flatten()
+/// Run `f`, turning a panic (geometry code has them) into its message.
+pub fn catch_panic<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    catch_unwind(AssertUnwindSafe(f)).map_err(|payload| payload.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| payload.downcast_ref::<String>().cloned()).unwrap_or_else(|| "component panicked".into()))
+}
+
+/// Run `f` and turn a panic in geometry code into "no result", noted as an error on the node.
+fn guarded<T>(ctx_errors: &mut Vec<String>, f: impl FnOnce() -> Option<T>) -> Option<T> {
+    match catch_panic(f) {
+        Ok(r) => r,
+        Err(msg) => {
+            ctx_errors.push(msg);
+            None
+        }
+    }
 }
 
 fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx, trees: &[DataTree]) -> Vec<DataTree> {
@@ -55,13 +66,19 @@ fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx
     let active: Vec<usize> = (0..trees.len()).filter(|&i| !(comp.inputs[i].optional && trees[i].is_empty())).collect();
     let cast: Vec<DataTree> = active.iter().map(|&i| cast_tree(&trees[i], comp.inputs[i].kind)).collect();
     let combos = match_trees(&cast);
+    let ran = !combos.is_empty();
     let mut buckets: Vec<BTreeMap<Vec<i64>, Vec<Value>>> = vec![BTreeMap::new(); comp.outputs.len()];
-    for combo in combos {
+    let mut panics = Vec::new();
+    for (n, combo) in combos.into_iter().enumerate() {
+        // a cancelled solve (Esc, a newer edit) stops here too, not only in the kernels
+        if n.is_multiple_of(64) && tri_geom::job::check().is_err() {
+            break;
+        }
         let mut args = vec![Value::Null; trees.len()];
         for (k, &i) in active.iter().enumerate() {
             args[i] = combo.values[k].clone();
         }
-        let res = guarded(|| f(ctx, &Args(&args)));
+        let res = guarded(&mut panics, || f(ctx, &Args(&args)));
         let Some(vals) = res else { continue };
         for (k, v) in vals.into_iter().enumerate().take(comp.outputs.len()) {
             match v {
@@ -71,11 +88,21 @@ fn element_outputs(comp: &Component, f: super::components::ElemFn, ctx: &mut Ctx
             }
         }
     }
+    for p in panics {
+        ctx.error(p);
+    }
+    if ran && !comp.outputs.is_empty() && buckets.iter().all(|b| b.is_empty()) && !ctx.diagnostics.get(ctx.current.as_deref().unwrap_or("")).is_some_and(|d| d.iter().any(|x| x.level == super::components::Level::Error)) {
+        ctx.warn("no result");
+    }
     buckets.into_iter().map(|b| DataTree { branches: b }).collect()
 }
 
 fn tree_outputs(comp: &Component, f: super::components::TreeFn, ctx: &mut Ctx, trees: &[DataTree]) -> Vec<DataTree> {
-    let mut out = guarded(|| Some(f(ctx, trees))).unwrap_or_default();
+    let mut panics = Vec::new();
+    let mut out = guarded(&mut panics, || Some(f(ctx, trees))).unwrap_or_default();
+    for p in panics {
+        ctx.error(p);
+    }
     out.resize(comp.outputs.len(), DataTree::empty());
     out
 }
@@ -95,11 +122,33 @@ fn solve_cluster(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs, r
             seeds.insert(uid.to_string(), vec![raw_input_tree(graph, node, i, outputs)]);
         }
     }
+    let outer = ctx.current.clone();
     let inner_out = solve_with(&inner, ctx, &seeds, reg);
+    // what the nodes inside said is shown on the cluster node
+    ctx.current = outer.clone();
+    if let Some(uid) = outer {
+        for n in &inner.nodes {
+            if let Some(list) = ctx.diagnostics.remove(&n.uid) {
+                let moved: Vec<super::components::Diagnostic> = list.into_iter().map(|d| super::components::Diagnostic { level: d.level, message: format!("{}: {}", n.label(), d.message) }).collect();
+                ctx.diagnostics.entry(uid.clone()).or_default().extend(moved);
+            }
+        }
+    }
     ports("outputs")
         .iter()
         .map(|d| d.get("node").and_then(|x| x.as_str()).and_then(|uid| inner_out.get(uid)).and_then(|t| t.first()).cloned().unwrap_or_default())
         .collect()
+}
+
+/// A Script or Expression node; a panic in what it calls is an error on the node.
+fn solve_dynamic(graph: &Graph, node: &Node, ctx: &mut Ctx, outputs: &Outputs) -> Vec<DataTree> {
+    match catch_panic(|| super::script::solve_node(graph, node, ctx, outputs)) {
+        Ok(o) => o,
+        Err(msg) => {
+            ctx.error(msg);
+            vec![DataTree::empty(); graph.dynamic_ports(node).1.len()]
+        }
+    }
 }
 
 /// Every node's outputs as data trees, keyed by node uid.
@@ -111,7 +160,11 @@ pub fn solve(graph: &Graph, ctx: &mut Ctx) -> Outputs {
 pub fn solve_with(graph: &Graph, ctx: &mut Ctx, seeds: &HashMap<String, Vec<DataTree>>, reg: &Registry) -> Outputs {
     let mut outputs: Outputs = HashMap::new();
     for uid in graph.topological() {
+        if tri_geom::job::check().is_err() {
+            break;
+        }
         let Some(node) = graph.node(&uid) else { continue };
+        ctx.current = Some(uid.clone());
         if let Some(s) = seeds.get(&uid) {
             outputs.insert(uid, s.clone());
             continue;
@@ -121,7 +174,13 @@ pub fn solve_with(graph: &Graph, ctx: &mut Ctx, seeds: &HashMap<String, Vec<Data
             outputs.insert(uid, o);
             continue;
         }
+        if super::graph::is_dynamic(&node.kind) {
+            let o = solve_dynamic(graph, node, ctx, &outputs);
+            outputs.insert(uid, o);
+            continue;
+        }
         let Some(comp) = reg.get(&node.kind) else {
+            ctx.error(format!("unknown component {}", node.kind));
             outputs.insert(uid, Vec::new());
             continue;
         };
@@ -147,4 +206,14 @@ pub fn input_preview(graph: &Graph, node_uid: &str, port: usize, outputs: &Outpu
         return DataTree::empty();
     }
     input_tree(graph, node, port, comp, outputs)
+}
+
+#[cfg(test)]
+mod guard_tests {
+    #[test]
+    fn panics_become_messages() {
+        let r: Result<i32, String> = super::catch_panic(|| panic!("kernel said no"));
+        assert_eq!(r, Err("kernel said no".to_string()));
+        assert_eq!(super::catch_panic(|| 3), Ok(3));
+    }
 }

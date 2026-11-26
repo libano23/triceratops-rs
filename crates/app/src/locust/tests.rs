@@ -713,3 +713,468 @@ fn numbers_print_like_python() {
     assert_eq!(py_float(1e-5), "1e-05");
     assert_eq!(py_float(1.5e20), "1.5e+20");
 }
+
+// --------------------------------------------------------------- diagnostics
+
+mod diagnostics {
+    use super::*;
+    use crate::locust::components::Level;
+
+    fn messages(ctx: &Ctx, uid: &str, level: Level) -> Vec<String> {
+        ctx.diagnostics.get(uid).map(|d| d.iter().filter(|x| x.level == level).map(|x| x.message.clone()).collect()).unwrap_or_default()
+    }
+
+    #[test]
+    fn panic_becomes_error_diagnostic() {
+        let mut reg = Registry::default();
+        reg.elem("Boom", "Test", vec![num("A", 1.0)], &["R"], |_, _| panic!("boom here"));
+        let mut g = Graph::new();
+        let n = node(&mut g, "Boom", &[]);
+        let mut ctx = Ctx::default();
+        solve_with(&g, &mut ctx, &HashMap::new(), &reg);
+        let errs = messages(&ctx, &n, Level::Error);
+        assert!(errs.iter().any(|m| m.contains("boom here")), "{errs:?}");
+    }
+
+    #[test]
+    fn empty_result_warns() {
+        let mut g = Graph::new();
+        let number = node(&mut g, "Number", &[("Value", json!(3.0))]);
+        let eval = node(&mut g, "Evaluate Curve", &[]);
+        g.connect(&number, 0, &eval, 0);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        assert_eq!(messages(&ctx, &eval, Level::Warning), vec!["no result".to_string()]);
+        assert!(messages(&ctx, &number, Level::Warning).is_empty());
+    }
+
+    #[test]
+    fn unknown_kind_errors() {
+        let mut g = Graph::new();
+        let n = node(&mut g, "Nope", &[]);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        assert_eq!(messages(&ctx, &n, Level::Error), vec!["unknown component Nope".to_string()]);
+    }
+
+    /// A Boolean that cannot be done says why on its node.
+    #[test]
+    fn boolean_error_reaches_node() {
+        let mut g = Graph::new();
+        let a = node(&mut g, "Line", &[]);
+        let b = node(&mut g, "Line", &[("End", json!([0.0, 1.0, 0.0]))]);
+        let u = node(&mut g, "Union", &[]);
+        g.connect(&a, 0, &u, 0);
+        g.connect(&b, 0, &u, 1);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        let errs = messages(&ctx, &u, Level::Error);
+        assert!(errs.iter().any(|m| m.contains("cannot be combined")), "{errs:?}");
+    }
+}
+
+// --------------------------------------------------------------- nodes with their own ports
+
+mod dynamic_ports {
+    use super::*;
+    use crate::locust::graph::{is_dynamic, Access, PortDef};
+
+    fn names(p: &[PortDef]) -> Vec<&str> {
+        p.iter().map(|d| d.name.as_str()).collect()
+    }
+
+    #[test]
+    fn dynamic_ports_default_and_custom() {
+        assert!(is_dynamic("Script") && is_dynamic("Expression") && !is_dynamic("Circle"));
+        let mut g = Graph::new();
+        let e = node(&mut g, "Expression", &[]);
+        let (ins, outs) = g.dynamic_ports(g.node(&e).unwrap());
+        assert_eq!(names(&ins), ["x", "y", "z"]);
+        assert_eq!(names(&outs), ["Result"]);
+        let s = node(&mut g, "Script", &[]);
+        let (ins, outs) = g.dynamic_ports(g.node(&s).unwrap());
+        assert_eq!((names(&ins), names(&outs)), (vec!["x", "y"], vec!["a"]));
+        let c = node(&mut g, "Script", &[("_inputs", json!([{ "name": "pts", "kind": "point", "access": "list" }, "n"])), ("_outputs", json!(["cells", { "name": "count" }]))]);
+        let (ins, outs) = g.dynamic_ports(g.node(&c).unwrap());
+        assert_eq!(names(&ins), ["pts", "n"]);
+        assert_eq!((ins[0].kind.as_str(), ins[0].access), ("point", Access::List));
+        assert_eq!((ins[1].kind.as_str(), ins[1].access), ("any", Access::Item));
+        assert_eq!(names(&outs), ["cells", "count"]);
+    }
+
+    #[test]
+    fn node_ports_covers_all_three() {
+        let mut g = Graph::new();
+        let circle = node(&mut g, "Circle", &[]);
+        let script = node(&mut g, "Script", &[("_inputs", json!(["r"])), ("_outputs", json!(["c"]))]);
+        let (ins, outs) = g.node_ports(g.node(&circle).unwrap());
+        assert_eq!(ins.iter().map(|p| p.0.as_str()).collect::<Vec<_>>(), registry().get("Circle").unwrap().inputs.iter().map(|i| i.name).collect::<Vec<_>>());
+        assert_eq!(outs.len(), 1);
+        let (ins, outs) = g.node_ports(g.node(&script).unwrap());
+        assert_eq!((ins[0].0.as_str(), outs[0].0.as_str()), ("r", "c"));
+        let a = node(&mut g, "Number", &[]);
+        let b = node(&mut g, "Number", &[]);
+        g.connect(&a, 0, &b, 0);
+        let cl = g.make_cluster(std::slice::from_ref(&b), "C").unwrap();
+        let (ins, _) = g.node_ports(g.node(&cl).unwrap());
+        assert_eq!(ins.len(), 1, "cluster ports come through node_ports too");
+    }
+
+    #[test]
+    fn dynamic_node_round_trips_json() {
+        let mut g = Graph::new();
+        node(&mut g, "Script", &[("_inputs", json!([{ "name": "pts", "kind": "point", "access": "tree" }])), ("code", json!("a = pts;"))]);
+        let back = Graph::from_json(&g.to_json());
+        assert_eq!(back, g);
+        let (ins, _) = back.dynamic_ports(&back.nodes[0]);
+        assert_eq!(ins[0].access, Access::Tree);
+    }
+
+    #[test]
+    fn dynamic_node_is_not_unknown() {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Script", &[]);
+        let mut ctx = Ctx::default();
+        let out = solve(&g, &mut ctx);
+        assert!(!ctx.diagnostics.get(&s).is_some_and(|d| d.iter().any(|x| x.message.starts_with("unknown component"))), "{:?}", ctx.diagnostics);
+        assert_eq!(out[&s].len(), 1, "one output tree per output port");
+    }
+
+    #[test]
+    fn ports_can_be_added_renamed_and_removed() {
+        let mut g = Graph::new();
+        let src = node(&mut g, "Number", &[]);
+        let s = node(&mut g, "Script", &[]);
+        assert_eq!(g.add_port(&s, false).as_deref(), Some("z"));
+        assert_eq!(g.add_port(&s, true).as_deref(), Some("b"));
+        g.connect(&src, 0, &s, 2); // into z
+        assert!(g.rename_port(&s, false, 2, "height"));
+        assert!(!g.rename_port(&s, false, 0, "y"), "names stay unique");
+        assert!(!g.rename_port(&s, false, 0, "bad name"), "names are identifiers");
+        g.remove_port(&s, false, 0); // x goes: the wire into height moves from 2 to 1
+        let (ins, outs) = g.dynamic_ports(g.node(&s).unwrap());
+        assert_eq!(names(&ins), ["y", "height"]);
+        assert_eq!(names(&outs), ["a", "b"]);
+        assert_eq!(g.source_of(&s, 1).map(|c| c.src.clone()), Some(src.clone()));
+        g.remove_port(&s, false, 1);
+        assert!(g.connections.is_empty(), "a removed port loses its wire");
+    }
+}
+
+// --------------------------------------------------------------- helix
+
+mod helix {
+    use super::*;
+
+    fn curve(t: &DataTree) -> tri_geom::NurbsCurve {
+        match t.first().and_then(|v| v.as_geometry()) {
+            Some(tri_doc::Geometry::Curve(c)) => c.clone(),
+            other => panic!("expected a curve, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn helix_length_and_ends() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("Turns", json!(5.0)), ("End", json!([0.0, 0.0, 10.0]))]);
+        let c = curve(&out[0]);
+        let expect = ((2.0 * PI * 5.0 * 5.0).powi(2) + 100.0).sqrt();
+        assert!(close(c.length(), expect, 0.01), "length {} vs {expect}", c.length());
+        assert!((c.start_point() - DVec3::new(5.0, 0.0, 0.0)).length() < 1e-6, "{:?}", c.start_point());
+        assert!((c.end_point().z - 10.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn helix_pitch_overrides_turns() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("Turns", json!(1.0)), ("Pitch", json!(2.0)), ("End", json!([0.0, 0.0, 10.0]))]);
+        let expect = ((2.0 * PI * 5.0 * 5.0).powi(2) + 100.0).sqrt();
+        assert!(close(curve(&out[0]).length(), expect, 0.01));
+    }
+
+    #[test]
+    fn conical_helix_ends_at_end_radius() {
+        let out = solve_node("Helix", &[("Radius", json!(5.0)), ("End Radius", json!(2.0)), ("Turns", json!(3.0)), ("End", json!([0.0, 0.0, 6.0]))]);
+        let e = curve(&out[0]).end_point();
+        assert!((DVec3::new(e.x, e.y, 0.0).length() - 2.0).abs() < 1e-6, "{e:?}");
+    }
+}
+
+// --------------------------------------------------------------- populate
+
+mod populate {
+    use super::*;
+    use crate::locust::components::Level;
+
+    fn pts(t: &DataTree) -> Vec<DVec3> {
+        t.items().iter().map(super::super::data::as_point).collect()
+    }
+
+    fn populate_circle(count: i64, seed: i64) -> (Vec<DVec3>, Ctx, String) {
+        let mut g = Graph::new();
+        let c = node(&mut g, "Circle", &[("Radius", json!(10.0))]);
+        let p = node(&mut g, "Populate 2D", &[("Count", json!(count)), ("Seed", json!(seed))]);
+        g.connect(&c, 0, &p, 0);
+        let mut ctx = Ctx::default();
+        let out = solve(&g, &mut ctx);
+        (pts(&out[&p][0]), ctx, p)
+    }
+
+    fn warnings(ctx: &Ctx, uid: &str) -> Vec<String> {
+        ctx.diagnostics.get(uid).map(|d| d.iter().filter(|x| x.level == Level::Warning).map(|x| x.message.clone()).collect()).unwrap_or_default()
+    }
+
+    #[test]
+    fn populate_2d_inside_and_deterministic() {
+        let (a, _, _) = populate_circle(200, 1);
+        assert_eq!(a.len(), 200);
+        assert!(a.iter().all(|p| p.length() <= 10.0 + 1e-9 && p.z.abs() < 1e-9));
+        let (b, _, _) = populate_circle(200, 1);
+        assert_eq!(a, b, "same seed, same points");
+        let (c, _, _) = populate_circle(200, 2);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn populate_2d_count_limits() {
+        let (a, ctx, p) = populate_circle(0, 1);
+        assert!(a.is_empty());
+        assert_eq!(warnings(&ctx, &p), ["count is 0"]);
+        let (a, ctx, p) = populate_circle(10_000_000, 1);
+        assert_eq!(a.len(), 100_000);
+        assert_eq!(warnings(&ctx, &p), ["count limited to 100000"]);
+    }
+
+    #[test]
+    fn populate_2d_default_region() {
+        let out = solve_node("Populate 2D", &[("Count", json!(50))]);
+        let p = pts(&out[0]);
+        assert_eq!(p.len(), 50);
+        assert!(p.iter().all(|q| (0.0..=100.0).contains(&q.x) && (0.0..=100.0).contains(&q.y)));
+    }
+
+    #[test]
+    fn populate_geometry_on_sphere() {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Sphere", &[("Radius", json!(10.0))]);
+        let p = node(&mut g, "Populate Geometry", &[("Count", json!(300)), ("Seed", json!(4))]);
+        g.connect(&s, 0, &p, 0);
+        let out = run(&g);
+        let ps = pts(&out[&p][0]);
+        assert_eq!(ps.len(), 300);
+        assert!(ps.iter().all(|q| (q.length() - 10.0).abs() < 1e-3), "{:?}", ps.iter().map(|q| q.length()).fold(0.0f64, |m, l| m.max((l - 10.0).abs())));
+        let above = ps.iter().filter(|q| q.z > 0.0).count();
+        assert!((100..200).contains(&above), "spread over the whole sphere: {above} above the equator");
+    }
+}
+
+// --------------------------------------------------------------- voronoi
+
+mod voronoi {
+    use super::*;
+    use crate::locust::components::voronoi::cells_2d;
+    use crate::locust::components::Level;
+    use glam::DVec2;
+
+    fn area(poly: &[DVec2]) -> f64 {
+        let n = poly.len();
+        (0..n).map(|i| poly[i].perp_dot(poly[(i + 1) % n])).sum::<f64>().abs() / 2.0
+    }
+
+    fn square(s: f64) -> Vec<DVec2> {
+        vec![DVec2::new(0.0, 0.0), DVec2::new(s, 0.0), DVec2::new(s, s), DVec2::new(0.0, s)]
+    }
+
+    #[test]
+    fn four_sites_four_quadrants() {
+        let sites = [DVec2::new(25.0, 25.0), DVec2::new(75.0, 25.0), DVec2::new(75.0, 75.0), DVec2::new(25.0, 75.0)];
+        let cells = cells_2d(&sites, &square(100.0));
+        assert_eq!(cells.len(), 4);
+        for (cell, site) in cells.iter().zip(sites) {
+            assert!((area(cell) - 2500.0).abs() < 1e-6, "{}", area(cell));
+            assert!(crate::locust::components::populate::inside(site, cell));
+        }
+    }
+
+    #[test]
+    fn cells_tile_the_boundary() {
+        let sites = crate::locust::components::populate::points_in(&square(100.0), 30, 1);
+        let cells = cells_2d(&sites, &square(100.0));
+        assert_eq!(cells.len(), 30);
+        let total: f64 = cells.iter().map(|c| area(c)).sum();
+        assert!((total - 10_000.0).abs() < 10.0, "{total}");
+    }
+
+    #[test]
+    fn voronoi_component_makes_closed_cells() {
+        let mut g = Graph::new();
+        let pop = node(&mut g, "Populate 2D", &[("Count", json!(40)), ("Seed", json!(3))]);
+        let v = node(&mut g, "Voronoi", &[]);
+        g.connect(&pop, 0, &v, 0);
+        let out = run(&g);
+        let cells = out[&v][0].items();
+        assert_eq!(cells.len(), 40);
+        assert!(cells.iter().all(|c| matches!(c.as_geometry(), Some(tri_doc::Geometry::Curve(k)) if k.is_closed())));
+    }
+
+    #[test]
+    fn voronoi_rejects_concave_boundary() {
+        let mut g = Graph::new();
+        let l = node(&mut g, "Polyline", &[]);
+        let pts = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 5.0, 0.0], [5.0, 5.0, 0.0], [5.0, 10.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0]];
+        g.node_mut(&l).unwrap().values.insert("Vertices".into(), json!(pts));
+        let pop = node(&mut g, "Populate 2D", &[("Count", json!(5))]);
+        let v = node(&mut g, "Voronoi", &[]);
+        g.connect(&pop, 0, &v, 0);
+        g.connect(&l, 0, &v, 1);
+        let mut ctx = Ctx::default();
+        solve(&g, &mut ctx);
+        let errs: Vec<String> = ctx.diagnostics.get(&v).map(|d| d.iter().filter(|x| x.level == Level::Error).map(|x| x.message.clone()).collect()).unwrap_or_default();
+        assert!(errs.iter().any(|e| e.contains("convex")), "{errs:?}");
+    }
+
+    #[test]
+    fn surface_voronoi_on_cylinder() {
+        let mut g = Graph::new();
+        let arc = node(&mut g, "Arc", &[("Radius", json!(10.0)), ("Angle", json!(90.0))]);
+        let ext = node(&mut g, "Extrude", &[("Distance", json!(20.0)), ("Cap", json!(false))]);
+        let sv = node(&mut g, "Surface Voronoi", &[("Count", json!(20)), ("Seed", json!(2))]);
+        g.connect(&arc, 0, &ext, 0);
+        g.connect(&ext, 0, &sv, 0);
+        let out = run(&g);
+        let cells = out[&sv][0].items();
+        assert_eq!(cells.len(), 20);
+        assert_eq!(out[&sv][1].count(), 20, "sites");
+        for c in &cells {
+            let Some(tri_doc::Geometry::Curve(k)) = c.as_geometry() else { panic!("a curve") };
+            let (t0, t1) = k.domain();
+            for i in 0..50 {
+                let p = k.point_at(t0 + (t1 - t0) * i as f64 / 50.0);
+                let r = DVec3::new(p.x, p.y, 0.0).length();
+                assert!((r - 10.0).abs() < 1e-3, "off the cylinder by {}", (r - 10.0).abs());
+            }
+        }
+    }
+}
+
+/// A loft of closed sections is closed around but open at the ends: Cap must close it.
+#[test]
+fn cap_closes_a_loft_of_closed_sections() {
+    let mut g = Graph::new();
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!("a = cap(loft([circle(point(0,0,0), 5), circle(point(0,0,10), 5)]));")), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let out = run(&g);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface") };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    assert!(close(v, PI * 25.0 * 10.0, 0.02), "volume {v}");
+}
+
+/// A long loft (a screw's 200 sections) can pass the closed test with its ends open: Cap
+/// still closes it.
+#[test]
+fn cap_closes_a_long_loft() {
+    let mut g = Graph::new();
+    let code = "let s = []; for k in 0..=200 { let p = []; for i in 0..72 { let t = 2.0 * PI * i / 72; let r = 5.0 + 0.5 * sin(3.0 * t + k * 0.3); p.push(point(r * cos(t), r * sin(t), k * 0.2)); } s.push(polyline(p, true)); } a = cap(loft(s));";
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!(code)), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let out = run(&g);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface") };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+}
+
+/// The same with polyline sections, as a screw's are.
+#[test]
+fn cap_closes_a_loft_of_polylines() {
+    let mut g = Graph::new();
+    let code = "let ring = |z| { let p = []; for i in 0..36 { let t = 2.0 * PI * i / 36; p.push(point(5.0 * cos(t), 5.0 * sin(t), z)); } polyline(p, true) }; \
+                let s = []; for k in 0..=10 { s.push(ring.call(k * 1.0)); } a = cap(loft(s));";
+    let s = g.add_node_with("Script", 0.0, 0.0, vals(&[("code", json!(code)), ("_inputs", json!([])), ("_outputs", json!(["a"]))]));
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let Some(tri_doc::Geometry::Brep(b)) = out[&s][0].first().and_then(|v| v.as_geometry()) else { panic!("a polysurface: {:?}", ctx.diagnostics) };
+    assert_eq!(b.faces.len(), 3, "side and two caps");
+}
+
+/// Review: Surface Voronoi says when it clamps the count, like Populate.
+#[test]
+fn surface_voronoi_count_warnings() {
+    for (count, warning) in [(0, "count is 0"), (100_000, "count limited to 5000")] {
+        let mut g = Graph::new();
+        let s = node(&mut g, "Sphere", &[]);
+        let sv = node(&mut g, "Surface Voronoi", &[("Count", json!(count))]);
+        g.connect(&s, 0, &sv, 0);
+        let mut ctx = Ctx::default();
+        let token = tri_geom::job::Token::new();
+        let _guard = tri_geom::job::install(token.clone());
+        // only the warning matters here: stop the big solve once it is under way
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            token.cancel();
+        });
+        solve(&g, &mut ctx);
+        canceller.join().unwrap();
+        let warnings: Vec<String> = ctx.diagnostics.get(&sv).map(|d| d.iter().map(|x| x.message.clone()).collect()).unwrap_or_default();
+        assert!(warnings.iter().any(|w| w == warning), "{count}: {warnings:?}");
+    }
+}
+
+/// A thread made the classic way: an ISO profile swept along a helix and united with its
+/// core. The union must be one closed solid.
+#[test]
+fn helical_sweep_unites_with_its_core() {
+    let g = crate::locust::authoring::prepare(&json!({
+        "nodes": [
+            { "type": "Script", "nickname": "Prof", "values": { "_inputs": [], "_outputs": ["profile"], "code": "let rc = 5.0 - 0.6134 * 1.5; let inner = rc - 0.15; let w = 2.0 * (5.0 - inner) * 0.57735; profile = polyline([point(inner, 0, -w / 2), point(5.0, 0, -0.06), point(5.0, 0, 0.06), point(inner, 0, w / 2)], true);" } },
+            { "type": "Helix", "nickname": "Rail", "values": { "Radius": 4.08, "Pitch": 1.5, "End": [0, 0, 20] } },
+            { "type": "Extrude Along Curve", "nickname": "Thread" },
+            { "type": "Circle", "nickname": "C", "values": { "Radius": 4.08 } },
+            { "type": "Extrude", "nickname": "Core", "values": { "Distance": 20 } },
+            { "type": "Union", "nickname": "Screw" }
+        ],
+        "connections": [
+            { "from": "Prof.profile", "to": "Thread.Profile" }, { "from": "Rail", "to": "Thread.Path" },
+            { "from": "C", "to": "Core.Curve" }, { "from": "Core", "to": "Screw.A" }, { "from": "Thread", "to": "Screw.B" }
+        ]
+    }))
+    .unwrap();
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let screw = g.nodes.iter().find(|n| n.nickname.as_deref() == Some("Screw")).unwrap();
+    let result = out[&screw.uid][0].first().and_then(|v| v.as_geometry()).cloned();
+    let Some(tri_doc::Geometry::Brep(b)) = result.as_ref() else { panic!("no solid: {:?}", ctx.diagnostics.get(&screw.uid)) };
+    assert!(b.closed);
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    let core = PI * 4.08 * 4.08 * 20.0;
+    assert!(v > core && v < PI * 25.0 * 21.0, "volume {v}");
+}
+
+
+/// The female thread the same way: a hex nut body minus the swept screw is one closed solid.
+#[test]
+fn hex_nut_minus_a_swept_screw() {
+    let g = crate::locust::authoring::prepare(&json!({
+        "nodes": [
+            { "type": "Script", "nickname": "Prof", "values": { "_inputs": [], "_outputs": ["profile"], "code": "let rc = 5.0 - 0.6134 * 1.5; let inner = rc - 0.15; let w = 2.0 * (5.0 - inner) * 0.57735; profile = polyline([point(inner, 0, -w / 2), point(5.0, 0, -0.06), point(5.0, 0, 0.06), point(inner, 0, w / 2)], true);" } },
+            { "type": "Helix", "nickname": "Rail", "values": { "Radius": 4.08, "Pitch": 1.5, "End": [0, 0, 20] } },
+            { "type": "Extrude Along Curve", "nickname": "Thread" },
+            { "type": "Circle", "nickname": "C", "values": { "Radius": 4.08 } },
+            { "type": "Extrude", "nickname": "Core", "values": { "Distance": 20 } },
+            { "type": "Union", "nickname": "Screw" },
+            { "type": "Polygon", "nickname": "Hex", "values": { "Radius": 9.24, "Sides": 6, "Center": [0, 0, 6] } },
+            { "type": "Extrude", "nickname": "Body", "values": { "Distance": 8 } },
+            { "type": "Difference", "nickname": "Nut" }
+        ],
+        "connections": [
+            { "from": "Prof.profile", "to": "Thread.Profile" }, { "from": "Rail", "to": "Thread.Path" },
+            { "from": "C", "to": "Core.Curve" }, { "from": "Core", "to": "Screw.A" }, { "from": "Thread", "to": "Screw.B" },
+            { "from": "Hex", "to": "Body.Curve" }, { "from": "Body", "to": "Nut.A" }, { "from": "Screw", "to": "Nut.B" }
+        ]
+    }))
+    .unwrap();
+    let mut ctx = Ctx::default();
+    let out = solve(&g, &mut ctx);
+    let nut = g.nodes.iter().find(|n| n.nickname.as_deref() == Some("Nut")).unwrap();
+    let result = out[&nut.uid][0].first().and_then(|v| v.as_geometry()).cloned();
+    let Some(tri_doc::Geometry::Brep(b)) = result.as_ref() else { panic!("no solid: {:?}", ctx.diagnostics.get(&nut.uid)) };
+    assert!(b.closed);
+    let v = tri_doc::Document::volume_of(&tri_doc::Geometry::Brep(b.clone())).unwrap().0;
+    let hex = 3.0f64.sqrt() / 2.0 * 16.0 * 16.0 * 8.0;
+    assert!(v < hex - PI * 4.08 * 4.08 * 8.0 && v > hex - PI * 25.0 * 8.0, "volume {v}");
+}

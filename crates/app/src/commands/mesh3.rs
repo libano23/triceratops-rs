@@ -3,7 +3,8 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Geometry, ObjectId};
-use tri_geom::{mesh_boolean, mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::create::planar_cap;
 use super::mesh_cmds::{components, weld};
@@ -439,7 +440,7 @@ pub fn radiate(find: bool) -> SeqCmd {
 pub fn multipipe() -> SeqCmd {
     SeqCmd::new(vec![Ask::Objects("Select curves", ObjFilter::Curve, 1), Ask::Number("Radius", 1.0), Ask::Options("Output", vec![opt("SubD"), opt("Mesh")])], |a, ctx| {
         let r = a[1].number().abs().max(1e-6);
-        let mut result: Option<Mesh> = None;
+        let mut pipes: Vec<Mesh> = Vec::new();
         for id in a[0].ids() {
             let Some(c) = ctx.doc.get(id).and_then(|o| o.geometry.as_curve().cloned()) else { continue };
             let (t0, _) = c.domain();
@@ -458,18 +459,34 @@ pub fn multipipe() -> SeqCmd {
             brep.orient_outward();
             let m = brep.tessellate(24, 12);
             let m = mesh_ops::fill_holes(&m).0;
-            result = Some(match result { Some(acc) => mesh_boolean(&acc, &m, BooleanOp::Union), None => m });
+            pipes.push(m);
         }
-        let Some(m) = result else { return Step::Cancelled };
-        ctx.doc.begin_undo("MultiPipe");
-        ctx.doc.clear_selection();
-        let mut attrs = tri_doc::Attributes { layer: ctx.doc.current_layer(), ..Default::default() };
-        if a[2].text() != "Mesh" {
-            attrs.user_text.push(("SubD".into(), "Yes".into()));
+        if pipes.is_empty() {
+            return Step::Cancelled;
         }
-        let id = ctx.doc.add_with(Geometry::Mesh(m), attrs);
-        ctx.doc.select(id, true);
-        Step::Done
+        let subd = a[2].text() != "Mesh";
+        ctx.try_work(
+            "MultiPipe",
+            move || {
+                let mut pipes = pipes.into_iter();
+                let mut acc = pipes.next().unwrap_or_default();
+                for m in pipes {
+                    acc = mesh_bool(&acc, &m, BooleanOp::Union).map_err(|e| e.to_string())?;
+                }
+                Ok(acc)
+            },
+            move |m, ctx| {
+                ctx.doc.begin_undo("MultiPipe");
+                ctx.doc.clear_selection();
+                let mut attrs = tri_doc::Attributes { layer: ctx.doc.current_layer(), ..Default::default() };
+                if subd {
+                    attrs.user_text.push(("SubD".into(), "Yes".into()));
+                }
+                let id = ctx.doc.add_with(Geometry::Mesh(m), attrs);
+                ctx.doc.select(id, true);
+                Step::Done
+            },
+        )
     })
 }
 
@@ -1116,34 +1133,39 @@ pub fn create_regions() -> SeqCmd {
             ctx.log("Select at least two closed planar curves.");
             return Step::Cancelled;
         }
-        let mut regions = Vec::new();
-        for i in 0..curves.len() {
-            // the part of curve i outside all the others, plus the pairwise intersections
-            let mut pieces = vec![curves[i].clone()];
-            for j in 0..curves.len() {
-                if i == j {
-                    continue;
+        let ids = a[0].ids();
+        ctx.work("CreateRegions", move || {
+            let mut regions = Vec::new();
+            for i in 0..curves.len() {
+                // the part of curve i outside all the others, plus the pairwise intersections
+                let mut pieces = vec![curves[i].clone()];
+                for j in 0..curves.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let mut next = Vec::new();
+                    for p in &pieces {
+                        next.extend(super::misc4::region_boolean(std::slice::from_ref(p), std::slice::from_ref(&curves[j]), BooleanOp::Difference));
+                    }
+                    pieces = next;
                 }
-                let mut next = Vec::new();
-                for p in &pieces {
-                    next.extend(super::misc4::region_boolean(std::slice::from_ref(p), std::slice::from_ref(&curves[j]), BooleanOp::Difference));
+                regions.extend(pieces);
+                for j in i + 1..curves.len() {
+                    regions.extend(super::misc4::region_boolean(&[curves[i].clone()], &[curves[j].clone()], BooleanOp::Intersection));
                 }
-                pieces = next;
             }
-            regions.extend(pieces);
-            for j in i + 1..curves.len() {
-                regions.extend(super::misc4::region_boolean(&[curves[i].clone()], &[curves[j].clone()], BooleanOp::Intersection));
+            regions
+        }, move |regions, ctx| {
+            if regions.is_empty() {
+                ctx.log("The curves do not overlap.");
+                return Step::Done;
             }
-        }
-        if regions.is_empty() {
-            ctx.log("The curves do not overlap.");
-            return Step::Done;
-        }
-        ctx.doc.begin_undo("CreateRegions");
-        for id in a[0].ids() {
-            ctx.doc.remove(id);
-        }
-        add_all(ctx, "CreateRegions", regions.into_iter().map(Geometry::Curve).collect())
+            ctx.doc.begin_undo("CreateRegions");
+            for id in &ids {
+                ctx.doc.remove(*id);
+            }
+            add_all(ctx, "CreateRegions", regions.into_iter().map(Geometry::Curve).collect())
+        })
     })
 }
 

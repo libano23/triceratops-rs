@@ -19,6 +19,34 @@ fn add_curve(ctx: &mut CmdCtx, label: &str, c: NurbsCurve) -> ObjectId {
 
 // ---- Helix / Spiral -------------------------------------------------------------
 
+/// A helix around the axis `start`→`end` (a flat spiral in the world XY plane when they
+/// coincide), its radius going from `radius` to `end_radius`, `turns` times round,
+/// starting towards `start_dir` (projected on the plane across the axis; the plane's own X
+/// direction when `None`). Interpolated through 24 points a turn.
+pub fn helix_curve(start: DVec3, end: DVec3, radius: f64, end_radius: f64, turns: f64, start_dir: Option<DVec3>) -> Option<NurbsCurve> {
+    let axis = end - start;
+    let len = axis.length();
+    let mut plane = if len > 1e-9 { Plane::from_normal(start, axis) } else { Plane::world_xy() };
+    if let Some(d) = start_dir {
+        let x = d - plane.z_axis * d.dot(plane.z_axis);
+        if x.length_squared() > 1e-18 {
+            let x = x.normalize();
+            plane.x_axis = x;
+            plane.y_axis = plane.z_axis.cross(x);
+        }
+    }
+    let n = (turns.abs() * 24.0).max(8.0) as usize;
+    let pts: Vec<DVec3> = (0..=n)
+        .map(|i| {
+            let t = i as f64 / n as f64;
+            let ang = turns * std::f64::consts::TAU * t;
+            let r = radius + (end_radius - radius) * t;
+            plane.point_at_3(r * ang.cos(), r * ang.sin(), len * t)
+        })
+        .collect();
+    NurbsCurve::interpolate(&pts, 3).ok()
+}
+
 pub struct HelixCmd {
     spiral: bool,
     pts: Vec<DVec3>,
@@ -34,24 +62,10 @@ impl HelixCmd {
         if self.pts.len() < 2 {
             return None;
         }
-        let a = self.pts[0];
-        let axis = self.pts[1] - a;
-        let len = axis.length();
-        if len < 1e-9 && !self.spiral {
+        if (self.pts[1] - self.pts[0]).length() < 1e-9 && !self.spiral {
             return None;
         }
-        let plane = if len > 1e-9 { Plane::from_normal(a, axis) } else { Plane::world_xy() };
-        let r1 = self.radius1.unwrap_or(r2);
-        let n = (self.turns * 24.0).max(8.0) as usize;
-        let pts: Vec<DVec3> = (0..=n)
-            .map(|i| {
-                let t = i as f64 / n as f64;
-                let ang = self.turns * std::f64::consts::TAU * t;
-                let r = r1 + (r2 - r1) * t;
-                plane.point_at_3(r * ang.cos(), r * ang.sin(), len * t)
-            })
-            .collect();
-        NurbsCurve::interpolate(&pts, 3).ok()
+        helix_curve(self.pts[0], self.pts[1], self.radius1.unwrap_or(r2), r2, self.turns, None)
     }
     fn prompt(&self) -> Prompt {
         let opts = [optv("Turns", fmt_num(self.turns)), optv("Pitch", fmt_num(0.0)), optv("Mode", "Turns"), opt("Flat"), opt("ReverseTwist")];

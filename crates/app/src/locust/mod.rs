@@ -5,11 +5,15 @@
 //! trees, the graph, the engine and the component library — has no UI and is tested
 //! headless; `ui` is the egui editor.
 
+pub mod authoring;
 pub mod components;
 pub mod data;
 pub mod engine;
 pub mod example;
+pub mod examples;
 pub mod graph;
+pub mod report;
+pub mod script;
 pub mod ui;
 
 #[cfg(test)]

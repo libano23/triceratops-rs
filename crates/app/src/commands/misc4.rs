@@ -4,7 +4,8 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use tri_geom::{brep_boolean, curve_plane, mesh_boolean, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
+use super::mesh_bool;
+use tri_geom::{curve_plane, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane};
 
 use super::annotate::text_curves;
 use super::create::{planar_cap, planar_faces};
@@ -105,7 +106,7 @@ pub fn region_boolean(a: &[NurbsCurve], b: &[NurbsCurve], op: BooleanOp) -> Vec<
         let mut it = cs.iter().filter(|c| c.is_closed()).filter_map(|c| region_prism(c, &plane, half));
         let mut m = it.next()?;
         for n in it {
-            m = mesh_boolean(&m, &n, BooleanOp::Union);
+            m = mesh_bool(&m, &n, BooleanOp::Union).ok()?;
         }
         Some(m)
     };
@@ -113,7 +114,10 @@ pub fn region_boolean(a: &[NurbsCurve], b: &[NurbsCurve], op: BooleanOp) -> Vec<
     let result = match (op, union(b)) {
         (BooleanOp::Union, None) => ma,
         (_, None) => return vec![],
-        (o, Some(mb)) => mesh_boolean(&ma, &mb, o),
+        (o, Some(mb)) => match mesh_bool(&ma, &mb, o) {
+            Ok(m) => m,
+            Err(_) => return vec![],
+        },
     };
     let tol = bb.diagonal().max(1e-3) * 1e-6;
     result
@@ -188,18 +192,20 @@ impl Command for PlanarBoolCmd {
         match input {
             Input::Objects(ids) if self.first.is_empty() && (self.op == BooleanOp::Union || self.curve_boolean) => {
                 let curves: Vec<NurbsCurve> = ids.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
-                let result = region_boolean(&curves, &[], BooleanOp::Union);
-                if result.is_empty() {
-                    ctx.log("No closed planar regions found.");
-                    return Step::Cancelled;
-                }
-                ctx.doc.begin_undo(self.label());
-                if !self.curve_boolean {
-                    for id in &ids {
-                        ctx.doc.remove(*id);
+                let (label, keep_input) = (self.label(), self.curve_boolean);
+                ctx.work(label, move || region_boolean(&curves, &[], BooleanOp::Union), move |result, ctx| {
+                    if result.is_empty() {
+                        ctx.log("No closed planar regions found.");
+                        return Step::Cancelled;
                     }
-                }
-                add_all(ctx, self.label(), result.into_iter().map(Geometry::Curve).collect())
+                    ctx.doc.begin_undo(label);
+                    if !keep_input {
+                        for id in &ids {
+                            ctx.doc.remove(*id);
+                        }
+                    }
+                    add_all(ctx, label, result.into_iter().map(Geometry::Curve).collect())
+                })
             }
             Input::Objects(ids) if self.first.is_empty() => {
                 self.first = ids;
@@ -209,16 +215,19 @@ impl Command for PlanarBoolCmd {
             Input::Objects(second) => {
                 let a: Vec<NurbsCurve> = self.first.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
                 let b: Vec<NurbsCurve> = second.iter().filter_map(|id| curve_of(ctx.doc, *id)).collect();
-                let result = region_boolean(&a, &b, self.op);
-                if result.is_empty() {
-                    ctx.log("Boolean produced no regions.");
-                    return Step::Cancelled;
-                }
-                ctx.doc.begin_undo(self.label());
-                for id in self.first.iter().chain(second.iter()) {
-                    ctx.doc.remove(*id);
-                }
-                add_all(ctx, self.label(), result.into_iter().map(Geometry::Curve).collect())
+                let (label, op) = (self.label(), self.op);
+                let inputs: Vec<ObjectId> = self.first.iter().chain(second.iter()).copied().collect();
+                ctx.work(label, move || region_boolean(&a, &b, op), move |result, ctx| {
+                    if result.is_empty() {
+                        ctx.log("Boolean produced no regions.");
+                        return Step::Cancelled;
+                    }
+                    ctx.doc.begin_undo(label);
+                    for id in &inputs {
+                        ctx.doc.remove(*id);
+                    }
+                    add_all(ctx, label, result.into_iter().map(Geometry::Curve).collect())
+                })
             }
             Input::Option(_) => self.start(ctx),
             _ => Step::Cancelled,
@@ -259,12 +268,22 @@ pub fn geometry_nonempty(g: &Geometry) -> bool {
 /// Boolean between two solids: a NURBS polysurface when both operands are surfaces or
 /// polysurfaces and the face outlines can be rebuilt, otherwise a mesh (meshes stay meshes).
 pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geometry> {
+    boolean_geometry_checked(a, b, op).ok()
+}
+
+/// `boolean_geometry` saying why there is no result ("cancelled", "Boolean too complex …").
+pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Result<Geometry, String> {
     if let (Some(ba), Some(bb)) = (geometry_brep(a), geometry_brep(b)) {
         // surfaces and polysurfaces always give a polysurface (no mesh fallback)
-        return brep_boolean(&ba, &bb, op).filter(|r| r.closed).map(Geometry::Brep);
+        let r = tri_geom::brep_boolean::brep_boolean_verbose(&ba, &bb, op, tri_geom::brep_boolean::DEFAULT_TOLERANCE)?;
+        return if r.closed { Ok(Geometry::Brep(r)) } else { Err("the result is not a closed solid".into()) };
     }
-    let (ma, mb) = (geometry_mesh(a)?, geometry_mesh(b)?);
-    Some(Geometry::Mesh(mesh_boolean(&ma, &mb, op)))
+    let (Some(ma), Some(mb)) = (geometry_mesh(a), geometry_mesh(b)) else { return Err("these objects cannot be combined".into()) };
+    let m = mesh_bool(&ma, &mb, op).map_err(|e| e.to_string())?;
+    if m.triangle_count() == 0 {
+        return Err("the result is empty".into());
+    }
+    Ok(Geometry::Mesh(m))
 }
 
 /// Extrusion solid of a closed planar curve, `half` on each side of its plane, as a polysurface
@@ -348,9 +367,8 @@ impl Command for RoundHoleCmd {
                 ctx.doc.begin_undo("RoundHole");
                 let cid = add_hole_curve(ctx, circle);
                 register_hole(ctx, id, vec![cid]);
-                recut_holes(ctx, id);
                 ctx.log("The hole curve stays as a locked definition curve (MoveHole, CopyHole, ... re-cut it).");
-                Step::Done
+                recut_holes(ctx, id, "RoundHole")
             }
             (_, _, _, Input::Option(_)) => Prompt::point("Center point of hole").step(),
             _ => Step::Cancelled,
@@ -396,9 +414,8 @@ impl Command for MakeHoleCmd {
                     }
                 }
                 register_hole(ctx, id, curves);
-                recut_holes(ctx, id);
                 ctx.log("The hole curves stay as locked definition curves (MoveHole, CopyHole, ... re-cut them).");
-                Step::Done
+                recut_holes(ctx, id, "MakeHole")
             }
             _ => Step::Cancelled,
         }
@@ -431,16 +448,17 @@ impl Command for ShellCmd {
                 let id = self.picks[0].0;
                 let Some(outer) = ctx.doc.get(id).map(|o| o.geometry.clone()) else { return Step::Cancelled };
                 let remove: Vec<DVec3> = self.picks.iter().filter(|(pid, _)| *pid == id).map(|(_, p)| *p).collect();
-                let result = match shell_geometry(&outer, t, &remove) {
-                    Ok(r) => r,
+                ctx.work("Shell", move || shell_geometry(&outer, t, &remove), move |result, ctx| match result {
+                    Ok(r) => {
+                        ctx.doc.begin_undo("Shell");
+                        ctx.doc.replace_geometry(id, r);
+                        Step::Done
+                    }
                     Err(e) => {
                         ctx.log(e);
-                        return Step::Cancelled;
+                        Step::Cancelled
                     }
-                };
-                ctx.doc.begin_undo("Shell");
-                ctx.doc.replace_geometry(id, result);
-                Step::Done
+                })
             }
             _ => Step::Cancelled,
         }
@@ -990,7 +1008,7 @@ mod tests {
         assert!(cutter.is_closed(), "cutter closed");
         let bx = Brep::cuboid(&Plane::world_xy(), 10.0, 10.0, 10.0).unwrap().tessellate(12, 12);
         assert!(bx.is_closed(), "box closed");
-        let result = mesh_boolean(&bx, &cutter, BooleanOp::Difference);
+        let result = tri_geom::mesh_boolean(&bx, &cutter, BooleanOp::Difference).unwrap();
         let welded = super::super::mesh_cmds::weld(&result, 1e-7);
         let mut counts: std::collections::HashMap<(u32, u32), usize> = Default::default();
         for t in welded.indices.chunks(3) {
@@ -1024,28 +1042,38 @@ pub fn register_hole(ctx: &mut CmdCtx, target: ObjectId, curves: Vec<ObjectId>) 
 }
 
 /// Cut all registered holes of a target into its original geometry again.
-pub fn recut_holes(ctx: &mut CmdCtx, target: ObjectId) {
-    let Some(rec) = ctx.doc.state.history.holes.iter().find(|h| h.target == target).cloned() else { return };
+/// Re-cut every hole of `target` from its original shape, as a job named `label` (the caller
+/// has opened an undo group and changed hole curves: a cancel undoes that). Ends the command.
+pub fn recut_holes(ctx: &mut CmdCtx, target: ObjectId, label: &str) -> Step {
+    let Some(rec) = ctx.doc.state.history.holes.iter().find(|h| h.target == target).cloned() else { return Step::Done };
     if !matches!(rec.original, Geometry::Surface(_) | Geometry::Brep(_) | Geometry::Mesh(_)) {
-        return;
+        return Step::Done;
     }
-    let mut result = rec.original.clone();
-    let diag = result.bounding_box().diagonal().max(1e-3);
-    let mut live = Vec::new();
-    for cid in &rec.curves {
-        let Some(c) = curve_of(ctx.doc, *cid) else { continue };
-        live.push(*cid);
-        let Some(plane) = curve_plane(&c) else { continue };
-        if let Some(tool) = prism_tool(&c, &plane, diag) {
-            if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
-                result = r;
+    let curves: Vec<(ObjectId, NurbsCurve)> = rec.curves.iter().filter_map(|cid| curve_of(ctx.doc, *cid).map(|c| (*cid, c))).collect();
+    let original = rec.original.clone();
+    ctx.work_after_edit(
+        label,
+        move || {
+            let mut result = original;
+            let diag = result.bounding_box().diagonal().max(1e-3);
+            for (_, c) in &curves {
+                let Some(plane) = curve_plane(c) else { continue };
+                if let Some(tool) = prism_tool(c, &plane, diag) {
+                    if let Some(r) = boolean_geometry(&result, &tool, BooleanOp::Difference) {
+                        result = r;
+                    }
+                }
             }
-        }
-    }
-    if let Some(r) = ctx.doc.state.history.holes.iter_mut().find(|h| h.target == target) {
-        r.curves = live;
-    }
-    ctx.doc.replace_geometry(target, result);
+            (result, curves.into_iter().map(|(id, _)| id).collect::<Vec<_>>())
+        },
+        move |(result, live), ctx| {
+            if let Some(r) = ctx.doc.state.history.holes.iter_mut().find(|h| h.target == target) {
+                r.curves = live;
+            }
+            ctx.doc.replace_geometry(target, result);
+            Step::Done
+        },
+    )
 }
 
 /// The hole record owning a hole curve.
@@ -1068,7 +1096,7 @@ mod hole_tests {
         let diag = bx.bounding_box().diagonal();
         let prism = region_prism(&circle, &cp, diag).unwrap();
         eprintln!("prism closed {} bbox {:?}", prism.is_closed(), prism.bounding_box());
-        let result = mesh_boolean(&bx, &prism, BooleanOp::Difference);
+        let result = tri_geom::mesh_boolean(&bx, &prism, BooleanOp::Difference).unwrap();
         eprintln!("result closed {} tris {}", result.is_closed(), result.triangle_count());
         assert!(result.is_closed());
     }

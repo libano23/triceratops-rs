@@ -184,6 +184,20 @@ impl Geometry {
 
 /// A surface is closed (a solid) when it has no naked edges: closed in both
 /// directions, or closed in one and collapsed to a point in the other (sphere).
+/// The mesh volumes and areas are measured on: the adaptive display mesh, as fine as what
+/// is drawn (a fixed grid per span was slow on long lofts and coarse on big spans).
+fn measure_mesh(g: &Geometry) -> Option<Mesh> {
+    let d = tri_geom::display_mesh::MeshDensity::for_size(g.bounding_box().diagonal().max(1e-9));
+    match g {
+        Geometry::Surface(s) => Some(s.display_mesh(&d)),
+        Geometry::Brep(b) => Some(b.faces.iter().fold(Mesh::new(), |mut m, f| {
+            m.append(&f.display_mesh(&d));
+            m
+        })),
+        _ => None,
+    }
+}
+
 pub fn surface_is_closed(s: &NurbsSurface) -> bool {
     let (u0, u1) = s.domain_u();
     let (v0, v1) = s.domain_v();
@@ -696,8 +710,7 @@ impl Document {
                 }
                 Some(nn.length() * 0.5)
             }
-            Geometry::Surface(s) => Some(tri_area(&s.tessellate(16, 16))),
-            Geometry::Brep(b) => Some(tri_area(&b.tessellate(16, 16))),
+            Geometry::Surface(_) | Geometry::Brep(_) => measure_mesh(g).map(|m| tri_area(&m)),
             Geometry::Mesh(m) => Some(tri_area(m)),
             _ => None,
         }
@@ -706,8 +719,8 @@ impl Document {
     /// Signed volume of a closed mesh (divergence theorem) and its centroid.
     pub fn volume_of(g: &Geometry) -> Option<(f64, DVec3)> {
         let mesh = match g {
-            Geometry::Surface(s) if surface_is_closed(s) => s.tessellate(16, 16),
-            Geometry::Brep(b) if b.closed => b.tessellate(16, 16),
+            Geometry::Surface(s) if surface_is_closed(s) => measure_mesh(g)?,
+            Geometry::Brep(b) if b.closed => measure_mesh(g)?,
             Geometry::Mesh(m) if m.is_closed() => m.clone(),
             _ => return None,
         };
@@ -860,6 +873,40 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
+
+    /// A long loft of closed sections, capped (a screw's shape): volume and area are measured
+    /// accurately and quickly, not on a fixed 16×16 grid per span.
+    #[test]
+    fn volume_and_area_of_a_long_capped_loft() {
+        use tri_geom::{Brep, Face, NurbsCurve, NurbsSurface};
+        let n = 72usize;
+        let ring = |z: f64| -> NurbsCurve {
+            let mut pts: Vec<DVec3> = (0..n).map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / n as f64;
+                DVec3::new(5.0 * t.cos(), 5.0 * t.sin(), z)
+            }).collect();
+            pts.push(pts[0]);
+            NurbsCurve::polyline(pts).unwrap()
+        };
+        let sections: Vec<NurbsCurve> = (0..=200).map(|k| ring(k as f64 * 0.2)).collect();
+        let side = NurbsSurface::loft(&sections, 3).unwrap();
+        let mut faces = vec![Face::untrimmed(side)];
+        for c in [ring(0.0), ring(40.0)] {
+            let plane = tri_geom::curve_plane(&c).unwrap();
+            faces.push(Face::planar(&plane, vec![c.tessellate(n)]).unwrap());
+        }
+        let b = Geometry::Brep(Brep::new(faces));
+        let polygon = 0.5 * n as f64 * 25.0 * (std::f64::consts::TAU / n as f64).sin();
+        let t = std::time::Instant::now();
+        let v = Document::volume_of(&b).unwrap().0;
+        let a = Document::area_of(&b).unwrap();
+        assert!(t.elapsed() < std::time::Duration::from_millis(800), "took {:?}", t.elapsed());
+        assert!((v - polygon * 40.0).abs() < polygon * 40.0 * 0.005, "volume {v} vs {}", polygon * 40.0);
+        let perimeter = n as f64 * 2.0 * 5.0 * (std::f64::consts::PI / n as f64).sin();
+        let expect = perimeter * 40.0 + 2.0 * polygon;
+        assert!((a - expect).abs() < expect * 0.005, "area {a} vs {expect}");
+    }
+
     use super::*;
 
     #[test]

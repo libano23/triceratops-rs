@@ -1,0 +1,148 @@
+{
+  "nodes": [
+    {
+      "type": "Number",
+      "nickname": "Board Length",
+      "values": {
+        "Value": 60
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Board Width",
+      "values": {
+        "Value": 40
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Thickness",
+      "values": {
+        "Value": 20
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Tail Width",
+      "values": {
+        "Value": 14
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Tail Depth",
+      "values": {
+        "Value": 18
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Slope",
+      "values": {
+        "Value": 6
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Clearance",
+      "values": {
+        "Value": 0.2
+      }
+    },
+    {
+      "type": "Script",
+      "nickname": "Dovetail",
+      "values": {
+        "_inputs": [
+          "Lb",
+          "Wb",
+          "T",
+          "W",
+          "Depth",
+          "Slope",
+          "C"
+        ],
+        "_outputs": [
+          "part_a",
+          "part_b"
+        ],
+        "code": "// Dovetail joint between two boards end to end: part A carries the tail, part B the\n// socket. Each part is one closed outline extruded, so the fit is exact by construction;\n// the socket is the tail grown by the clearance C on every face.\n// The tail is W wide at the joint line x = Lb and widens by Depth / Slope on each side.\nlet y0 = Wb / 2.0;\nlet spread = Depth / Slope;\nlet r = W / 2.0;\nlet t = r + spread;\nlet len = (Depth * Depth + spread * spread).sqrt();\n// a slanted side moved out by C along its normal meets the joint line C\u00b7len/Depth further out\nlet sr = r + C * len / Depth;\nlet st = sr + spread * (Depth + C) / Depth;\nlet a = [point(0, 0, 0), point(Lb, 0, 0), point(Lb, y0 - r, 0), point(Lb + Depth, y0 - t, 0),\n         point(Lb + Depth, y0 + t, 0), point(Lb, y0 + r, 0), point(Lb, Wb, 0), point(0, Wb, 0)];\nlet b = [point(Lb, 0, 0), point(2 * Lb, 0, 0), point(2 * Lb, Wb, 0), point(Lb, Wb, 0),\n         point(Lb, y0 + sr, 0), point(Lb + Depth + C, y0 + st, 0),\n         point(Lb + Depth + C, y0 - st, 0), point(Lb, y0 - sr, 0)];\npart_a = extrude(polyline(a, true), vec(0, 0, T));\npart_b = extrude(polyline(b, true), vec(0, 0, T));"
+      }
+    },
+    {
+      "type": "Preview",
+      "nickname": "Show A"
+    },
+    {
+      "type": "Custom Preview",
+      "nickname": "Show B",
+      "values": {
+        "Colour": [
+          0.85,
+          0.65,
+          0.2,
+          1.0
+        ]
+      }
+    },
+    {
+      "type": "Bake",
+      "nickname": "Bake A"
+    },
+    {
+      "type": "Bake",
+      "nickname": "Bake B"
+    }
+  ],
+  "connections": [
+    {
+      "from": "Board Length",
+      "to": "Dovetail.Lb"
+    },
+    {
+      "from": "Board Width",
+      "to": "Dovetail.Wb"
+    },
+    {
+      "from": "Thickness",
+      "to": "Dovetail.T"
+    },
+    {
+      "from": "Tail Width",
+      "to": "Dovetail.W"
+    },
+    {
+      "from": "Tail Depth",
+      "to": "Dovetail.Depth"
+    },
+    {
+      "from": "Slope",
+      "to": "Dovetail.Slope"
+    },
+    {
+      "from": "Clearance",
+      "to": "Dovetail.C"
+    },
+    {
+      "from": "Dovetail.part_a",
+      "to": "Show A.Geometry"
+    },
+    {
+      "from": "Dovetail.part_b",
+      "to": "Show B.Geometry"
+    },
+    {
+      "from": "Dovetail.part_a",
+      "to": "Bake A.Geometry"
+    },
+    {
+      "from": "Dovetail.part_b",
+      "to": "Bake B.Geometry"
+    }
+  ],
+  "comments": [
+    {
+      "text": "Slope 6 is 1:6 (hardwood); Clearance is the gap on every face of the joint."
+    }
+  ]
+}

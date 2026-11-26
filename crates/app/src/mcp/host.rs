@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::app::App;
-use crate::mcp::handler::{handle, take_capture, Outcome};
+use crate::mcp::handler::{busy_json, finish_run, handle, take_capture, Outcome, RunState};
 use crate::mcp::protocol::{Request, Response};
 use crate::mcp::socket::{socket_dir, Listener};
 
@@ -21,6 +21,8 @@ pub struct Host {
     queue: Receiver<Incoming>,
     /// (capture id, request id, reply channel, when asked) waiting for a rendered frame.
     pending: Vec<(u64, u64, Sender<Response>, Instant)>,
+    /// run_commands waiting for their job: (state, request id, reply, last progress frame).
+    runs: Vec<(RunState, u64, Sender<Response>, Instant)>,
 }
 
 impl Host {
@@ -38,7 +40,7 @@ impl Host {
                 wake();
             }
         })?;
-        Ok(Self { listener, queue, pending: Vec::new(), capture_deadline: Duration::from_secs(5) })
+        Ok(Self { listener, queue, pending: Vec::new(), runs: Vec::new(), capture_deadline: Duration::from_secs(5) })
     }
 
     #[cfg(test)]
@@ -60,6 +62,10 @@ impl Host {
     pub fn serve(&mut self, app: &mut App) -> bool {
         let mut any = false;
         while let Ok((req, reply)) = self.queue.try_recv() {
+            if req.method == crate::mcp::protocol::TICK {
+                // a socket thread waiting for a job: just come round and poll it (below)
+                continue;
+            }
             any = true;
             match handle(app, &req.method, &req.params) {
                 Outcome::Reply(r) => {
@@ -69,9 +75,39 @@ impl Host {
                     });
                 }
                 Outcome::Deferred(capture) => self.pending.push((capture, req.id, reply, Instant::now())),
+                Outcome::Run(state) => self.runs.push((state, req.id, reply, Instant::now())),
             }
         }
+        any |= app.poll_job();
+        any |= app.locust.poll();
+        self.finish_runs(app);
         any
+    }
+
+    /// Answer the runs whose job has ended; tell the others how far it got, once a second.
+    pub fn finish_runs(&mut self, app: &mut App) {
+        self.runs.retain_mut(|(state, id, reply, last)| match finish_run(app, state) {
+            Some(r) => {
+                let _ = reply.send(match r {
+                    Ok(v) => Response::ok(*id, v),
+                    Err(e) => Response::err(*id, e),
+                });
+                false
+            }
+            None => {
+                if last.elapsed() >= Duration::from_secs(1) {
+                    *last = Instant::now();
+                    if reply.send(Response::progress(*id, busy_json(app))).is_err() {
+                        // nobody waits for this any more (the assistant went away): stop the work
+                        if !app.cancel_job("cancelled (the assistant disconnected)") {
+                            app.locust.cancel_solve();
+                        }
+                        return false;
+                    }
+                }
+                true
+            }
+        });
     }
 
     /// Answer the captures a frame has finished, and fail those no frame rendered in time
@@ -132,12 +168,67 @@ mod tests {
         let mut host = Host::start_in(&temp_dir("run"), || {}).unwrap();
         let name = host.name().to_string();
         let caller = std::thread::spawn(move || {
-            let mut c = Client::connect(&name).unwrap();
+            let c = Client::connect(&name).unwrap();
             c.call("run_commands", json!({ "lines": ["Sphere", "0,0,0", "5"] }), Duration::from_secs(10)).unwrap()
         });
         pump(&mut host, &mut app, |a| a.doc.objects().count() == 1);
         let r = caller.join().unwrap();
         assert_eq!(r["added"].as_array().unwrap().len(), 1);
+    }
+
+    /// A run that starts a job is answered when the job ends; meanwhile progress frames
+    /// keep the caller informed and `cancel` (another call on the same connection) stops it.
+    #[test]
+    fn run_waits_for_job_with_progress_and_cancel() {
+        let mut app = App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let mut host = Host::start_in(&temp_dir("job"), || {}).unwrap();
+        let name = host.name().to_string();
+        // connecting needs the host to answer hello, so it happens off this thread
+        let connecting = std::thread::spawn(move || Client::connect(&name).unwrap());
+        pump(&mut host, &mut app, |_| connecting.is_finished());
+        let client = std::sync::Arc::new(connecting.join().unwrap());
+        let progress = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let caller = {
+            let (c, p) = (client.clone(), progress.clone());
+            std::thread::spawn(move || {
+                c.call_with_progress("run_commands", json!({ "lines": ["BooleanUnion", "#1,#2", ""] }), Duration::from_secs(10), &mut |_| {
+                    p.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                })
+            })
+        };
+        pump(&mut host, &mut app, |a| a.job_status().is_some());
+        let seen = progress.clone();
+        pump(&mut host, &mut app, move |_| seen.load(std::sync::atomic::Ordering::SeqCst) > 0);
+        let canceller = {
+            let c = client.clone();
+            std::thread::spawn(move || c.call("cancel", json!({}), Duration::from_secs(10)))
+        };
+        pump(&mut host, &mut app, |a| {
+            a.poll_job();
+            a.job_status().is_none()
+        });
+        pump(&mut host, &mut app, |_| true);
+        assert_eq!(canceller.join().unwrap().unwrap()["cancelled"], true);
+        let r = caller.join().unwrap().unwrap();
+        assert!(r["log"].to_string().contains("BooleanUnion cancelled"), "{r}");
+    }
+
+    /// When the assistant that asked has gone away, its job is cancelled instead of running on.
+    #[test]
+    fn a_job_whose_caller_left_is_cancelled() {
+        let mut app = App::new();
+        crate::jobs::testing::heavy_spheres(&mut app);
+        let mut host = Host::start_in(&temp_dir("left"), || {}).unwrap();
+        let Outcome::Run(state) = handle(&mut app, "run_commands", &json!({ "lines": ["BooleanUnion", "#1,#2", ""] })) else { panic!("a job") };
+        let (tx, rx) = std::sync::mpsc::channel();
+        drop(rx); // the bridge's side is gone
+        host.runs.push((state, 1, tx, Instant::now() - Duration::from_secs(2)));
+        host.finish_runs(&mut app);
+        assert!(app.job_status().is_some_and(|j| j.cancelling), "cancelled once nobody listens");
+        assert!(host.runs.is_empty());
+        app.settle();
+        assert_eq!(app.doc.objects().count(), 2);
     }
 
     #[test]
@@ -146,7 +237,7 @@ mod tests {
         let mut host = Host::start_in(&temp_dir("capture"), || {}).unwrap();
         let name = host.name().to_string();
         let caller = std::thread::spawn(move || {
-            let mut c = Client::connect(&name).unwrap();
+            let c = Client::connect(&name).unwrap();
             c.call("capture_view", json!({}), Duration::from_secs(10)).unwrap()
         });
         pump(&mut host, &mut app, |a| !a.capture_requests.is_empty());
@@ -171,7 +262,7 @@ mod tests {
         .unwrap();
         let name = host.name().to_string();
         let caller = std::thread::spawn(move || {
-            let mut c = Client::connect(&name).unwrap();
+            let c = Client::connect(&name).unwrap();
             c.call("get_state", json!({}), Duration::from_secs(10)).unwrap()
         });
         pump(&mut host, &mut app, |_| woken.load(std::sync::atomic::Ordering::SeqCst) >= 2);
@@ -187,7 +278,7 @@ mod tests {
         host.capture_deadline = Duration::from_millis(200);
         let name = host.name().to_string();
         let caller = std::thread::spawn(move || {
-            let mut c = Client::connect(&name).unwrap();
+            let c = Client::connect(&name).unwrap();
             c.call("capture_view", json!({}), Duration::from_secs(10))
         });
         pump(&mut host, &mut app, |a| !a.capture_requests.is_empty());

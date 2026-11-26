@@ -90,12 +90,15 @@ pub fn register(r: &mut Registry) {
     });
     r.elem("Cap", "Surface", vec![geo("Shape")], &["Solid"], |_, a| {
         let b = a.brep(0)?;
-        if b.closed {
+        // look for open planar ends even when the shape says it is closed: a surface closed
+        // around (a loft of closed sections) can pass the closed test with its ends open
+        let loops = b.naked_planar_loops();
+        if loops.is_empty() && b.closed {
             return one(g(Geometry::Brep(b)));
         }
         let mut faces = b.faces.clone();
         let mut added = 0;
-        for (pl, pts) in b.naked_planar_loops() {
+        for (pl, pts) in loops {
             if let Ok(f) = Face::planar(&pl, vec![pts]) {
                 faces.push(f);
                 added += 1;

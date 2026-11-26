@@ -252,8 +252,7 @@ fn hole_xf(label: &'static str, asks: Vec<Ask>, copy: bool, f: fn(&[Ans], &CmdCt
         } else if let Some(xf) = xfs.first() {
             ctx.doc.replace_geometry(cid, Geometry::Curve(c.transformed(xf)));
         }
-        recut_holes(ctx, target);
-        Step::Done
+        recut_holes(ctx, target, label)
     })
 }
 

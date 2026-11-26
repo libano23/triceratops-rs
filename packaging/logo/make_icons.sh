@@ -5,8 +5,11 @@
 #   packaging/macos/icon-1024.png      1024 px
 #   packaging/windows/triceratops.ico  16-256 px
 #   site/assets/{logo.png,favicon-32.png,apple-touch-icon.png}
-# Re-render the head first with:
-#   blender -b --python packaging/logo/render_head.py -- packaging/logo/head.png 1024
+# The head is the artwork in site/assets/triceratops.png (transparent background), trimmed
+# and centred into a 1024 px square:
+#   magick site/assets/triceratops.png -trim +repage -gravity center -background none \
+#     -extent 1260x1260 -resize 1024x1024 packaging/logo/head.png
+# (packaging/logo/render_head.py renders the earlier papercraft head with Blender.)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 L=packaging/logo

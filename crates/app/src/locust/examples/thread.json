@@ -1,0 +1,198 @@
+{
+  "nodes": [
+    {
+      "type": "Number",
+      "nickname": "Diameter",
+      "values": {
+        "Value": 10
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Pitch",
+      "values": {
+        "Value": 1.5
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Length",
+      "values": {
+        "Value": 30
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Clearance",
+      "values": {
+        "Value": 0.1
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Across Flats",
+      "values": {
+        "Value": 16
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Nut Height",
+      "values": {
+        "Value": 8
+      }
+    },
+    {
+      "type": "Number",
+      "nickname": "Nut Position",
+      "values": {
+        "Value": 12
+      }
+    },
+    {
+      "type": "Script",
+      "nickname": "ISO thread",
+      "values": {
+        "_inputs": [
+          "D",
+          "P",
+          "L",
+          "C",
+          "S",
+          "H",
+          "NutZ"
+        ],
+        "_outputs": [
+          "screw",
+          "tap",
+          "nut_center",
+          "nut_corner",
+          "minor"
+        ],
+        "code": "// ISO metric thread (basic profile): flanks at 60\u00b0, crest P/8 wide on the major diameter,\n// root P/4 wide on the minor one. Each cross-section of a screw is a closed curve whose\n// radius follows the thread as the angle turns; lofting sections up the axis and capping\n// the ends gives the solid directly, with no Boolean. The nut's thread is the same shape\n// grown by the clearance (the \"tap\"), cut out of the nut body.\nfn radius(s, p, rmaj, rmin) {\n    let u = s % p;\n    if u < 0.0 { u += p; }\n    let crest = p / 16.0;\n    let root = p / 8.0;\n    let flank = p / 2.0 - crest - root;\n    if u <= crest || u >= p - crest { return rmaj; }\n    if (u - p / 2.0).abs() <= root { return rmin; }\n    if u < p / 2.0 { return rmaj - (rmaj - rmin) * (u - crest) / flank; }\n    rmin + (rmaj - rmin) * (u - p / 2.0 - root) / flank\n}\nfn threaded(p, rmaj, rmin, z0, z1) {\n    let around = 72;\n    let count = ((z1 - z0) / p * 6.0).ceiling().to_int();\n    let sections = [];\n    for k in 0..=count {\n        let z = z0 + (z1 - z0) * k / count;\n        let pts = [];\n        for i in 0..around {\n            let th = 2.0 * PI() * i / around;\n            let r = radius(z - p * th / (2.0 * PI()), p, rmaj, rmin);\n            pts.push(point(r * cos(th), r * sin(th), z));\n        }\n        sections.push(polyline(pts, true));\n    }\n    cap(loft(sections))\n}\nlet rmaj = D / 2.0;\nlet rmin = D / 2.0 - 0.5413 * P;\nscrew = threaded(P, rmaj, rmin, 0.0, L);\n// the nut sits on the screw at NutZ; its tap runs a pitch past both faces\ntap = threaded(P, rmaj + C, rmin + C, NutZ - P, NutZ + H + P);\nnut_center = point(0.0, 0.0, NutZ);\nnut_corner = S / 2.0 / cos(PI / 6.0);\nminor = 2.0 * rmin;"
+      }
+    },
+    {
+      "type": "Polygon",
+      "nickname": "Hexagon",
+      "values": {
+        "Sides": 6
+      }
+    },
+    {
+      "type": "Extrude",
+      "nickname": "Nut body"
+    },
+    {
+      "type": "Difference",
+      "nickname": "Nut"
+    },
+    {
+      "type": "Panel",
+      "nickname": "Minor diameter"
+    },
+    {
+      "type": "Preview",
+      "nickname": "Show screw"
+    },
+    {
+      "type": "Bake",
+      "nickname": "Bake screw"
+    },
+    {
+      "type": "Custom Preview",
+      "nickname": "Show nut",
+      "values": {
+        "Colour": [
+          0.85,
+          0.65,
+          0.2,
+          1.0
+        ]
+      }
+    },
+    {
+      "type": "Bake",
+      "nickname": "Bake nut"
+    }
+  ],
+  "connections": [
+    {
+      "from": "Diameter",
+      "to": "ISO thread.D"
+    },
+    {
+      "from": "Pitch",
+      "to": "ISO thread.P"
+    },
+    {
+      "from": "Length",
+      "to": "ISO thread.L"
+    },
+    {
+      "from": "Clearance",
+      "to": "ISO thread.C"
+    },
+    {
+      "from": "Across Flats",
+      "to": "ISO thread.S"
+    },
+    {
+      "from": "Nut Height",
+      "to": "ISO thread.H"
+    },
+    {
+      "from": "Nut Position",
+      "to": "ISO thread.NutZ"
+    },
+    {
+      "from": "ISO thread.minor",
+      "to": "Minor diameter.Data"
+    },
+    {
+      "from": "ISO thread.nut_center",
+      "to": "Hexagon.Center"
+    },
+    {
+      "from": "ISO thread.nut_corner",
+      "to": "Hexagon.Radius"
+    },
+    {
+      "from": "Hexagon",
+      "to": "Nut body.Curve"
+    },
+    {
+      "from": "Nut Height",
+      "to": "Nut body.Distance"
+    },
+    {
+      "from": "Nut body",
+      "to": "Nut.A"
+    },
+    {
+      "from": "ISO thread.tap",
+      "to": "Nut.B"
+    },
+    {
+      "from": "ISO thread.screw",
+      "to": "Show screw.Geometry"
+    },
+    {
+      "from": "ISO thread.screw",
+      "to": "Bake screw.Geometry"
+    },
+    {
+      "from": "Nut",
+      "to": "Show nut.Geometry"
+    },
+    {
+      "from": "Nut",
+      "to": "Bake nut.Geometry"
+    }
+  ],
+  "comments": [
+    {
+      "text": "M10\u00d71.5 screw (male) and nut (female) by default. Clearance is radial play between them."
+    }
+  ]
+}

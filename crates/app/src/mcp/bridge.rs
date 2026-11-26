@@ -7,21 +7,28 @@ use std::time::{Duration, Instant};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, ErrorData, Implementation, ServerCapabilities, ServerConfig};
-use rmcp::{tool, tool_handler, tool_router, ServerHandler, ServiceExt};
+use rmcp::model::{CallToolResult, ContentBlock, ErrorData, Implementation, ProgressNotificationParam, ServerCapabilities, ServerConfig};
+use rmcp::service::RequestContext;
+use rmcp::{tool, tool_handler, tool_router, RoleServer, ServerHandler, ServiceExt};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::mcp::socket::{live_sockets_in, socket_dir, Client};
 
-/// How long one tool call may take.
+/// How long a tool call may go without any word from the window (a long job keeps sending
+/// progress, so it may take as long as it needs).
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long to wait for a window started by the bridge to appear.
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
 
 const INSTRUCTIONS: &str = "Triceratops is a NURBS 3D modeller. You drive the window the user has open; they watch \
 every change and can undo it.\n\
+\n\
+Two ways to model, and the user chooses: direct commands (run_commands) make fixed geometry; a Locust definition \
+(locust_set_graph) makes a live, parametric model the user can adjust with sliders in Locust, Triceratops' node \
+editor. Model the way the user asks. If they want something adjustable or parametric, use Locust; if they have not \
+said and it matters, ask them briefly. The two mix: locust_bake turns a definition's result into ordinary objects.\n\
 \n\
 Model with run_commands: each line is what a person would type on Triceratops' command line.\n\
 - A command name starts a command (Box, Cylinder, Sphere, Line, Polyline, InterpCrv, ExtrudeCrv, Revolve, Loft, \
@@ -37,7 +44,22 @@ prompt means the command wants more input: continue it with another run_commands
 \n\
 Check your work with list_objects, object_info (volume, area) and capture_view, which returns an image of a \
 viewport (Perspective, Top, Front, Right). Commands that need a file (Open, Save, Export) are not available. \
-If the user is typing or running a command of their own, requests are refused: wait and try again.";
+If the user is typing or running a command of their own, requests are refused: wait and try again.\n\
+\n\
+Locust: find components with locust_components (inputs, outputs, defaults), send a whole definition with \
+locust_set_graph, read the report (errors per node, panels, a summary of what is previewed or baked), adjust sliders \
+by name with locust_set_values, and look at the preview with capture_view. A definition is JSON: \
+{\"nodes\": [{\"type\": \"Number\", \"nickname\": \"Radius\", \"values\": {\"Value\": 6}}, {\"type\": \"Circle\"}, \
+{\"type\": \"Extrude\", \"values\": {\"Distance\": 12}}, {\"type\": \"Preview\"}, {\"type\": \"Bake\"}], \
+\"connections\": [{\"from\": \"Radius\", \"to\": \"Circle.Radius\"}, {\"from\": \"Circle\", \"to\": \"Extrude.Curve\"}, \
+{\"from\": \"Extrude\", \"to\": \"Preview.Geometry\"}, {\"from\": \"Extrude\", \"to\": \"Bake.Geometry\"}]}. \
+Nodes are named by nickname (or type when unique), ports by name; \"from\": \"Node\" means its first output. \
+Unwired inputs take \"values\" by input name. Positions are optional. Give sliders (Number, Integer) nicknames \
+so they are easy to set later.\n\
+\n\
+Long operations (Booleans above all) run in the background while the window stays responsive: run_commands \
+answers when they end and sends progress notifications meanwhile; get_state shows what is running under \"busy\", \
+and cancel stops it (the user can also press Esc). While one runs, other requests that change the model are refused.";
 
 /// Which window to talk to.
 pub enum Target {
@@ -51,7 +73,7 @@ pub enum Target {
 #[derive(Clone)]
 pub struct Bridge {
     target: Arc<Target>,
-    conn: Arc<Mutex<Option<Client>>>,
+    conn: Arc<Mutex<Option<Arc<Client>>>>,
     /// A window has answered in this session: once it is gone (closed, or assistants
     /// switched off), never start another one on our own.
     connected_once: Arc<std::sync::atomic::AtomicBool>,
@@ -103,6 +125,28 @@ pub struct CaptureViewParams {
 }
 
 #[derive(Default, Deserialize, JsonSchema)]
+pub struct LocustComponentsParams {
+    /// Words that must all appear in the name, category or description.
+    pub query: Option<String>,
+    /// Only this category (Params, Math, Sets, Vector, Curve, Surface, Solid, Mesh, Transform, Analysis, Output, ...).
+    pub category: Option<String>,
+    /// At most this many (default 40).
+    pub limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct LocustSetGraphParams {
+    /// The definition: {"nodes": [{"type", "nickname"?, "values"?, "x"?, "y"?}], "connections": [{"from": "Node[.Output]", "to": "Node.Input"}], "groups"?, "comments"?}.
+    pub graph: Value,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct LocustSetValuesParams {
+    /// Input values by "Node" (its first input, e.g. a Number slider) or "Node.Input": {"Radius": 3, "Extrude.Cap": false}; also "Node.Expression" (an Expression's formula) and "Node.code" (a Script's code).
+    pub values: serde_json::Map<String, Value>,
+}
+
+#[derive(Default, Deserialize, JsonSchema)]
 pub struct StepsParams {
     /// How many steps (default 1).
     pub steps: Option<u32>,
@@ -149,26 +193,77 @@ impl Bridge {
         }
     }
 
-    /// One request to the window, connecting (or reconnecting) first when needed.
-    fn call_blocking(&self, method: &str, params: Value) -> Result<Value, String> {
+    /// The connection to the window, connecting (or reconnecting) first when needed. The
+    /// lock is held only for this: calls on the connection run concurrently.
+    fn client(&self) -> Result<Arc<Client>, String> {
         let mut conn = self.conn.lock().map_err(|_| "internal error: connection lock poisoned".to_string())?;
         if conn.is_none() {
-            *conn = Some(self.connect()?);
+            *conn = Some(Arc::new(self.connect()?));
             self.connected_once.store(true, std::sync::atomic::Ordering::SeqCst);
         }
-        let result = conn.as_mut().map(|c| c.call(method, params, CALL_TIMEOUT)).unwrap_or_else(|| Err("not connected".into()));
+        conn.clone().ok_or_else(|| "not connected".into())
+    }
+
+    /// One request to the window; progress frames of a long one go to `on_progress`.
+    fn call_blocking(&self, method: &str, params: Value, on_progress: &mut dyn FnMut(&Value)) -> Result<Value, String> {
+        let client = self.client()?;
+        let result = client.call_with_progress(method, params, CALL_TIMEOUT, on_progress);
         if matches!(&result, Err(e) if e == "Triceratops was closed") {
-            *conn = None; // the next call reconnects, or starts a new window
+            // the next call reconnects, or starts a new window
+            if let Ok(mut conn) = self.conn.lock() {
+                if conn.as_ref().is_some_and(|c| Arc::ptr_eq(c, &client)) {
+                    *conn = None;
+                }
+            }
         }
         result
     }
 
     async fn call(&self, method: &'static str, params: Value) -> Result<Value, String> {
         let me = self.clone();
-        tokio::task::spawn_blocking(move || me.call_blocking(method, params)).await.map_err(|e| format!("internal error: {e}"))?
+        tokio::task::spawn_blocking(move || me.call_blocking(method, params, &mut |_| {})).await.map_err(|e| format!("internal error: {e}"))?
+    }
+
+    /// `call` for requests that may start a long job: its progress becomes MCP progress
+    /// notifications (when the client asked for them), and a client that cancels the tool
+    /// call cancels the job in the window.
+    async fn call_with_progress(&self, method: &'static str, params: Value, ctx: Option<&RequestContext<RoleServer>>) -> Result<Value, String> {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+        let me = self.clone();
+        let mut work = tokio::task::spawn_blocking(move || me.call_blocking(method, params, &mut |p| drop(tx.send(p.clone()))));
+        let token = ctx.and_then(|c| c.meta.get_progress_token());
+        let mut frames = 0.0;
+        let mut cancel_sent = false;
+        loop {
+            tokio::select! {
+                r = &mut work => return r.map_err(|e| format!("internal error: {e}"))?,
+                Some(p) = rx.recv() => {
+                    if let (Some(token), Some(ctx)) = (&token, ctx) {
+                        frames += 1.0;
+                        let message = progress_message(&p);
+                        let _ = ctx.peer.notify_progress(ProgressNotificationParam::new(token.clone(), frames).with_message(message)).await;
+                    }
+                }
+                _ = async { match ctx { Some(c) => c.ct.cancelled().await, None => std::future::pending().await } }, if !cancel_sent => {
+                    cancel_sent = true;
+                    let _ = self.call("cancel", json!({})).await;
+                }
+            }
+        }
+    }
+
+    async fn reply_with_progress(&self, method: &'static str, params: Value, ctx: Option<&RequestContext<RoleServer>>) -> Result<CallToolResult, ErrorData> {
+        Ok(match self.call_with_progress(method, params, ctx).await {
+            Ok(v) => CallToolResult::success(vec![ContentBlock::text(serde_json::to_string_pretty(&v).unwrap_or_default())]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        })
     }
 
     /// A JSON reply as text, or the app's error as a tool error the assistant can read.
+    async fn run_lines(&self, lines: Vec<String>, ctx: Option<&RequestContext<RoleServer>>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("run_commands", json!({ "lines": lines }), ctx).await
+    }
+
     async fn reply(&self, method: &'static str, params: Value) -> Result<CallToolResult, ErrorData> {
         Ok(match self.call(method, params).await {
             Ok(v) => CallToolResult::success(vec![ContentBlock::text(serde_json::to_string_pretty(&v).unwrap_or_default())]),
@@ -180,8 +275,43 @@ impl Bridge {
 #[tool_router]
 impl Bridge {
     #[tool(description = "Run Triceratops command-line entries in the open window, as if typed. Returns the command log, the ids of objects added, changed and deleted, and the prompt still waiting for input (null when the command finished).")]
-    async fn run_commands(&self, Parameters(p): Parameters<RunCommandsParams>) -> Result<CallToolResult, ErrorData> {
-        self.reply("run_commands", json!({ "lines": p.lines })).await
+    async fn run_commands(&self, Parameters(p): Parameters<RunCommandsParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.run_lines(p.lines, Some(&ctx)).await
+    }
+
+    #[tool(description = "Search Locust's components (the node editor's building blocks) by words and category: name, description, inputs with kinds and defaults, outputs.")]
+    async fn locust_components(&self, Parameters(p): Parameters<LocustComponentsParams>) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_components", json!({ "query": p.query, "category": p.category, "limit": p.limit })).await
+    }
+
+    #[tool(description = "The current Locust definition as JSON (nodes with uid, type, nickname and values; connections by uid and port index).")]
+    async fn locust_get_graph(&self) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_get_graph", json!({})).await
+    }
+
+    #[tool(description = "Replace the Locust definition with this one (the user can undo it in Locust), open the editor, solve it and report: errors and warnings per node, panel contents, and a summary (kinds, bounding box, volume or area) of what goes to Preview and Bake. A definition with a mistake is refused with the reason and the canvas stays as it was.")]
+    async fn locust_set_graph(&self, Parameters(p): Parameters<LocustSetGraphParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_set_graph", json!({ "graph": p.graph }), Some(&ctx)).await
+    }
+
+    #[tool(description = "Set Locust inputs by name, like moving sliders, then solve and report as locust_set_graph does.")]
+    async fn locust_set_values(&self, Parameters(p): Parameters<LocustSetValuesParams>, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_set_values", json!({ "values": p.values }), Some(&ctx)).await
+    }
+
+    #[tool(description = "Solve the Locust definition again (after the model changed) and report.")]
+    async fn locust_solve(&self, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
+        self.reply_with_progress("locust_solve", json!({}), Some(&ctx)).await
+    }
+
+    #[tool(description = "Bake: add what the definition sends to its Bake components to the model as ordinary objects (one undo step). Returns the new object ids.")]
+    async fn locust_bake(&self) -> Result<CallToolResult, ErrorData> {
+        self.reply("locust_bake", json!({})).await
+    }
+
+    #[tool(description = "Stop the long operation the window is running for you (a Boolean, a Locust solve), like pressing Esc. Returns whether anything was running.")]
+    async fn cancel(&self) -> Result<CallToolResult, ErrorData> {
+        self.reply("cancel", json!({})).await
     }
 
     #[tool(description = "The current prompt and its options, selected object ids, viewports, units and layers.")]
@@ -235,6 +365,18 @@ impl ServerHandler for Bridge {
     }
 }
 
+/// "BooleanUnion — 12 s · mesh Boolean · 1.3 M" from a progress frame.
+fn progress_message(p: &Value) -> String {
+    let mut s = format!("{} — {} s", p["label"].as_str().unwrap_or("working"), p["elapsed_s"].as_u64().unwrap_or(0));
+    if let Some(stage) = p["stage"].as_str().filter(|s| !s.is_empty()) {
+        s.push_str(&format!(" · {stage}"));
+    }
+    if let Some(n) = p["count"].as_u64().filter(|&n| n > 0) {
+        s.push_str(&format!(" · {}", crate::jobs::count_text(n)));
+    }
+    s
+}
+
 /// Entry point of `triceratops mcp`.
 pub fn run() -> anyhow::Result<()> {
     let target = match std::env::var("TRICERATOPS_SOCKET") {
@@ -275,7 +417,18 @@ fn launch(exe: &std::path::Path) -> std::io::Result<()> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    cmd.spawn().map(|_| ())
+    launch_cmd(cmd).map(|_| ())
+}
+
+/// Spawn `cmd`; returns its process id. A thread waits for it, so when the window exits
+/// before the bridge it is reaped instead of lingering as a zombie.
+fn launch_cmd(mut cmd: std::process::Command) -> std::io::Result<u32> {
+    let mut child = cmd.spawn()?;
+    let id = child.id();
+    std::thread::Builder::new().name("window-reaper".into()).spawn(move || {
+        let _ = child.wait();
+    })?;
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -332,12 +485,22 @@ mod tests {
         r.content.iter().filter_map(|c| if let ContentBlock::Text(t) = c { Some(t.text.clone()) } else { None }).collect::<Vec<_>>().join("\n")
     }
 
+    /// The window the bridge started is reaped when it exits: no `<defunct>` left behind.
+    #[cfg(target_os = "linux")]
     #[test]
-    fn lists_the_eight_tools() {
+    fn launch_reaps_child() {
+        let pid = launch_cmd(std::process::Command::new("true")).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let state = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().and_then(|s| s.rsplit(')').next().and_then(|r| r.split_whitespace().next()).map(str::to_string));
+        assert_ne!(state.as_deref(), Some("Z"), "child {pid} is a zombie");
+    }
+
+    #[test]
+    fn lists_the_tools() {
         let b = Bridge::new(Target::Discover { dir: temp_dir("list"), launch: None });
         let mut names: Vec<String> = b.tool_router.list_all().into_iter().map(|t| t.name.to_string()).collect();
         names.sort();
-        assert_eq!(names, ["capture_view", "find_commands", "get_state", "list_objects", "object_info", "redo", "run_commands", "undo"]);
+        assert_eq!(names, ["cancel", "capture_view", "find_commands", "get_state", "list_objects", "locust_bake", "locust_components", "locust_get_graph", "locust_set_graph", "locust_set_values", "locust_solve", "object_info", "redo", "run_commands", "undo"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -345,7 +508,7 @@ mod tests {
         let dir = temp_dir("run");
         let _w = Window::open(&dir);
         let b = Bridge::new(Target::Discover { dir, launch: None });
-        let r = b.run_commands(Parameters(RunCommandsParams { lines: vec!["Sphere".into(), "0,0,0".into(), "5".into()] })).await.unwrap();
+        let r = b.run_lines(vec!["Sphere".into(), "0,0,0".into(), "5".into()], None).await.unwrap();
         assert_ne!(r.is_error, Some(true), "{}", text(&r));
         assert!(text(&r).contains("\"added\""), "{}", text(&r));
         let l = b.list_objects(Parameters(ListObjectsParams::default())).await.unwrap();

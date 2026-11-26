@@ -80,6 +80,63 @@ pub struct Comment {
 /// Ports of a cluster node: (name, kind) pairs.
 pub type Ports = (Vec<(String, String)>, Vec<(String, String)>);
 
+/// How a port of a Script node receives its data.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Access {
+    /// One item at a time, matched like any component's inputs.
+    #[default]
+    Item,
+    /// The whole branch as a list.
+    List,
+    /// The whole tree, as a list of branches.
+    Tree,
+}
+
+impl Access {
+    fn parse(s: &str) -> Self {
+        match s {
+            "list" => Access::List,
+            "tree" => Access::Tree,
+            _ => Access::Item,
+        }
+    }
+}
+
+/// A port of a node that declares its own ports (Script, Expression).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PortDef {
+    pub name: String,
+    pub kind: String,
+    pub access: Access,
+}
+
+/// Nodes whose ports are part of the node (`_inputs`, `_outputs` in its values).
+pub fn is_dynamic(kind: &str) -> bool {
+    kind == "Script" || kind == "Expression"
+}
+
+/// Ports from `_inputs` / `_outputs`: entries are names or `{name, kind, access}`.
+fn port_defs(v: Option<&J>) -> Option<Vec<PortDef>> {
+    let arr = v?.as_array()?;
+    Some(
+        arr.iter()
+            .filter_map(|d| match d {
+                J::String(name) => Some(PortDef { name: name.clone(), kind: "any".into(), access: Access::Item }),
+                J::Object(o) => Some(PortDef {
+                    name: o.get("name")?.as_str()?.to_string(),
+                    kind: o.get("kind").and_then(|k| k.as_str()).unwrap_or("any").to_string(),
+                    access: Access::parse(o.get("access").and_then(|a| a.as_str()).unwrap_or("item")),
+                }),
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
+fn default_ports(names: &[&str]) -> Vec<PortDef> {
+    names.iter().map(|n| PortDef { name: n.to_string(), kind: "any".into(), access: Access::Item }).collect()
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Graph {
     pub nodes: Vec<Node>,
@@ -240,6 +297,105 @@ impl Graph {
         node.kind.strip_prefix("Cluster:").and_then(|id| self.clusters.get(id))
     }
 
+
+    /// Inputs and outputs of a Script or Expression node.
+    pub fn dynamic_ports(&self, node: &Node) -> (Vec<PortDef>, Vec<PortDef>) {
+        let (ins, outs): (&[&str], &[&str]) = if node.kind == "Expression" { (&["x", "y", "z"], &["Result"]) } else { (&["x", "y"], &["a"]) };
+        (port_defs(node.values.get("_inputs")).unwrap_or_else(|| default_ports(ins)), port_defs(node.values.get("_outputs")).unwrap_or_else(|| default_ports(outs)))
+    }
+
+    fn set_dynamic_ports(&mut self, uid: &str, out: bool, ports: &[PortDef]) {
+        let key = if out { "_outputs" } else { "_inputs" };
+        let v: Vec<J> = ports
+            .iter()
+            .map(|d| {
+                if out {
+                    json!({ "name": d.name })
+                } else {
+                    json!({ "name": d.name, "kind": d.kind, "access": match d.access { Access::Item => "item", Access::List => "list", Access::Tree => "tree" } })
+                }
+            })
+            .collect();
+        if let Some(n) = self.node_mut(uid) {
+            n.values.insert(key.into(), J::Array(v));
+        }
+    }
+
+    fn ports_side(&self, uid: &str, out: bool) -> Option<Vec<PortDef>> {
+        let n = self.node(uid).filter(|n| is_dynamic(&n.kind))?;
+        let (ins, outs) = self.dynamic_ports(n);
+        Some(if out { outs } else { ins })
+    }
+
+    /// Add a port to a Script/Expression node; returns its name (x, y, z, u, v, w… for
+    /// inputs, a, b, c… for outputs, then numbered).
+    pub fn add_port(&mut self, uid: &str, out: bool) -> Option<String> {
+        let mut ports = self.ports_side(uid, out)?;
+        let pool: &[&str] = if out { &["a", "b", "c", "d", "e", "f", "g", "h"] } else { &["x", "y", "z", "u", "v", "w", "t", "s"] };
+        let taken = |n: &str| ports.iter().any(|p| p.name == n);
+        let name = pool.iter().find(|n| !taken(n)).map(|n| n.to_string()).unwrap_or_else(|| (1..).map(|i| format!("{}{i}", if out { "out" } else { "in" })).find(|n| !taken(n)).unwrap_or_default());
+        ports.push(PortDef { name: name.clone(), kind: "any".into(), access: Access::Item });
+        self.set_dynamic_ports(uid, out, &ports);
+        Some(name)
+    }
+
+    /// Rename a port; false when the name is taken or is not an identifier.
+    pub fn rename_port(&mut self, uid: &str, out: bool, index: usize, name: &str) -> bool {
+        let Some(mut ports) = self.ports_side(uid, out) else { return false };
+        let ident = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !ident || index >= ports.len() || ports.iter().enumerate().any(|(i, p)| i != index && p.name == name) {
+            return false;
+        }
+        ports[index].name = name.to_string();
+        self.set_dynamic_ports(uid, out, &ports);
+        true
+    }
+
+    /// Set how an input port of a Script receives its data.
+    pub fn set_port_access(&mut self, uid: &str, index: usize, access: Access) {
+        if let Some(mut ports) = self.ports_side(uid, false) {
+            if let Some(p) = ports.get_mut(index) {
+                p.access = access;
+                self.set_dynamic_ports(uid, false, &ports);
+            }
+        }
+    }
+
+    /// Remove a port; its wires go and the wires of the ports after it move up one.
+    pub fn remove_port(&mut self, uid: &str, out: bool, index: usize) {
+        let Some(mut ports) = self.ports_side(uid, out) else { return };
+        if index >= ports.len() {
+            return;
+        }
+        ports.remove(index);
+        self.set_dynamic_ports(uid, out, &ports);
+        self.connections.retain(|c| !(if out { c.src == uid && c.src_port == index } else { c.dst == uid && c.dst_port == index }));
+        for c in self.connections.iter_mut() {
+            if out && c.src == uid && c.src_port > index {
+                c.src_port -= 1;
+            }
+            if !out && c.dst == uid && c.dst_port > index {
+                c.dst_port -= 1;
+            }
+        }
+    }
+
+    /// (inputs, outputs) of any node as (name, kind) pairs: a component's, a cluster's or a
+    /// Script's own. Unknown kinds have none.
+    pub fn node_ports(&self, node: &Node) -> Ports {
+        if is_dynamic(&node.kind) {
+            let (ins, outs) = self.dynamic_ports(node);
+            let pairs = |v: Vec<PortDef>| v.into_iter().map(|d| (d.name, d.kind)).collect();
+            return (pairs(ins), pairs(outs));
+        }
+        if self.is_cluster(node) {
+            return self.cluster_ports(node);
+        }
+        match super::components::registry().get(&node.kind) {
+            Some(c) => (c.inputs.iter().map(|i| (i.name.to_string(), i.kind.name().to_string())).collect(), c.outputs.iter().map(|o| (o.to_string(), "any".to_string())).collect()),
+            None => (Vec::new(), Vec::new()),
+        }
+    }
 
     /// (inputs, outputs) of a cluster node, as (name, kind) pairs.
     pub fn cluster_ports(&self, node: &Node) -> Ports {

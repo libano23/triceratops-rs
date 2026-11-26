@@ -486,11 +486,24 @@ pub struct Animation {
     pub record_dir: Option<String>,
 }
 
+/// A history record being replayed while its command waits for a job.
+struct Replay {
+    record: tri_doc::history::HistoryRecord,
+    inputs: std::collections::VecDeque<Input>,
+    attrs: Vec<tri_doc::Attributes>,
+    before: Vec<ObjectId>,
+    saved_sel: Vec<ObjectId>,
+    cancelled: bool,
+}
+
 pub struct App {
     /// Ask the renderer to reload texture files.
     pub refresh_textures: bool,
     /// True while history records are being replayed (no recording, no nested updates).
     pub replaying: bool,
+    /// The history record being replayed (waiting for its job), and those queued after it.
+    replay: Option<Replay>,
+    replay_queue: std::collections::VecDeque<tri_doc::history::HistoryRecord>,
     /// Points collected while dragging during the Sketch command.
     pub sketch_points: Option<Vec<DVec3>>,
     /// Show texture mapping boxes for selected objects.
@@ -600,6 +613,9 @@ pub struct App {
     pub assistant_mode: bool,
     /// The running command was started by an assistant.
     pub assistant_owns_command: bool,
+    /// Script lines waiting for the running job to end, and whether an assistant sent them.
+    pub pending_lines: Vec<String>,
+    pending_assistant: bool,
     /// Assistants may connect (Options > General); saved with the options.
     pub allow_assistants: bool,
     /// A `triceratops mcp` bridge is attached right now (status bar).
@@ -622,6 +638,8 @@ impl App {
         let mut app = Self {
             refresh_textures: false,
             replaying: false,
+            replay: None,
+            replay_queue: Default::default(),
             sketch_points: None,
             mapping_widgets: false,
             window_ops: Vec::new(),
@@ -713,6 +731,8 @@ impl App {
             message_box: None,
             assistant_mode: false,
             assistant_owns_command: false,
+            pending_lines: Vec::new(),
+            pending_assistant: false,
             allow_assistants: true,
             assistant_connected: false,
             scene_batches: (0..n).map(|_| Batch::default()).collect(),
@@ -1386,7 +1406,80 @@ impl App {
             requests: &mut self.requests,
             memory: &mut self.memory,
         };
-        f(&mut self.runner, &mut ctx)
+        let slow = std::env::var_os("TRICERATOPS_SLOW").is_some().then(std::time::Instant::now);
+        let r = f(&mut self.runner, &mut ctx);
+        if let Some(t) = slow {
+            if t.elapsed() > std::time::Duration::from_secs(1) {
+                eprintln!("slow step: {} {} ms", self.runner.last_command.as_deref().unwrap_or("?"), t.elapsed().as_millis());
+            }
+        }
+        r
+    }
+
+    // ----- background jobs -------------------------------------------------
+
+    /// The job the running command waits for, as the status bar shows it.
+    pub fn job_status(&self) -> Option<crate::jobs::JobStatus> {
+        let j = self.runner.job()?;
+        let (stage, count) = j.token.snapshot();
+        Some(crate::jobs::JobStatus { label: j.label.clone(), elapsed: j.started.elapsed(), stage, count, cancelling: j.cancelled.is_some() })
+    }
+
+    /// Stop the running job (Esc does this through `cancel`). False when none runs.
+    pub fn cancel_job(&mut self, reason: &str) -> bool {
+        self.pending_lines.clear();
+        if self.runner.job().is_some() {
+            if let Some(rp) = self.replay.as_mut() {
+                // a cancelled history update stops the whole chain of updates
+                rp.cancelled = true;
+                self.replay_queue.clear();
+            }
+        }
+        self.runner.cancel_job(reason)
+    }
+
+    /// Wait for the running job and the script lines queued behind it (tests and headless use).
+    #[cfg(test)]
+    pub fn settle(&mut self) {
+        while self.runner.job().is_some() || !self.pending_lines.is_empty() || self.locust.solving().is_some() {
+            let polled = self.poll_job() | self.locust.poll();
+            if !polled {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
+
+    /// Called every frame: when the job has ended, apply its result and run the script lines
+    /// that waited for it. True when a job ended.
+    pub fn poll_job(&mut self) -> bool {
+        if !self.runner.job().is_some_and(|j| j.is_finished()) {
+            return false;
+        }
+        if self.replay.is_some() {
+            // a history update's job: the replay takes the result from here
+            self.with_ctx(|r, ctx| r.poll_job(ctx));
+            self.advance_replay();
+            return true;
+        }
+        let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
+        let was = self.assistant_mode;
+        self.assistant_mode = self.assistant_owns_command;
+        self.with_ctx(|r, ctx| r.poll_job(ctx));
+        self.after_command_step(&before);
+        self.process_requests();
+        self.assistant_mode = was;
+        if self.runner.job().is_none() && !self.pending_lines.is_empty() && self.pending_assistant && !self.cmd_text.trim().is_empty() {
+            // the user started typing meanwhile: their text wins over the assistant's queue
+            let n = std::mem::take(&mut self.pending_lines).len();
+            self.log.push(format!("{n} assistant command line(s) abandoned: the user is typing."));
+        }
+        if self.runner.job().is_none() && !self.pending_lines.is_empty() {
+            let lines = std::mem::take(&mut self.pending_lines);
+            self.assistant_mode = self.pending_assistant;
+            self.run_script_lines(&lines);
+            self.assistant_mode = was;
+        }
+        true
     }
 
     // ----- command line ---------------------------------------------------
@@ -1398,6 +1491,12 @@ impl App {
     }
 
     fn start_command_typed(&mut self, name: &str, typed: &str) {
+        if let Some(j) = self.runner.job() {
+            // the running job keeps its owner (an assistant's stays the assistant's)
+            let msg = format!("{} is running — wait for it or press Esc to cancel it.", j.label);
+            self.log.push(msg);
+            return;
+        }
         // remember who started it, so an assistant never feeds input into the user's command
         self.assistant_owns_command = self.assistant_mode;
         if self.assistant_mode {
@@ -1451,54 +1550,98 @@ impl App {
     }
 
     /// Replay one history record: delete its children and run the command again with the same inputs.
+    /// Replay a history record (its command with its recorded inputs). Records queue up and
+    /// run one after another; one whose command starts a job (a Boolean) waits for it
+    /// without holding the window, and Esc cancels it.
     pub fn replay_record(&mut self, r: &tri_doc::history::HistoryRecord) {
-        if r.parents().iter().any(|p| self.doc.get(*p).is_none()) {
-            return;
-        }
-        self.replaying = true;
-        let attrs: Vec<tri_doc::Attributes> = r.outputs.iter().filter_map(|id| self.doc.get(*id).map(|o| o.attributes.clone())).collect();
-        for id in &r.outputs {
-            self.doc.remove(*id);
-        }
-        let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
-        let saved_sel = self.doc.selected_ids();
-        let name = r.command.clone();
-        let inputs: Vec<Input> = r.inputs.iter().map(|h| match h {
-            tri_doc::history::HistInput::Point(p) => Input::Point(*p),
-            tri_doc::history::HistInput::Objects(v) => Input::Objects(v.clone()),
-            tri_doc::history::HistInput::Pick(id, p) => Input::Pick(*id, *p),
-            tri_doc::history::HistInput::Number(n) => Input::Number(*n),
-            tri_doc::history::HistInput::Text(t) => Input::Text(t.clone()),
-            tri_doc::history::HistInput::Option(o) => Input::Option(o.clone()),
-            tri_doc::history::HistInput::Empty => Input::Empty,
-        }).collect();
-        let typed = format!("_{name}");
-        self.with_ctx(|run, ctx| {
-            run.start(&name, &typed, ctx, &[]);
-            for inp in inputs {
-                if !run.is_active() {
-                    break;
+        self.replay_queue.push_back(r.clone());
+        self.advance_replay();
+    }
+
+    /// Carry the replays on as far as they go without waiting for a job.
+    fn advance_replay(&mut self) {
+        loop {
+            if self.runner.job().is_some() {
+                return;
+            }
+            if let Some(rp) = self.replay.as_mut() {
+                let mut inputs = std::mem::take(&mut rp.inputs);
+                let waiting = self.with_ctx(|run, ctx| {
+                    while let Some(inp) = inputs.pop_front() {
+                        if !run.is_active() {
+                            break;
+                        }
+                        run.feed(inp, ctx);
+                        if run.job().is_some() {
+                            return true;
+                        }
+                    }
+                    if run.is_active() {
+                        run.cancel(ctx);
+                    }
+                    false
+                });
+                if waiting {
+                    if let Some(rp) = self.replay.as_mut() {
+                        rp.inputs = inputs;
+                    }
+                    return;
                 }
-                run.feed(inp, ctx);
+                self.finish_replay();
+                continue;
             }
-            if run.is_active() {
-                run.cancel(ctx);
+            let Some(r) = self.replay_queue.pop_front() else {
+                self.replaying = false;
+                return;
+            };
+            if r.parents().iter().any(|p| self.doc.get(*p).is_none()) {
+                continue;
             }
-        });
-        let added: Vec<ObjectId> = self.doc.objects().map(|o| o.id).filter(|id| !before.contains(id)).collect();
-        for (k, id) in added.iter().enumerate() {
-            if let (Some(a), Some(o)) = (attrs.get(k), self.doc.get_mut(*id)) {
-                o.attributes = a.clone();
-            }
+            self.replaying = true;
+            let attrs: Vec<tri_doc::Attributes> = r.outputs.iter().filter_map(|id| self.doc.get(*id).map(|o| o.attributes.clone())).collect();
+            let before: Vec<ObjectId> = self.doc.objects().map(|o| o.id).collect();
+            let saved_sel = self.doc.selected_ids();
+            let inputs: std::collections::VecDeque<Input> = r.inputs.iter().map(|h| match h {
+                tri_doc::history::HistInput::Point(p) => Input::Point(*p),
+                tri_doc::history::HistInput::Objects(v) => Input::Objects(v.clone()),
+                tri_doc::history::HistInput::Pick(id, p) => Input::Pick(*id, *p),
+                tri_doc::history::HistInput::Number(n) => Input::Number(*n),
+                tri_doc::history::HistInput::Text(t) => Input::Text(t.clone()),
+                tri_doc::history::HistInput::Option(o) => Input::Option(o.clone()),
+                tri_doc::history::HistInput::Empty => Input::Empty,
+            }).collect();
+            let name = r.command.clone();
+            let typed = format!("_{name}");
+            self.with_ctx(|run, ctx| run.start(&name, &typed, ctx, &[]));
+            self.replay = Some(Replay { record: r, inputs, attrs, before, saved_sel, cancelled: false });
         }
-        if let Some(rec) = self.doc.state.history.records.iter_mut().find(|x| x.id == r.id) {
-            rec.outputs = added;
+    }
+
+    /// A replay has run: its new objects replace the record's old outputs (which stay when it
+    /// was cancelled or made nothing).
+    fn finish_replay(&mut self) {
+        let Some(rp) = self.replay.take() else { return };
+        let added: Vec<ObjectId> = self.doc.objects().map(|o| o.id).filter(|id| !rp.before.contains(id)).collect();
+        if rp.cancelled || added.is_empty() {
+            let why = if rp.cancelled { "cancelled" } else { "made nothing" };
+            self.log.push(format!("History update of {} {why} — it keeps its previous result.", rp.record.command));
+        } else {
+            for id in &rp.record.outputs {
+                self.doc.remove(*id);
+            }
+            for (k, id) in added.iter().enumerate() {
+                if let (Some(a), Some(o)) = (rp.attrs.get(k), self.doc.get_mut(*id)) {
+                    o.attributes = a.clone();
+                }
+            }
+            if let Some(rec) = self.doc.state.history.records.iter_mut().find(|x| x.id == rp.record.id) {
+                rec.outputs = added;
+            }
         }
         self.doc.clear_selection();
-        for id in saved_sel {
+        for id in rp.saved_sel {
             self.doc.select(id, true);
         }
-        self.replaying = false;
     }
 
     /// Re-solve the parametric constraints after an edit (parametric mode), keeping `keep` fixed.
@@ -1590,6 +1733,11 @@ impl App {
     pub fn submit(&mut self) {
         let text = std::mem::take(&mut self.cmd_text).trim().to_string();
         self.autocomplete_index = None;
+        if let Some(j) = self.runner.job() {
+            let msg = format!("{} is running — wait for it or press Esc to cancel it.", j.label);
+            self.log.push(msg);
+            return;
+        }
         if self.runner.is_active() {
             if text.is_empty() {
                 self.submit_enter();
@@ -1791,9 +1939,15 @@ impl App {
         self.window_drag = None;
         self.drag_move = None;
         self.popup_toolbar = None;
-        if self.runner.is_active() {
+        if self.runner.job().is_some() {
+            let reason = if self.assistant_mode { "cancelled" } else { "cancelled by the user" };
+            self.cancel_job(reason);
+        } else if self.runner.is_active() {
+            // the user's own command first; a second Esc stops a Locust solve
             self.with_ctx(|r, ctx| r.cancel(ctx));
             self.constraints = Constraints::default();
+        } else if self.locust.cancel_solve() {
+            // Esc stopped the Locust solve
         } else if self.any_grip_selected() || !self.doc.selection.is_empty() {
             for g in self.grips.iter_mut() {
                 g.selected = false;
@@ -4129,7 +4283,20 @@ impl App {
     /// Run command-line entries as if typed: an empty line (or "_Enter") presses Enter in
     /// the running command, "_Cancel" presses Esc, and lines starting with "//" are comments.
     pub fn run_script_lines(&mut self, lines: &[String]) {
-        for line in lines.iter().map(|l| l.trim()).filter(|l| !l.starts_with("//")) {
+        for (k, line) in lines.iter().map(|l| l.trim()).enumerate() {
+            if line.starts_with("//") {
+                continue;
+            }
+            if self.runner.job().is_some() {
+                if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
+                    self.cancel();
+                    continue;
+                }
+                // the rest runs when the job has ended (`poll_job`)
+                self.pending_lines = lines[k..].to_vec();
+                self.pending_assistant = self.assistant_mode;
+                return;
+            }
             if line.eq_ignore_ascii_case("_cancel") || line.eq_ignore_ascii_case("_escape") {
                 self.cancel();
                 continue;
@@ -5349,6 +5516,7 @@ mod assistant_tests {
     fn script_lines_build_and_boolean() {
         let mut app = App::new();
         app.run_script_lines(&lines(&["Box", "0,0,0", "10,10,0", "5", "Cylinder", "5,5,-1", "2", "7", "BooleanDifference", "#1", "#2"]));
+        app.settle();
         assert_eq!(app.doc.objects().count(), 1);
         assert!(!app.runner.is_active());
     }

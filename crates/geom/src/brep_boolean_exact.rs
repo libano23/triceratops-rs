@@ -274,12 +274,32 @@ fn face_face_curves(fa: usize, a: &Face, ma: &FaceMesh, fb: usize, b: &Face, mb:
             uva.push(s.ua[1 - *e]);
             uvb.push(s.ub[1 - *e]);
         }
-        // refine onto both surfaces
+        // refine onto both surfaces; a point that does not reach both comes from a stray
+        // tessellation triangle (one that bridges a trim loop, say), not from where the
+        // surfaces meet, and is dropped
+        let mut keep_pt = vec![true; pts.len()];
         for k in 0..pts.len() {
             if let Some((p, ua, ub)) = project_to_intersection(&a.surface, &b.surface, pts[k], uva[k], uvb[k], diag) {
                 pts[k] = p;
                 uva[k] = ua;
                 uvb[k] = ub;
+            } else {
+                keep_pt[k] = false;
+            }
+        }
+        let failed = keep_pt.iter().filter(|k| !**k).count();
+        if failed > 0 {
+            if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() {
+                eprintln!("  chain A{fa} B{fb}: {failed} of {} points not on both surfaces", pts.len());
+            }
+            let mut it = keep_pt.iter();
+            pts.retain(|_| *it.next().unwrap());
+            let mut it = keep_pt.iter();
+            uva.retain(|_| *it.next().unwrap());
+            let mut it = keep_pt.iter();
+            uvb.retain(|_| *it.next().unwrap());
+            if pts.len() < 2 {
+                continue;
             }
         }
         // densify until the chords follow the intersection within the tolerance
@@ -301,11 +321,64 @@ fn face_face_curves(fa: usize, a: &Face, ma: &FaceMesh, fb: usize, b: &Face, mb:
                 i += 1;
             }
         }
+        // a curve must lie on both surfaces all along
+        let gap = (0..rp.len()).map(|k| (a.surface.point_at(ra[k].x, ra[k].y) - b.surface.point_at(rb[k].x, rb[k].y)).length()).fold(0.0, f64::max);
+        if gap > tol {
+            if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() {
+                eprintln!("  chain A{fa} B{fb} dropped: {gap:.3e} between the surfaces");
+            }
+            continue;
+        }
         if rp.len() >= 2 {
             out.push(Curve { fa, fb, pts: rp, uva: ra, uvb: rb });
         }
     }
+    drop_overlapping(&mut out, tol);
     out
+}
+
+/// Drops chains that retrace a longer chain of the same two faces. Two tessellation chains
+/// can follow one intersection (a run of triangles that crosses it twice, say); kept, the
+/// copy splits the faces into slivers along it, and which slivers come out depends on the
+/// last bits of rounding.
+fn drop_overlapping(curves: &mut Vec<Curve>, tol: f64) {
+    if curves.len() < 2 {
+        return;
+    }
+    let length = |c: &Curve| c.pts.windows(2).map(|w| (w[1] - w[0]).length()).sum::<f64>();
+    let mut order: Vec<usize> = (0..curves.len()).collect();
+    order.sort_by(|&i, &j| length(&curves[j]).total_cmp(&length(&curves[i])));
+    let near = tol * 20.0;
+    let dist_to = |p: DVec3, c: &Curve| -> f64 {
+        c.pts.windows(2).map(|w| {
+            let e = w[1] - w[0];
+            let t = ((p - w[0]).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
+            (w[0] + e * t - p).length()
+        }).fold(f64::INFINITY, f64::min)
+    };
+    let mut kept: Vec<usize> = Vec::new();
+    let mut dropped = vec![false; curves.len()];
+    for &i in &order {
+        let c = &curves[i];
+        let retraces = kept.iter().any(|&k| {
+            let on = c.pts.iter().filter(|p| dist_to(**p, &curves[k]) <= near).count();
+            on * 10 >= c.pts.len() * 9
+        });
+        if retraces {
+            dropped[i] = true;
+            if std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok() {
+                eprintln!("  chain A{} B{} of {} points retraces a longer one: dropped", c.fa, c.fb, c.pts.len());
+            }
+        } else {
+            kept.push(i);
+        }
+    }
+    let mut k = 0;
+    curves.retain(|_| {
+        let keep = !dropped[k];
+        k += 1;
+        keep
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -504,6 +577,8 @@ fn densify_original_segments(original: &Face, mut piece: Face) -> Face {
             })
         })
     };
+    let corners_u = c0_knots(&original.surface.knots_u, original.surface.degree_u);
+    let corners_v = c0_knots(&original.surface.knots_v, original.surface.degree_v);
     for l in piece.loops.iter_mut() {
         let mut out = Vec::with_capacity(l.len());
         let n = l.len();
@@ -512,8 +587,24 @@ fn densify_original_segments(original: &Face, mut piece: Face) -> Face {
             out.push(p);
             if on_edge(p, q) {
                 let m = original.segment_subdivisions(p, q);
-                for i in 1..m {
-                    out.push(p + (q - p) * (i as f64 / m as f64));
+                let mut ts: Vec<f64> = (1..m).map(|i| i as f64 / m as f64).collect();
+                // the surface's corners (C0 knot lines) the segment crosses are vertices too,
+                // or the border cuts them and misses the neighbouring face's edge
+                for (knots, a, b) in [(&corners_u, p.x, q.x), (&corners_v, p.y, q.y)] {
+                    if (b - a).abs() < 1e-15 {
+                        continue;
+                    }
+                    for &k in knots.iter() {
+                        let t = (k - a) / (b - a);
+                        if t > 1e-9 && t < 1.0 - 1e-9 {
+                            ts.push(t);
+                        }
+                    }
+                }
+                ts.sort_by(f64::total_cmp);
+                ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+                for t in ts {
+                    out.push(p + (q - p) * t);
                 }
             }
         }
@@ -522,9 +613,33 @@ fn densify_original_segments(original: &Face, mut piece: Face) -> Face {
     piece
 }
 
+/// Interior knots where the surface has a corner (multiplicity at least the degree: every
+/// knot of a degree-1 direction).
+fn c0_knots(knots: &[f64], degree: usize) -> Vec<f64> {
+    let inner = &knots[degree.min(knots.len())..knots.len().saturating_sub(degree)];
+    let mut out = Vec::new();
+    let mut i = 1;
+    while i + 1 < inner.len() {
+        let k = inner[i];
+        let mut mult = 1;
+        while i + mult < inner.len() && (inner[i + mult] - k).abs() < 1e-12 {
+            mult += 1;
+        }
+        if mult >= degree && i + mult < inner.len() {
+            out.push(k);
+        }
+        i += mult;
+    }
+    out
+}
+
 /// An interior point of a (u, v) region: the sample farthest from the boundary.
-fn interior_uv(loops: &[Vec<DVec2>]) -> Option<DVec2> {
-    let outer = loops.first()?;
+/// Up to `k` points well inside the loops (outer loop first, holes after), farthest from
+/// every border first and apart from one another. Distances are measured with `scale`, the
+/// surface length of one unit of u and of v, so a thin band in a long domain is sampled down
+/// its middle.
+fn interior_uv_samples(loops: &[Vec<DVec2>], scale: DVec2, k: usize) -> Vec<DVec2> {
+    let Some(outer) = loops.first() else { return Vec::new() };
     let (mut lo, mut hi) = (DVec2::splat(f64::INFINITY), DVec2::splat(f64::NEG_INFINITY));
     for p in outer {
         lo = lo.min(*p);
@@ -536,33 +651,44 @@ fn interior_uv(loops: &[Vec<DVec2>]) -> Option<DVec2> {
         for l in loops {
             let n = l.len();
             for i in 0..n {
-                let (a, b) = (l[i], l[(i + 1) % n]);
+                let (a, b) = (l[i] * scale, l[(i + 1) % n] * scale);
+                let q = p * scale;
                 let e = b - a;
-                let t = ((p - a).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
-                d = d.min((a + e * t - p).length());
+                let t = ((q - a).dot(e) / e.length_squared().max(1e-300)).clamp(0.0, 1.0);
+                d = d.min((a + e * t - q).length());
             }
         }
         d
     };
-    let mut best: Option<(f64, DVec2)> = None;
-    for n in [9usize, 17, 33] {
+    let mut found: Vec<(f64, DVec2)> = Vec::new();
+    for n in [33usize, 65, 129] {
+        found.clear();
         for i in 0..n {
             for j in 0..n {
                 let p = DVec2::new(lo.x + (hi.x - lo.x) * (i as f64 + 0.5) / n as f64, lo.y + (hi.y - lo.y) * (j as f64 + 0.5) / n as f64);
                 if inside(p) {
-                    let d = dist(p);
-                    if best.is_none_or(|b| d > b.0) {
-                        best = Some((d, p));
-                    }
+                    found.push((dist(p), p));
                 }
             }
         }
-        if best.is_some() && n >= 17 {
+        if found.len() >= 4 * k {
             break;
         }
     }
-    best.map(|b| b.1)
+    found.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut out: Vec<DVec2> = Vec::new();
+    let Some(&(best, _)) = found.first() else { return out };
+    for (_, p) in &found {
+        if out.iter().all(|q| ((*q - *p) * scale).length() > best) {
+            out.push(*p);
+            if out.len() == k {
+                break;
+            }
+        }
+    }
+    out
 }
+
 
 /// Point-in-mesh by ray parity, majority of three directions.
 fn inside_mesh(m: &Mesh, p: DVec3) -> bool {
@@ -666,14 +792,34 @@ enum Class {
 }
 
 fn classify(piece: &Face, other_mesh: &Mesh, on_tol: f64) -> Option<Class> {
-    let uv = interior_uv(&piece.effective_loops())?;
-    let (p, su, sv) = piece.surface.evaluate(uv.x, uv.y);
-    let n = su.cross(sv).normalize_or(DVec3::Z);
-    let (d, on) = nearest_on_mesh(other_mesh, p);
-    if d < on_tol {
-        return Some(if n.dot(on) > 0.0 { Class::OnSame } else { Class::OnOpposite });
+    // the surface length of one unit of u and of v, so samples avoid thin pieces' borders
+    let s = &piece.surface;
+    let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+    let length = |f: &dyn Fn(f64) -> DVec3| (0..16).map(|i| (f((i + 1) as f64 / 16.0) - f(i as f64 / 16.0)).length()).sum::<f64>();
+    let (vm, um) = ((v0 + v1) * 0.5, (u0 + u1) * 0.5);
+    let lu = length(&|t| s.point_at(u0 + (u1 - u0) * t, vm)) / (u1 - u0).abs().max(1e-12);
+    let lv = length(&|t| s.point_at(um, v0 + (v1 - v0) * t)) / (v1 - v0).abs().max(1e-12);
+    let samples = interior_uv_samples(&piece.effective_loops(), DVec2::new(lu.max(1e-12), lv.max(1e-12)), 5);
+    // several samples vote: one sample next to the other solid could go either way
+    let mut classes = Vec::with_capacity(samples.len());
+    for uv in samples {
+        let (p, su, sv) = s.evaluate(uv.x, uv.y);
+        let n = su.cross(sv).normalize_or(DVec3::Z);
+        let (d, on) = nearest_on_mesh(other_mesh, p);
+        classes.push(if d < on_tol {
+            if n.dot(on) > 0.0 { Class::OnSame } else { Class::OnOpposite }
+        } else if inside_mesh(other_mesh, p) {
+            Class::Inside
+        } else {
+            Class::Outside
+        });
     }
-    Some(if inside_mesh(other_mesh, p) { Class::Inside } else { Class::Outside })
+    let count = |c: Class| classes.iter().filter(|x| **x == c).count();
+    let (inside, outside) = (count(Class::Inside), count(Class::Outside));
+    if inside + outside > 0 {
+        return Some(if inside > outside { Class::Inside } else { Class::Outside });
+    }
+    classes.first().copied()
 }
 
 fn keep(class: Class, op: BooleanOp, from_b: bool) -> bool {
@@ -693,6 +839,8 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     let diag = a.bounding_box().union(&b.bounding_box()).diagonal().max(1e-6);
     let tol = tol.max(diag * 1e-7);
     let debug = std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok();
+    // every (u, v) of every path: long lines, only on request
+    let debug_paths = std::env::var("TRICERATOPS_BOOL_DEBUG").is_ok_and(|v| v == "2");
     let ma: Vec<FaceMesh> = a.faces.iter().map(face_mesh).collect();
     let mb: Vec<FaceMesh> = b.faces.iter().map(face_mesh).collect();
     let mut mesh_a = Mesh::new();
@@ -705,8 +853,10 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     }
     // intersection curves
     let mut curves: Vec<Curve> = Vec::new();
+    crate::job::stage("intersecting faces");
     for (i, fa) in a.faces.iter().enumerate() {
         for (j, fb) in b.faces.iter().enumerate() {
+            crate::job::checkpoint((i * b.faces.len() + j) as u64).map_err(|e| e.to_string())?;
             curves.extend(face_face_curves(i, fa, &ma[i], j, fb, &mb[j], tol, diag));
         }
     }
@@ -721,6 +871,37 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     // clusters of nearby endpoints are moved onto the trim-loop edge they end on (solving the
     // exact point where that edge meets the other surface) and every member gets that point
     let snap = diag * 3e-3;
+    // an open curve stops where the tessellations stopped meeting, close to the face edge it
+    // really ends on. Where the curve runs almost along that edge (a thread's helix meeting
+    // the end face of its core rises 3° a turn) a tiny gap across the edge is a long one
+    // along it: take each end onto the exact point where the edge meets the other surface
+    for c in curves.iter_mut() {
+        if (c.pts[0] - c.pts[c.pts.len() - 1]).length() < tol * 2.0 {
+            continue;
+        }
+        for k in [0, c.pts.len() - 1] {
+            let p = c.pts[k];
+            for (face, uv, other, other_uv) in [(&a.faces[c.fa], c.uva[k], &b.faces[c.fb].surface, c.uvb[k]), (&b.faces[c.fb], c.uvb[k], &a.faces[c.fa].surface, c.uva[k])] {
+                let Some((ea, eb, t)) = nearest_loop_edge(face, uv, snap) else { continue };
+                let (_, q) = refine_on_edge(face, ea, eb, t, other, Some(other_uv), snap);
+                let gap = {
+                    let (u, v) = other.closest_uv_from(q, other_uv.x, other_uv.y);
+                    (other.point_at(u, v) - q).length()
+                };
+                if gap < tol && (q - p).length() < snap * 5.0 {
+                    if debug && (q - p).length() > snap {
+                        eprintln!("  end moved onto its face edge: ({:.4},{:.4},{:.4}) -> ({:.4},{:.4},{:.4})", p.x, p.y, p.z, q.x, q.y, q.z);
+                    }
+                    c.pts[k] = q;
+                    let (ua, va) = a.faces[c.fa].surface.closest_uv_from(q, c.uva[k].x, c.uva[k].y);
+                    let (ub, vb) = b.faces[c.fb].surface.closest_uv_from(q, c.uvb[k].x, c.uvb[k].y);
+                    c.uva[k] = DVec2::new(ua, va);
+                    c.uvb[k] = DVec2::new(ub, vb);
+                    break;
+                }
+            }
+        }
+    }
     {
         let mut ends: Vec<(usize, usize)> = Vec::new(); // (curve, index)
         for (ci, c) in curves.iter().enumerate() {
@@ -827,9 +1008,11 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
     let on_tol = diag * 1e-3;
     let mut faces: Vec<Face> = Vec::new();
     let mut touched = false;
+    crate::job::stage("splitting faces");
     for (src, paths, other_mesh, from_b) in [(a, &paths_a, &mesh_b, false), (b, &paths_b, &mesh_a, true)] {
         for (fi, f) in src.faces.iter().enumerate() {
-            if debug && !paths[fi].is_empty() {
+            crate::job::checkpoint(fi as u64).map_err(|e| e.to_string())?;
+            if debug_paths && !paths[fi].is_empty() {
                 for p in &paths[fi] {
                     eprintln!("  {}{} path: {}", if from_b { "B" } else { "A" }, fi, p.iter().map(|q| format!("({:.17e},{:.17e})", q.x, q.y)).collect::<Vec<_>>().join(" "));
                 }
@@ -841,7 +1024,8 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
                 let piece = if split { densify_original_segments(f, piece) } else { piece };
                 let Some(class) = classify(&piece, other_mesh, on_tol) else { continue };
                 if debug {
-                    eprintln!("  {}{} piece ({} loops, area {:.4}): {:?}", if from_b { "B" } else { "A" }, fi, piece.loops.len(), piece.loops.first().map_or(1.0, |l| signed_area(l)), class);
+                    let c = piece.loops.first().map(|l| l.iter().fold(DVec2::ZERO, |s, p| s + *p) / l.len().max(1) as f64).unwrap_or_default();
+                    eprintln!("  {}{} piece ({} loops, area {:.4}, centre {:.4},{:.4}): {:?}", if from_b { "B" } else { "A" }, fi, piece.loops.len(), piece.loops.first().map_or(1.0, |l| signed_area(l)), c.x, c.y, class);
                 }
                 if keep(class, op, from_b) {
                     let mut piece = piece;
@@ -868,6 +1052,105 @@ pub fn brep_boolean_exact(a: &Brep, b: &Brep, op: BooleanOp, tol: f64) -> Result
 
 #[cfg(test)]
 mod tests {
+
+    /// Two chains along one intersection: the shorter copy goes, a separate one stays.
+    #[test]
+    fn retraced_chains_are_dropped() {
+        let arc = |a0: f64, a1: f64, n: usize, z: f64| -> Curve {
+            let pts: Vec<DVec3> = (0..=n).map(|k| {
+                let t = a0 + (a1 - a0) * k as f64 / n as f64;
+                DVec3::new(4.08 * t.cos(), 4.08 * t.sin(), z)
+            }).collect();
+            let m = pts.len();
+            Curve { fa: 1, fb: 6, pts, uva: vec![DVec2::ZERO; m], uvb: vec![DVec2::ZERO; m] }
+        };
+        let mut curves = vec![arc(2.3, 4.0, 352, 6.0), arc(2.32, 2.81, 17, 6.0), arc(4.5, 5.0, 20, 6.0)];
+        // the copy's first point was moved a little off the plane
+        curves[1].pts[0].z += 0.0123;
+        drop_overlapping(&mut curves, 1e-3);
+        assert_eq!(curves.len(), 2);
+        assert_eq!(curves[0].pts.len(), 353);
+        assert_eq!(curves[1].pts.len(), 21);
+    }
+
+    /// A stray triangle in a face's tessellation (one that bridges a trim loop, say) crosses
+    /// the other face where the surfaces do not meet: its chain must not become a curve.
+    #[test]
+    fn chains_off_the_surfaces_are_dropped() {
+        let plane = Plane::world_xy();
+        let cap = Face::untrimmed(NurbsSurface::plane(&Plane { origin: DVec3::new(0.0, 0.0, 5.0), ..plane }, -10.0, 10.0, -10.0, 10.0).unwrap());
+        let side = Face::untrimmed(NurbsSurface::cylinder(&plane, 4.0, 10.0).unwrap());
+        let mc = face_mesh(&cap);
+        let mut ms = face_mesh(&side);
+        // a fan of stray triangles well inside the cylinder, crossing z = 5, and some that
+        // start on the cylinder and reach inside (one end of their chain projects, the
+        // other does not)
+        let base = ms.mesh.vertices.len() as u32;
+        for k in 0..12 {
+            let t = k as f64 / 12.0 * std::f64::consts::TAU;
+            let (x, y) = (1.2 * t.cos(), 1.2 * t.sin());
+            if k % 3 == 0 {
+                let (c, s) = (t.cos(), t.sin());
+                ms.mesh.vertices.extend([DVec3::new(4.0 * c, 4.0 * s, 5.0), DVec3::new(1.0 * c, 1.0 * s, 7.0), DVec3::new(1.0 * c - 0.3 * s, 1.0 * s + 0.3 * c, 3.0)]);
+            } else {
+                ms.mesh.vertices.extend([DVec3::new(x, y, 3.0), DVec3::new(x + 0.3, y, 7.0), DVec3::new(x, y + 0.3, 7.0)]);
+            }
+            ms.mesh.normals.extend([DVec3::Z; 3]);
+            ms.uv.extend([DVec2::new(0.1, 0.3), DVec2::new(0.12, 0.7), DVec2::new(0.1, 0.7)]);
+            let b = base + 3 * k;
+            ms.mesh.indices.extend([b, b + 1, b + 2]);
+            let (p, q, r) = (ms.mesh.vertices[b as usize], ms.mesh.vertices[b as usize + 1], ms.mesh.vertices[b as usize + 2]);
+            ms.tri_bbox.push((p.min(q).min(r), p.max(q).max(r)));
+        }
+        let curves = face_face_curves(0, &cap, &mc, 0, &side, &ms, 1e-3, 30.0);
+        assert!(!curves.is_empty(), "the real circle is found");
+        for c in &curves {
+            for p in &c.pts {
+                let r = (p.x * p.x + p.y * p.y).sqrt();
+                assert!((r - 4.0).abs() < 1e-2, "curve point {p:?} is off the cylinder");
+            }
+        }
+    }
+
+    /// A thin diagonal band in a long domain (a thread's strip on its sweep): the sample
+    /// points must sit well inside the band, measured with the surface's own scale, or the
+    /// piece is classified from a point next to the other solid.
+    #[test]
+    fn interior_samples_sit_inside_thin_bands() {
+        // u in [0, 1] is 2 units long on the surface, v in [0, 4] is 60 units long
+        let scale = DVec2::new(2.0, 15.0);
+        let w = 0.06; // band width in u
+        let band = vec![DVec2::new(0.1, 0.0), DVec2::new(0.1 + w, 0.0), DVec2::new(0.9 + w, 4.0), DVec2::new(0.9, 4.0)];
+        let samples = interior_uv_samples(std::slice::from_ref(&band), scale, 5);
+        assert!(samples.len() >= 3, "{samples:?}");
+        for p in samples {
+            // distance across the band, on the surface: half the width is 0.06 units
+            let t = p.y / 4.0;
+            let left = 0.1 + 0.8 * t;
+            let across = ((p.x - left).min(left + w - p.x)) * scale.x;
+            assert!(across > 0.4 * w * scale.x / 2.0, "sample {p:?} only {across} from the band's side");
+        }
+    }
+
+
+    /// A cut piece's border along the original outline gets a vertex wherever it crosses a
+    /// corner of the surface (a knot of a straight-sided profile): without it the border cut
+    /// the corner and no longer met the neighbouring face (a thread's crest at its start cap).
+    #[test]
+    fn border_segments_keep_the_surface_corners() {
+        use crate::NurbsCurve;
+        let square = NurbsCurve::polyline(vec![DVec3::new(0.0, 0.0, 0.0), DVec3::new(1.0, 0.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(0.0, 1.0, 0.0), DVec3::new(0.0, 0.0, 0.0)]).unwrap();
+        let s = crate::NurbsSurface::extrude(&square, DVec3::new(0.0, 0.0, 5.0)).unwrap();
+        let ((u0, u1), (v0, v1)) = (s.domain_u(), s.domain_v());
+        let original = Face::untrimmed(s.clone());
+        // a piece whose bottom border runs from the first side, across a corner, to the second
+        let (ua, ub) = (u0 + (u1 - u0) * 0.17, u0 + (u1 - u0) * 0.42);
+        let piece = Face { surface: s.clone(), loops: vec![vec![DVec2::new(ua, v0), DVec2::new(ub, v0), DVec2::new(ub, v1), DVec2::new(ua, v1)]] };
+        let dense = densify_original_segments(&original, piece);
+        let corner = DVec3::new(1.0, 0.0, 0.0);
+        assert!(dense.loops[0].iter().any(|q| (s.point_at(q.x, q.y) - corner).length() < 1e-9), "the corner (1,0,0) is a vertex of the border");
+    }
+
     use super::*;
     use crate::{NurbsCurve, NurbsSurface, Plane};
 

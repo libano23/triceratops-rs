@@ -10,7 +10,7 @@
 //! Geometry comes from the application's own kernel (`tri_geom`) and the same helpers the
 //! modelling commands use; nothing is re-implemented for the node graph.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, OnceLock};
 
 use glam::DVec3;
@@ -27,14 +27,17 @@ mod math;
 mod mesh;
 mod output;
 mod params;
+pub mod populate;
 mod sets;
 mod solid;
 mod string;
 mod surface;
 mod transform;
 mod vector;
+pub mod voronoi;
 
 pub mod geo;
+pub mod random;
 
 /// One declared input of a component.
 #[derive(Clone, Debug)]
@@ -66,6 +69,10 @@ fn spec(name: &'static str, kind: Kind, default: Option<Value>) -> InputSpec {
 pub fn num(name: &'static str, d: f64) -> InputSpec {
     spec(name, Kind::Number, Some(Value::Number(d)))
 }
+/// An optional number with no default: `Value::Null` when nothing is given.
+pub fn num_opt(name: &'static str) -> InputSpec {
+    spec(name, Kind::Number, None).opt()
+}
 pub fn int(name: &'static str, d: i64) -> InputSpec {
     spec(name, Kind::Int, Some(Value::Int(d)))
 }
@@ -95,20 +102,128 @@ pub fn tree_d(name: &'static str, kind: Kind, d: Value) -> InputSpec {
     spec(name, kind, Some(d))
 }
 
+/// How serious a node's message is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Level {
+    /// `print` from a script.
+    Info,
+    Warning,
+    Error,
+}
+
+/// A message a node left during a solve (shown on the canvas and in the MCP report).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Diagnostic {
+    pub level: Level,
+    pub message: String,
+}
+
+/// Document objects a solve may read, by reference (`object_key`): taken on the GUI thread
+/// so the solve can run on another one.
+pub type Objects = Arc<HashMap<String, Arc<Geometry>>>;
+
+/// How a reference to a document object (an id, `#id` or a name) is looked up.
+pub fn object_key(r: &Value) -> Option<String> {
+    match r {
+        Value::Int(_) | Value::Number(_) => Some(format!("#{}", as_int(r).max(0))),
+        Value::Text(t) => {
+            let t = t.trim();
+            Some(match t.trim_start_matches('#').parse::<u64>() {
+                Ok(id) => format!("#{id}"),
+                Err(_) => t.to_string(),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Every object of `doc`, by id and by name.
+pub fn all_objects(doc: &Document) -> HashMap<String, Arc<Geometry>> {
+    let mut m = HashMap::new();
+    for o in doc.objects() {
+        let g = Arc::new(o.geometry.clone());
+        if let Some(name) = o.attributes.name.as_deref() {
+            m.entry(name.to_string()).or_insert_with(|| g.clone());
+        }
+        m.insert(format!("#{}", o.id), g);
+    }
+    m
+}
+
+/// The objects a definition reads: those named in its Geometry parameters, or the whole
+/// document when a reference is computed (wired) or hidden in a cluster.
+pub fn objects_for(graph: &super::graph::Graph, doc: &Document) -> HashMap<String, Arc<Geometry>> {
+    let geometry_nodes: Vec<&super::graph::Node> = graph.nodes.iter().filter(|n| n.kind == "Geometry").collect();
+    if !graph.clusters.is_empty() || geometry_nodes.iter().any(|n| graph.source_of(&n.uid, 0).is_some()) {
+        return all_objects(doc);
+    }
+    let mut m = HashMap::new();
+    for n in geometry_nodes {
+        let Some(v) = n.values.get("Objects").or_else(|| n.values.get("0")) else { continue };
+        let refs = match super::data::Value::from_json(v) {
+            Value::List(items) => items,
+            one => vec![one],
+        };
+        for r in refs {
+            if let (Some(k), Some(g)) = (object_key(&r), geo::find_object(doc, &r)) {
+                m.insert(k, Arc::new(g));
+            }
+        }
+    }
+    m
+}
+
 /// Where previews and bakes go during a solve, and the document geometry parameters read.
 #[derive(Default)]
-pub struct Ctx<'a> {
-    pub doc: Option<&'a Document>,
+pub struct Ctx {
+    pub objects: Objects,
     /// Geometry to show in the viewport, with an optional RGBA colour.
     pub preview: Vec<(Arc<Geometry>, Option<[f64; 4]>)>,
     /// Geometry waiting for the Bake button.
     pub bake: Vec<Arc<Geometry>>,
+    /// Messages by node uid.
+    pub diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// The node being solved (messages go to it).
+    pub current: Option<String>,
 }
 
-impl<'a> Ctx<'a> {
-    pub fn with_doc(doc: &'a Document) -> Self {
-        Self { doc: Some(doc), ..Default::default() }
+impl Ctx {
+    /// A context that can read every object of `doc`.
+    #[cfg(test)]
+    pub fn with_doc(doc: &Document) -> Self {
+        Self::with_objects(Arc::new(all_objects(doc)))
     }
+
+    pub fn with_objects(objects: Objects) -> Self {
+        Self { objects, ..Default::default() }
+    }
+
+    /// The document object `r` refers to.
+    pub fn object(&self, r: &Value) -> Option<Arc<Geometry>> {
+        self.objects.get(&object_key(r)?).cloned()
+    }
+
+    fn note(&mut self, level: Level, message: String) {
+        let Some(uid) = self.current.clone() else { return };
+        let list = self.diagnostics.entry(uid).or_default();
+        // element components run once per combination: say each thing once
+        if !list.iter().any(|d| d.level == level && d.message == message) {
+            list.push(Diagnostic { level, message });
+        }
+    }
+
+    pub fn error(&mut self, msg: impl Into<String>) {
+        self.note(Level::Error, msg.into());
+    }
+
+    pub fn warn(&mut self, msg: impl Into<String>) {
+        self.note(Level::Warning, msg.into());
+    }
+
+    pub fn print(&mut self, msg: impl Into<String>) {
+        self.note(Level::Info, msg.into());
+    }
+
 }
 
 /// Values a geometry output can be shown or baked from (points become point objects).
@@ -279,6 +394,8 @@ fn build() -> Registry {
     let mut r = Registry::default();
     params::register(&mut r);
     vector::register(&mut r);
+    populate::register(&mut r);
+    voronoi::register(&mut r);
     math::register(&mut r);
     logic::register(&mut r);
     sets::register(&mut r);

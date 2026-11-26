@@ -13,14 +13,35 @@ pub fn register(r: &mut Registry) {
     r.elem("Point", "Params", vec![num("X", 0.0), num("Y", 0.0), num("Z", 0.0)], &["Point"], |_, a| one(p(DVec3::new(a.num(0), a.num(1), a.num(2)))));
     r.elem("Vector", "Params", vec![num("X", 0.0), num("Y", 0.0), num("Z", 1.0)], &["Vector"], |_, a| one(p(DVec3::new(a.num(0), a.num(1), a.num(2)))));
     r.elem("Plane", "Params", vec![pt("Origin", 0.0, 0.0, 0.0), pt("Normal", 0.0, 0.0, 1.0)], &["Plane"], |_, a| one(Value::Plane(a.pt(0), a.pt_or(1, DVec3::Z))));
+    // Script and Expression solve in `locust::script` (their ports are the node's own); these
+    // entries put them in the catalogue
+    r.elem("Expression", "Script", vec![], &["Result"], |_, _| None).describe(
+        "A formula of the node's inputs in Rhai syntax, e.g. sin(x)*cos(y), pow(x, 2) + y, if x > 0 { x } else { 0 }. \
+         The formula is values.Expression. Inputs default to x, y, z (values._inputs to change them); the output is Result. \
+         Lists are matched like any component's. Trigonometry in radians; PI, E, deg(), rad(), pow, atan2, min, max, clamp.",
+    );
+    r.elem("Script", "Script", vec![], &["a"], |_, _| None).describe(
+        "Rhai code with its own inputs and outputs: values.code is the code, values._inputs and values._outputs list the \
+         ports as names or {name, kind, access: item|list|tree} (default inputs x, y; output a). Inputs are variables; \
+         whatever each output variable holds at the end goes out, an array as a list. Item inputs run the code once per \
+         matched item; list inputs get the whole branch as an array; tree inputs an array of branches. \
+         Helpers: point(x, y, z), vec(x, y, z) (with .x .y .z, + - * /, dot, cross, length, unit, distance), rng(seed).next(), \
+         line, polyline(pts[, closed]), interpolate(pts[, periodic]), nurbs_curve(pts, degree), circle(c, r[, normal]), \
+         arc(c, r, angle), helix(start, end, r, turns[, end_radius]), divide(c, n), offset(c, d), join(curves), curve_point(c, t 0..1), curve_length(c), loft(curves), \
+         extrude(g, dir), revolve(curve, axis_point, axis, angle), sweep1(rail, profile), cap(g), surface_from_grid(rows), \
+         surface_point(s, u, v), box(corner, x, y, z), cylinder(base, r, h), sphere(c, r), union, difference, intersection, \
+         move(g, v), rotate(g, degrees, center, axis), scale(g, center, f), mirror(g, origin, normal), \
+         array_polar(g, center, count, degrees), area(g), volume(g); run(\"Component\", [args]) calls any component \
+         (run_all gives every output). print() shows on the node. Maths in radians: sin, cos, pow, atan2, PI, E, deg, rad. \
+         Functions you define with fn see only their parameters: use PI() and E() inside them.",
+    );
     r.elem("Geometry", "Params", vec![any("Objects")], &["Geometry"], |ctx, a| {
-        let doc = ctx.doc?;
         let refs: Vec<Value> = match a.get(0) {
             Value::Null => return None,
             Value::List(items) => items.clone(),
             v => vec![v.clone()],
         };
-        let shapes: Vec<Value> = refs.iter().filter_map(|r| geo::find_object(doc, r)).map(Value::geometry).collect();
+        let shapes: Vec<Value> = refs.iter().filter_map(|r| ctx.object(r)).map(Value::Geometry).collect();
         match shapes.len() {
             0 => None,
             1 => one(shapes.into_iter().next().unwrap()),
