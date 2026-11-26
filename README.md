@@ -34,10 +34,13 @@ exact NURBS curves, surfaces and polysurfaces (B-reps).
 - **NURBS kernel:** exact surface/surface intersections, Booleans that keep the original
   surfaces and only add trim curves, projection of curves onto any surface, trimming and
   splitting by any number of curves.
-- **Locust:** a built-in node editor for algorithmic modelling, with more than 200 components
-  and a live preview in the viewport ([below](#locust-visual-programming)).
+- **Locust:** a built-in node editor for algorithmic modelling, with more than 200 components,
+  Script and Expression nodes for modelling with code and formulas, and a live preview in the
+  viewport ([below](#locust-visual-programming)).
 - **AI assistants:** Claude, Codex and other MCP clients can model in the open window from a
-  prompt ([below](#model-with-an-ai-assistant-mcp)).
+  prompt, with commands or as a parametric Locust definition ([below](#model-with-an-ai-assistant-mcp)).
+- **Long operations** (Booleans, Locust solves) run in the background: the window stays
+  responsive, the status bar shows progress, and Esc cancels.
 - **Interface:** dockable and floating panels and toolbars (including torn-off flyouts),
   light, dark and Blender-style themes, persistent settings and window layouts.
 - **Display modes:** Wireframe, Shaded, Rendered, Ghosted, X-Ray, Technical, Arctic, Pen, and
@@ -70,9 +73,21 @@ the command line (or `lc`) to open it.
 - **Organised graphs:** groups, comments, clusters (sub-graphs), undo and redo, copy and paste.
   The canvas is saved between sessions in `<config>/triceratops/locust.locust`, and definitions
   can be saved and opened as files.
+- **Script and Expression:** an Expression node evaluates a formula of its inputs
+  (`sin(x) * cos(y)`, radians); a Script node runs [Rhai](https://rhai.rs) code with its own
+  inputs and outputs (item, list or tree access), with helpers for points, curves, surfaces,
+  solids and transforms, and `run("Component", [...])` to call any component. Scripts are
+  sandboxed (no files, processes or network) and an endless loop stops with an error.
+- **Generative components:** Helix, Populate 2D and Populate Geometry (seeded random points),
+  Voronoi (in a convex region) and Surface Voronoi (cells drawn on a surface).
+- **Background solves:** the definition solves on another thread; moving a slider restarts it,
+  the last result stays on screen meanwhile, Esc cancels, and each node shows its errors and
+  warnings as a red or orange dot.
 
-A worked example (sliders driving a circle, an extrusion and a volume readout) loads the first
-time. The tower in the screenshot is [`site/tools/scenes/tower.locust`](site/tools/scenes/tower.locust):
+**Examples** (the editor's Examples menu): an M10 screw with its nut (male and female ISO
+threads with clearance), an involute spur or helical gear, a surface from an equation, Voronoi
+tiles and cells on a surface, and a dovetail joint with clearance. A starter example loads the
+first time. The tower in the screenshot is [`site/tools/scenes/tower.locust`](site/tools/scenes/tower.locust):
 open it from Locust's **Open...** button.
 
 ## Model with an AI assistant (MCP)
@@ -113,12 +128,22 @@ args = ["mcp"]
 Then ask, for example: *"In Triceratops, make a 60×40×8 mm plate with two 6 mm holes 40 mm
 apart and a 30 mm high flange along one long edge."*
 
-The assistant gets these tools: `run_commands` (command-line entries, exactly as typed),
-`get_state`, `list_objects`, `object_info` (volume, area), `find_commands`, `capture_view`
-(an image of a viewport, so it can look at its work), `undo` and `redo`.
+The assistant models the way you ask: with **commands** (fixed geometry) or as a **Locust
+definition**, a live parametric model you can keep adjusting with sliders. Ask for something
+adjustable (*"a parametric M8 bolt and nut"*, *"a gear I can change the number of teeth of"*)
+and it builds a definition in your Locust editor.
+
+Tools: `run_commands` (command-line entries, exactly as typed), `get_state`, `list_objects`,
+`object_info` (volume, area), `find_commands`, `capture_view` (an image of a viewport, so it
+can look at its work), `undo`, `redo` and `cancel`; for Locust, `locust_components` (search the
+catalogue), `locust_set_graph` (send a whole definition; the reply reports errors per node and
+what it made), `locust_set_values` (move sliders, change a formula or a script by name),
+`locust_solve`, `locust_get_graph` and `locust_bake`.
 
 - Requests are refused while you are typing or running a command of your own; the
   assistant is told to try again. It can abandon a command it left waiting with `_Cancel`.
+- A long operation (a big Boolean, a heavy Locust solve) answers when it ends and sends
+  progress meanwhile; `cancel` stops it, and so does Esc in the window.
 - Commands that would open a dialog do not: Loft uses its default options, and commands that
   need a file (Open, Save, Import, Export) are refused.
 - Only programs running as you on the same computer can connect; nothing listens on the

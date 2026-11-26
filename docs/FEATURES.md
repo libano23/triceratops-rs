@@ -332,3 +332,33 @@ quads are triangle pairs), SmartTrack, brep edge topology (one edge per face sid
 MergeEdge is a no-op). STEP import converts analytic surfaces to NURBS and drops trim loops
 that cross a periodic seam (the face is then untrimmed). Grasshopper, licensing, digitizers
 and plug-ins are not available; those commands say so and name the closest alternative.
+
+## Locust: Script, Expression and generative components (0.3.0)
+
+- **Expression** evaluates a formula of its inputs (default `x`, `y`, `z`; add or rename ports
+  from the node's menu) once per matched item. Maths in radians; `PI`, `E`, `deg`, `rad`,
+  `pow`, `atan2`, `hypot`, `min`, `max`, `clamp`; integer arguments work too.
+- **Script** runs Rhai code. Ports are the node's own (`_inputs` / `_outputs`, each `item`,
+  `list` or `tree` access); inputs are variables and outputs are whatever the output variables
+  hold at the end. Helpers: `point`, `vec` (with vector maths), `rng(seed)`, `line`,
+  `polyline`, `interpolate`, `nurbs_curve`, `circle`, `arc`, `helix`, `divide`, `offset`,
+  `join`, `curve_point`, `curve_length`, `loft`, `extrude`, `revolve`, `sweep1`, `cap`,
+  `surface_from_grid`, `surface_point`, `box`, `cylinder`, `sphere`, `union`, `difference`,
+  `intersection`, `move`, `rotate`, `scale`, `mirror`, `array_polar`, `area`, `volume`, and
+  `run` / `run_all` for any component. `print` shows on the node. Functions you define with
+  `fn` see only their parameters (use `PI()` there). The engine is sandboxed (`no_module`, no
+  I/O), stops after 50 million operations, and stops at once when the solve is cancelled.
+- **Helix** (Start, End, Radius, Turns or Pitch, End Radius), **Populate 2D**, **Populate
+  Geometry** (seeded, at most 100,000 points), **Voronoi** (convex boundary) and **Surface
+  Voronoi** (cells as curves on the surface).
+- Solves run on a worker thread with a cancel token; per-node diagnostics (error, warning,
+  print) show as a dot on the node and in the MCP report.
+
+## Background jobs
+
+Booleans (solid, mesh, split, Boolean2Objects, PushPull, RevolvedHole, Boss, Rib, WireCut,
+Shell, ShrinkWrap, MultiPipe, MeshSplit/Trim) compute on a worker thread through
+`CmdCtx::work` and apply their result when done. The status bar shows the stage and a counter;
+Esc cancels; script lines and MCP requests wait for the job. The mesh-CSG has a polygon budget
+(`TRICERATOPS_BOOL_BUDGET` overrides it) so a runaway Boolean fails with a clear message
+instead of exhausting memory. `TRICERATOPS_SLOW=1` logs synchronous command steps over a second.
