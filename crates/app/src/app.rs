@@ -1813,7 +1813,10 @@ impl App {
             Some((n, v)) => (n.trim(), Some(v.trim())),
             None => (text, None),
         };
-        if let Some(o) = match_option(&prompt.options, oname) {
+        // a MicroStation key-in at a point prompt wins over an option that starts the same
+        // way ("di=5,0" is not "Diameter=5,0")
+        let keyin = matches!(prompt.kind, PromptKind::Point | PromptKind::PointOrNumber) && crate::input::is_keyin(text);
+        if let Some(o) = match_option(&prompt.options, oname).filter(|_| !keyin) {
             let n = o.name.clone();
             self.with_ctx(|r, ctx| r.feed_option(&n, ovalue, ctx));
             self.after_command_step(&before);
@@ -1853,6 +1856,10 @@ impl App {
                         let b = base.unwrap_or(cplane.origin);
                         let (s, c) = angle_deg.to_radians().sin_cos();
                         Some(Input::Point(b + cplane.x_axis * (distance * c) + cplane.y_axis * (distance * s)))
+                    }
+                    Some(PointInput::NeedsBase(k)) => {
+                        self.log.push(format!("{k} needs a previous point"));
+                        None
                     }
                     None => {
                         self.log.push(format!("Unknown command: {text}"));
@@ -5047,6 +5054,43 @@ mod tests {
         app.layout = Layout::Single;
         app.active = 0; // Top view
         app
+    }
+
+    fn type_line(app: &mut App, text: &str) {
+        app.cmd_text = text.to_string();
+        app.submit();
+    }
+
+    #[test]
+    fn microstation_keyins_draw_a_polyline() {
+        let mut app = app_with_rect();
+        type_line(&mut app, "Polyline");
+        for t in ["xy=0,0,0", "dl=10,0", "dx=0,10", "di=10,180", ""] {
+            type_line(&mut app, t);
+        }
+        assert!(!app.runner.is_active(), "Polyline finished");
+        let c = app.doc.get(*app.last_added.first().expect("a curve")).and_then(|o| o.geometry.as_curve().cloned()).expect("curve");
+        let want = [DVec3::ZERO, DVec3::new(10.0, 0.0, 0.0), DVec3::new(10.0, 10.0, 0.0), DVec3::new(0.0, 10.0, 0.0)];
+        assert_eq!(c.control_points.len(), want.len());
+        for (p, w) in c.control_points.iter().zip(want) {
+            assert!((*p - w).length() < 1e-9, "{p} != {w}");
+        }
+    }
+
+    #[test]
+    fn relative_keyin_without_a_previous_point_is_refused() {
+        let mut app = app_with_rect();
+        type_line(&mut app, "Polyline");
+        type_line(&mut app, "dl=1,1");
+        assert_eq!(app.log.last().map(String::as_str), Some("DL= needs a previous point"));
+        assert!(app.runner.is_active() && app.runner.base_point().is_none(), "still waiting for the first point");
+        // "Ellipse center" has a Diameter option: "di=" is still a key-in, not that option
+        app.cancel();
+        type_line(&mut app, "Ellipse");
+        type_line(&mut app, "di=5,0");
+        assert_eq!(app.log.last().map(String::as_str), Some("DI= needs a previous point"));
+        type_line(&mut app, "xy=1,2");
+        assert!(app.runner.base_point().is_some_and(|b| (b - DVec3::new(1.0, 2.0, 0.0)).length() < 1e-9), "{:?}", app.runner.base_point());
     }
 
     fn run(app: &mut App, name: &str, inputs: &[Input]) {

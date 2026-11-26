@@ -37,7 +37,9 @@ Command History (F2), middle-mouse Popup toolbar.
 
 Input: `x,y,z`, `r`/`@` relative, `w` world, `wr`, polar `d<a`, distance and
 angle constraints, elevator mode (Ctrl+click), Tab direction lock, Ortho (F8,
-Shift toggles), Grid Snap (F9), Planar, command-line calculator.
+Shift toggles), Grid Snap (F9), Planar, command-line calculator, and MicroStation
+key-ins: `XY=x,y,z` (absolute, world), `DL=dx,dy,dz` (from the last point, world axes),
+`DX=dx,dy,dz` (from the last point, construction-plane axes), `DI=distance,angle`.
 
 Selection: click, Shift add, Ctrl remove, window (left→right) and crossing
 (right→left, dashed) selection, selection menu for overlapping objects,

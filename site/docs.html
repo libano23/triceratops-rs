@@ -147,7 +147,8 @@ footer .brand img { width: 30px; height: 30px; }
     <h2>The command line</h2>
     <p>Everything in Triceratops is a command: type its name (<code>Box</code>, <code>Loft</code>, <code>BooleanDifference</code>, …) and press <kbd>Enter</kbd>, or click a button. The command then asks for what it needs, one prompt at a time.</p>
     <ul>
-      <li><b>Points</b>: click in a viewport (snaps help), or type coordinates such as <code>10,20,0</code>.</li>
+      <li><b>Points</b>: click in a viewport (snaps help), or type coordinates such as <code>10,20,0</code>. <code>@5,0</code> (or <code>r5,0</code>) is relative to the last point, <code>w</code> in front means world coordinates, and <code>10&lt;30</code> is 10 units at 30&deg;.</li>
+      <li><b>MicroStation key-ins</b> work too: <code>XY=x,y,z</code> (absolute, world), <code>DL=dx,dy,dz</code> (from the last point, world axes), <code>DX=dx,dy,dz</code> (from the last point, construction-plane axes) and <code>DI=distance,angle</code>. Upper or lower case, and each number can be a formula like <code>10/3</code>.</li>
       <li><b>Numbers</b>: type them; a default shown in angle brackets <code>&lt;5&gt;</code> is taken with <kbd>Enter</kbd>.</li>
       <li><b>Options</b> appear in parentheses after the prompt, for example <code>( DeleteInput=Yes )</code>: click one or type its name.</li>
       <li><b>Objects</b>: select them in a viewport and press <kbd>Enter</kbd>, or select first and then start the command.</li>
