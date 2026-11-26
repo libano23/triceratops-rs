@@ -349,7 +349,18 @@ fn launch(exe: &std::path::Path) -> std::io::Result<()> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    cmd.spawn().map(|_| ())
+    launch_cmd(cmd).map(|_| ())
+}
+
+/// Spawn `cmd`; returns its process id. A thread waits for it, so when the window exits
+/// before the bridge it is reaped instead of lingering as a zombie.
+fn launch_cmd(mut cmd: std::process::Command) -> std::io::Result<u32> {
+    let mut child = cmd.spawn()?;
+    let id = child.id();
+    std::thread::Builder::new().name("window-reaper".into()).spawn(move || {
+        let _ = child.wait();
+    })?;
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -404,6 +415,16 @@ mod tests {
 
     fn text(r: &CallToolResult) -> String {
         r.content.iter().filter_map(|c| if let ContentBlock::Text(t) = c { Some(t.text.clone()) } else { None }).collect::<Vec<_>>().join("\n")
+    }
+
+    /// The window the bridge started is reaped when it exits: no `<defunct>` left behind.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn launch_reaps_child() {
+        let pid = launch_cmd(std::process::Command::new("true")).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let state = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().and_then(|s| s.rsplit(')').next().and_then(|r| r.split_whitespace().next()).map(str::to_string));
+        assert_ne!(state.as_deref(), Some("Z"), "child {pid} is a zombie");
     }
 
     #[test]
