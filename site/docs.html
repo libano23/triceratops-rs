@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triceratops docs — using the modeller</title>
+<meta name="description" content="How to use Triceratops: the command line, viewports and selection, modelling, files, the Locust node editor with Script and Expression nodes, AI assistants over MCP, scripts and keyboard shortcuts.">
+<meta name="theme-color" content="#0b1120">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b1120;
+  --bg-2: #0f172a;
+  --surface: #111a2e;
+  --surface-2: #16213a;
+  --border: #22304d;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --teal: #5eead4;
+  --sky: #38bdf8;
+  --violet: #a78bfa;
+  --orange: #fb923c;
+  --grad: linear-gradient(120deg, var(--teal), var(--sky) 55%, var(--violet));
+  --radius: 14px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, kbd { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.wrap { width: min(1160px, 100% - 32px); margin-inline: auto; }
+.grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); background: rgba(11, 17, 32, .8); border-bottom: 1px solid rgba(34, 48, 77, .6); }
+nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 18px; }
+.brand:hover { text-decoration: none; }
+.brand img { width: 40px; height: 40px; }
+nav .links { display: flex; gap: 22px; margin-left: auto; font-size: 15px; }
+nav .links a { color: var(--muted); }
+nav .links a:hover, nav .links a.here { color: var(--text); text-decoration: none; }
+@media (max-width: 720px) { nav .links a:not(.gh) { display: none; } }
+
+.layout { display: grid; grid-template-columns: 230px 1fr; gap: 48px; padding: 40px 0 0; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; gap: 8px; } }
+.toc { position: sticky; top: 88px; align-self: start; max-height: calc(100vh - 110px); overflow: auto; font-size: 14px; }
+.toc p { margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.toc a { display: block; padding: 5px 12px; border-left: 2px solid var(--border); color: var(--muted); }
+.toc a:hover { color: var(--text); border-left-color: var(--sky); text-decoration: none; }
+@media (max-width: 900px) { .toc { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 6px; } .toc p { width: 100%; } .toc a { border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px; } }
+
+.doc h1 { font-size: clamp(34px, 5vw, 48px); line-height: 1.1; letter-spacing: -.02em; margin: 0 0 14px; }
+.doc .lede { color: var(--muted); font-size: 18px; max-width: 68ch; margin: 0 0 8px; }
+.doc section { padding-top: 26px; margin-top: 30px; border-top: 1px solid var(--border); }
+.doc h2 { font-size: 27px; letter-spacing: -.01em; margin: 0 0 10px; }
+.doc h3 { font-size: 18px; margin: 26px 0 6px; }
+.doc p, .doc li { max-width: 74ch; }
+.doc ul, .doc ol { padding-left: 22px; }
+.doc li { margin: 4px 0; }
+.doc code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: .88em; }
+.doc pre { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.55; }
+.doc pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; background: var(--surface); font-size: .82em; text-align: center; line-height: 1.5; }
+table { border-collapse: collapse; width: 100%; max-width: 820px; margin: 12px 0; font-size: 15px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+.note { border: 1px solid var(--border); border-left: 3px solid var(--teal); background: var(--surface); border-radius: 10px; padding: 12px 16px; margin: 16px 0; max-width: 74ch; }
+.note.warn { border-left-color: var(--orange); }
+.note p { margin: 0; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; max-width: 900px; }
+@media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+
+footer { margin-top: 90px; border-top: 1px solid var(--border); padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 18px; justify-content: space-between; align-items: center; }
+footer .brand { font-size: 16px; }
+footer .brand img { width: 30px; height: 30px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="assets/logo.png" alt="">Triceratops</a>
+    <div class="links">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#locust">Locust</a>
+      <a href="index.html#ai">AI</a>
+      <a class="here" href="docs.html">Docs</a>
+      <a href="index.html#download">Download</a>
+      <a class="gh" href="https://github.com/libano23/triceratops-rs">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap layout">
+<aside class="toc">
+  <p>On this page</p>
+  <a href="#start">Getting started</a>
+  <a href="#command-line">The command line</a>
+  <a href="#viewports">Viewports</a>
+  <a href="#selecting">Selecting</a>
+  <a href="#aids">Drawing aids</a>
+  <a href="#modelling">Modelling</a>
+  <a href="#long">Long operations</a>
+  <a href="#files">Files</a>
+  <a href="#locust">Locust</a>
+  <a href="#script">Script &amp; Expression</a>
+  <a href="#ai">AI assistants</a>
+  <a href="#scripts">Command scripts</a>
+  <a href="#shortcuts">Keyboard shortcuts</a>
+  <a href="#settings">Settings</a>
+  <a href="#trouble">Troubleshooting</a>
+</aside>
+
+<main class="doc">
+  <h1>Using <span class="grad-text">Triceratops</span></h1>
+  <p class="lede">A practical guide to the modeller: how to give commands, move around the model, build curves, surfaces and solids, design with Locust, and let an AI assistant model for you.</p>
+
+  <section id="start">
+    <h2>Getting started</h2>
+    <p>Download the build for your system from the <a href="index.html#download">download section</a> or the <a href="https://github.com/libano23/triceratops-rs/releases/latest">latest release</a>:</p>
+    <table>
+      <tr><th>System</th><th>File</th><th>How to start</th></tr>
+      <tr><td>Linux (x86_64)</td><td><code>Triceratops-&lt;version&gt;-x86_64.AppImage</code></td><td><code>chmod +x</code> it, then run it</td></tr>
+      <tr><td>Windows 10/11</td><td><code>Triceratops-&lt;version&gt;-windows-x64.zip</code></td><td>Unzip and run <code>triceratops.exe</code></td></tr>
+      <tr><td>macOS 11+</td><td><code>Triceratops-&lt;version&gt;-macos-universal.dmg</code></td><td>Drag it to Applications; the first time, right-click it and choose Open</td></tr>
+    </table>
+    <h3>The window</h3>
+    <ul>
+      <li><b>Menu bar</b> at the top, with every command grouped by kind (Curve, Surface, Solid, Mesh, Transform, Analyze, …).</li>
+      <li><b>Command area</b>: the history of what you did, and the command line where you type.</li>
+      <li><b>Toolbars</b> in tabs (Standard, CPlanes, Set View, Display, Curve Tools, Solid Tools, …) and the <b>sidebar</b> on the left. Buttons with a small triangle open a flyout of related commands.</li>
+      <li><b>Viewports</b>: Top, Front, Right and Perspective by default. Their title is a menu (views, display modes, layouts).</li>
+      <li><b>Panels</b> on the right: Properties, Layers and more. Drag a tab out to float it, or use its <code>▾</code> menu to dock it elsewhere.</li>
+      <li><b>Status bar</b>: cursor coordinates, the current layer, and Grid Snap, Ortho, Planar, Osnap and Gumball toggles. Above it sits the bar of object snaps.</li>
+    </ul>
+  </section>
+
+  <section id="command-line">
+    <h2>The command line</h2>
+    <p>Everything in Triceratops is a command: type its name (<code>Box</code>, <code>Loft</code>, <code>BooleanDifference</code>, …) and press <kbd>Enter</kbd>, or click a button. The command then asks for what it needs, one prompt at a time.</p>
+    <ul>
+      <li><b>Points</b>: click in a viewport (snaps help), or type coordinates such as <code>10,20,0</code>.</li>
+      <li><b>Numbers</b>: type them; a default shown in angle brackets <code>&lt;5&gt;</code> is taken with <kbd>Enter</kbd>.</li>
+      <li><b>Options</b> appear in parentheses after the prompt, for example <code>( DeleteInput=Yes )</code>: click one or type its name.</li>
+      <li><b>Objects</b>: select them in a viewport and press <kbd>Enter</kbd>, or select first and then start the command.</li>
+      <li><kbd>Enter</kbd> or a right-click in a viewport finishes a list (points of a polyline) or repeats the last command when none is running. <kbd>Esc</kbd> cancels.</li>
+    </ul>
+    <p>Typing a few letters autocompletes; <code>Help</code> (<kbd>F1</kbd>) describes commands. About 1,070 commands are registered.</p>
+  </section>
+
+  <section id="viewports">
+    <h2>Viewports and navigation</h2>
+    <table>
+      <tr><th>Action</th><th>Mouse / keys</th></tr>
+      <tr><td>Rotate the view (Perspective)</td><td>Right-drag</td></tr>
+      <tr><td>Pan</td><td><kbd>Shift</kbd> + right-drag, or middle-drag; right-drag in Top, Front and Right</td></tr>
+      <tr><td>Zoom</td><td>Mouse wheel, or <kbd>Ctrl</kbd> + right-drag</td></tr>
+      <tr><td>Popup toolbar</td><td>Middle-click</td></tr>
+      <tr><td>Top, Front, Right, Perspective</td><td><kbd>Ctrl</kbd>+<kbd>F1</kbd> … <kbd>Ctrl</kbd>+<kbd>F4</kbd></td></tr>
+      <tr><td>Maximize / restore the active viewport</td><td><kbd>Ctrl</kbd>+<kbd>M</kbd>, or double-click its title</td></tr>
+      <tr><td>Zoom to everything</td><td><code>ZoomExtents</code> (<code>ze</code>), <code>ZoomExtentsAll</code> for every viewport</td></tr>
+    </table>
+    <p>Display modes (Wireframe, Shaded, Rendered, Ghosted, X-Ray, Technical, Arctic, Pen, and analysis modes like Zebra, Curvature and Draft Angle) are in each viewport's title menu and in the Display tab.</p>
+  </section>
+
+  <section id="selecting">
+    <h2>Selecting</h2>
+    <ul>
+      <li><b>Click</b> an object to select it; <kbd>Shift</kbd>+click adds, <kbd>Ctrl</kbd>+click removes.</li>
+      <li><b>Window</b>: drag from left to right to select what is fully inside the rectangle.</li>
+      <li><b>Crossing</b>: drag from right to left to select everything the rectangle touches.</li>
+      <li><kbd>Ctrl</kbd>+<kbd>A</kbd> selects all, <kbd>Esc</kbd> deselects, <kbd>Delete</kbd> deletes.</li>
+      <li><b>Control points</b>: <kbd>F10</kbd> shows them for the selected curves and surfaces, <kbd>F11</kbd> hides them. Drag them, or select them and use Move.</li>
+    </ul>
+  </section>
+
+  <section id="aids">
+    <h2>Drawing aids</h2>
+    <ul>
+      <li><b>Object snaps</b> (the bar above the status bar): End, Near, Point, Mid, Cen, Int, Perp, Tan, Quad, Knot, Vertex. Turn them on there; Osnap in the status bar switches them all.</li>
+      <li><b>Grid Snap</b> (<kbd>F9</kbd>) and <b>Ortho</b> (<kbd>F8</kbd>, or hold <kbd>Shift</kbd> while picking) keep points on the grid and on the axes. <kbd>F7</kbd> shows or hides the grid.</li>
+      <li><b>Planar</b> keeps new points at the height of the previous one.</li>
+      <li><b>Gumball</b>: arrows, arcs and squares on the selection move, rotate and scale it by dragging.</li>
+      <li><b>Construction planes</b> (CPlanes tab): every viewport draws on its own plane; set one from three points, an object or the view.</li>
+    </ul>
+  </section>
+
+  <section id="modelling">
+    <h2>Modelling</h2>
+    <div class="cols">
+      <div>
+        <h3>Curves</h3>
+        <p><code>Line</code>, <code>Polyline</code>, <code>Circle</code>, <code>Arc</code>, <code>Ellipse</code>, <code>Rectangle</code>, <code>Polygon</code>, <code>Helix</code>, interpolated (<code>InterpCrv</code>) and control-point (<code>Curve</code>) curves; then <code>Fillet</code>, <code>Offset</code>, <code>Trim</code>, <code>Split</code>, <code>Join</code> and <code>Rebuild</code>.</p>
+      </div>
+      <div>
+        <h3>Surfaces</h3>
+        <p><code>ExtrudeCrv</code>, <code>Revolve</code>, <code>Loft</code>, <code>Sweep1</code>, <code>Sweep2</code>, <code>NetworkSrf</code>, <code>EdgeSrf</code>, <code>Patch</code>, <code>PlanarSrf</code> and <code>BlendSrf</code>. Curves projected or pulled onto surfaces trim and split them.</p>
+      </div>
+      <div>
+        <h3>Solids</h3>
+        <p><code>Box</code>, <code>Cylinder</code>, <code>Sphere</code>, <code>Cone</code>, <code>Torus</code>; <code>Cap</code> closes open polysurfaces. <code>BooleanUnion</code>, <code>BooleanDifference</code>, <code>BooleanIntersection</code> and <code>BooleanSplit</code> keep the original surfaces and only add trim curves. <code>FilletEdge</code>, <code>Shell</code>, <code>RoundHole</code>, <code>WireCut</code> and <code>PushPull</code> edit solids.</p>
+      </div>
+      <div>
+        <h3>Organising</h3>
+        <p><b>Layers</b> (Layers panel or the status bar) carry colour, visibility and locking. <code>Group</code>, <code>Hide</code> (<kbd>Ctrl</kbd>+<kbd>H</kbd>), <code>Lock</code> (<kbd>Ctrl</kbd>+<kbd>L</kbd>). With <b>Record History</b> on, objects made from others follow when you edit their parents.</p>
+      </div>
+    </div>
+    <p>Measure with <code>Length</code>, <code>Area</code>, <code>Volume</code> and <code>Distance</code>; check with <code>Zebra</code>, <code>CurvatureAnalysis</code> and <code>DraftAngleAnalysis</code>.</p>
+  </section>
+
+  <section id="long">
+    <h2>Long operations</h2>
+    <p>Booleans and other heavy operations run in the background. The window stays responsive, so you can still orbit and zoom. The status bar shows a spinner, the elapsed time, the stage and a counter, for example <code>BooleanUnion — 12 s · mesh Boolean · 1.3 M · Esc to cancel</code>.</p>
+    <ul>
+      <li><kbd>Esc</kbd> (or the Cancel button in the status bar) stops it; the model stays as it was.</li>
+      <li>While it runs, other commands wait; a history update that needs a Boolean runs the same way.</li>
+      <li>A Boolean that would need too much memory stops with <i>Boolean too complex</i>: simplify the inputs or use a coarser mesh.</li>
+    </ul>
+  </section>
+
+  <section id="files">
+    <h2>Files</h2>
+    <p><kbd>Ctrl</kbd>+<kbd>O</kbd> opens, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves. The native format is <code>.3dm</code> (openNURBS), with layers, names, colours, units and blocks.</p>
+    <table>
+      <tr><th>Kind</th><th>Read and write</th><th>Write only</th></tr>
+      <tr><td>CAD</td><td>STEP, IGES, VDA-FS, DXF, DWG</td><td></td></tr>
+      <tr><td>Meshes</td><td>OBJ, STL, PLY, OFF, 3DS, glTF/GLB, DAE, WRL, X3D, 3MF, FBX (ASCII), …</td><td>POV-Ray, RIB</td></tr>
+      <tr><td>2D</td><td>SVG</td><td>PDF, EPS, AI</td></tr>
+      <tr><td>Points</td><td>PTS, XYZ, ASC, CSV, TXT</td><td></td></tr>
+    </table>
+    <p><code>Import</code> adds a file to the open model; <code>Export</code> writes the selection, remembering the last folder and type.</p>
+  </section>
+
+  <section id="locust">
+    <h2>Locust: visual programming</h2>
+    <p>Locust builds models from a graph of components, so they stay <b>parametric</b>: change a slider and the model is rebuilt. Type <code>Locust</code> (or <code>lc</code>) to open the editor.</p>
+    <ol>
+      <li><b>Add components</b>: double-click the canvas, or use Add component, and type part of a name (<code>Circle</code>, <code>Extrude</code>, <code>Voronoi</code>, …). There are more than 200: numbers and maths, lists and data trees, vectors, curves, surfaces, solids, meshes, transforms and analysis.</li>
+      <li><b>Wire</b> an output (right side of a component) to an input (left side) by dragging. Unwired inputs show a slider or a field for their value.</li>
+      <li><b>See the result</b>: anything wired to <b>Preview</b> is drawn in the viewports, in red, as you edit. <b>Panel</b> shows the data flowing through a wire. Hover over a port to see its values.</li>
+      <li><b>Bake</b> turns what reaches a Bake component into ordinary objects you can keep modelling with.</li>
+    </ol>
+    <ul>
+      <li>Solves run in the background: dragging a slider restarts them, the last result stays on screen, <kbd>Esc</kbd> stops a long one.</li>
+      <li>A red or orange dot on a component means an error or a warning: hover over it to read why.</li>
+      <li>Select components to <b>group</b> (<kbd>Ctrl</kbd>+<kbd>G</kbd>) them, add comments, or make a <b>cluster</b>: a sub-graph shown as one component.</li>
+      <li><b>Examples</b> menu: an M10 screw with its nut, an involute gear (spur or helical), a surface from an equation, Voronoi tiles and cells on a surface, and a dovetail joint. Open one and change its sliders.</li>
+      <li>The canvas is kept between sessions; Save… and Open… store definitions as <code>.locust</code> files.</li>
+    </ul>
+  </section>
+
+  <section id="script">
+    <h2>Script and Expression nodes</h2>
+    <p><b>Expression</b> computes a formula of its inputs (<code>x</code>, <code>y</code>, <code>z</code> by default), once per item: type the formula on the node. Angles are in radians; <code>PI</code>, <code>E</code>, <code>deg()</code>, <code>rad()</code>, <code>pow</code>, <code>atan2</code>, <code>min</code>, <code>max</code> and <code>clamp</code> are available.</p>
+<pre><code>sin(x) * cos(y)          // a wave surface, with x and y from two Series
+pow(x, 2) + 1
+if x &gt; 0 { x } else { 0 }</code></pre>
+    <p><b>Script</b> runs code in <a href="https://rhai.rs">Rhai</a>, a small language with a Rust- and JavaScript-like syntax. Right-click the node to add, rename or remove inputs and outputs. Double-click the node to edit the code. Inputs are variables, and whatever each output variable holds at the end comes out; an array comes out as a list. An input's <i>Access</i> chooses item (the code runs once per item), list (the whole list) or tree.</p>
+<pre><code>// inputs n (number of points) and r (radius), output a
+a = [];
+for i in 0..n {
+    let t = 2.0 * PI * i / n;
+    a.push(point(r * cos(t), r * sin(t), 0));
+}</code></pre>
+    <p>Geometry helpers include <code>point</code> and <code>vec</code> (with <code>+ - * /</code>, <code>dot</code>, <code>cross</code>, <code>length</code>, <code>unit</code>), <code>line</code>, <code>polyline</code>, <code>interpolate</code>, <code>circle</code>, <code>arc</code>, <code>helix</code>, <code>loft</code>, <code>extrude</code>, <code>revolve</code>, <code>sweep1</code>, <code>cap</code>, <code>surface_from_grid</code>, <code>box</code>, <code>cylinder</code>, <code>sphere</code>, <code>union</code>, <code>difference</code>, <code>intersection</code>, <code>move</code>, <code>rotate</code>, <code>scale</code>, <code>mirror</code>, <code>array_polar</code>, <code>area</code>, <code>volume</code> and <code>rng(seed).next()</code>. <code>run("Component", [inputs])</code> calls any component by name. <code>print()</code> shows text on the node.</p>
+    <div class="note"><p>Functions you define with <code>fn</code> only see their parameters: inside them write <code>PI()</code> instead of <code>PI</code>. Scripts cannot read or write files, start programs or use the network, and an endless loop stops with an error.</p></div>
+  </section>
+
+  <section id="ai">
+    <h2>AI assistants (MCP)</h2>
+    <p>Claude, Codex and other <a href="https://modelcontextprotocol.io">MCP</a> clients can model in the window you have open. Register Triceratops once, using the executable you run:</p>
+<pre><code># Claude Code
+claude mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp
+# Codex
+codex mcp add triceratops -- ~/Applications/Triceratops.AppImage mcp</code></pre>
+    <p>On Windows use <code>C:\path\to\triceratops.exe mcp</code>, and on macOS <code>/Applications/Triceratops.app/Contents/MacOS/triceratops mcp</code>. Then ask, for example:</p>
+    <ul>
+      <li><i>"Make a 60×40×8 mm plate with two 6 mm holes 40 mm apart."</i> The assistant runs commands and gives you fixed geometry.</li>
+      <li><i>"Build a parametric M8 bolt and nut in Locust."</i> or <i>"A gear where I can change the number of teeth."</i> The assistant builds a Locust definition, and you keep adjusting it with the sliders.</li>
+    </ul>
+    <p>You choose which of the two it uses. The assistant can look at a viewport image, measure volumes, undo, and stop a long operation with <code>cancel</code>; it shows progress while a Boolean or a solve runs. Everything it does can be undone.</p>
+    <div class="note"><p>Only programs running as you on the same computer can connect; nothing listens on the network. <b>Options › AI Assistants</b> switches it off. Requests wait while you are typing or running a command of your own, and file commands (Open, Save, Export) are not available to assistants.</p></div>
+  </section>
+
+  <section id="scripts">
+    <h2>Command scripts</h2>
+    <p>A script file holds one command-line entry per line, exactly as you would type it. An empty line presses <kbd>Enter</kbd>, and <code>_Cancel</code> presses <kbd>Esc</kbd>. Objects are named <code>#12</code>, <code>#12@x,y,z</code> (picked at a point) or <code>last</code> (what the last command made).</p>
+<pre><code>Box
+0,0,0
+60,40,0
+8
+Cylinder
+15,20,-1
+3
+10
+BooleanDifference
+#1
+#2</code></pre>
+    <p>Run one with <code>ReadCommandFile</code>, or start the program with <code>triceratops --script commands.txt</code>.</p>
+  </section>
+
+  <section id="shortcuts">
+    <h2>Keyboard shortcuts</h2>
+    <div class="cols">
+      <table>
+        <tr><th>Keys</th><th>Command</th></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo / Redo</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>O</kbd> / <kbd>S</kbd></td><td>New / Open / Save</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copy / Cut / Paste</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select all</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd> / <kbd>G</kbd></td><td>Join / Group</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>L</kbd></td><td>Hide / Lock</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Maximize viewport</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Print</td></tr>
+      </table>
+      <table>
+        <tr><th>Keys</th><th>Command</th></tr>
+        <tr><td><kbd>F1</kbd> / <kbd>F2</kbd> / <kbd>F3</kbd></td><td>Help / Command history / Properties</td></tr>
+        <tr><td><kbd>F7</kbd> / <kbd>F8</kbd> / <kbd>F9</kbd></td><td>Grid / Ortho / Grid snap</td></tr>
+        <tr><td><kbd>F10</kbd> / <kbd>F11</kbd></td><td>Control points on / off</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>F1</kbd>…<kbd>F4</kbd></td><td>Top / Front / Right / Perspective</td></tr>
+        <tr><td><kbd>Enter</kbd>, right-click</td><td>Finish / repeat last command</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel, stop a long operation, deselect</td></tr>
+        <tr><td><kbd>Delete</kbd></td><td>Delete the selection</td></tr>
+      </table>
+    </div>
+    <p>In Locust (with the pointer over the canvas): <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate, <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd> copy and paste, <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> undo and redo, <kbd>Ctrl</kbd>+<kbd>G</kbd> group, <kbd>Ctrl</kbd>+<kbd>E</kbd> disable, <kbd>F</kbd> fit, <kbd>Delete</kbd> remove, <kbd>Esc</kbd> stop the solve.</p>
+  </section>
+
+  <section id="settings">
+    <h2>Settings</h2>
+    <ul>
+      <li>Snaps, Ortho, Grid Snap, Planar, Gumball, the window layout, the theme and the export folders are saved automatically. <b>Options › Appearance</b> saves or loads a layout and resets to the defaults.</li>
+      <li><code>Theme</code> (or View › Theme) switches between Triceratops Light, Triceratops Dark and Blender; your own themes are JSON files in <code>&lt;config&gt;/triceratops/themes</code>.</li>
+      <li>Settings live in <code>&lt;config&gt;/triceratops/options.json</code>, where <code>&lt;config&gt;</code> is <code>~/.config</code> on Linux, <code>%APPDATA%</code> on Windows and <code>~/Library/Application Support</code> on macOS.</li>
+    </ul>
+  </section>
+
+  <section id="trouble">
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li><b>Graphics problems</b>: start with <code>TRICERATOPS_BACKEND=gl</code> (or <code>vulkan</code>) to pick the graphics backend.</li>
+      <li><b>macOS says the app cannot be opened</b>: it is not notarized; right-click it in Applications and choose Open the first time.</li>
+      <li><b>A Boolean fails</b>: check that both objects are closed solids (<code>What</code> or the Properties panel). <code>TRICERATOPS_BOOL_DEBUG=1</code> prints diagnostics to the terminal.</li>
+      <li><b>Something feels slow</b>: <code>TRICERATOPS_SLOW=1</code> names any command step that takes over a second.</li>
+      <li>Found a bug? <a href="https://github.com/libano23/triceratops-rs/issues">Open an issue</a> with the steps or a command script that shows it.</li>
+    </ul>
+  </section>
+</main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="assets/logo.png" alt="">Triceratops</a>
+    <span>MIT licensed · openNURBS is distributed under its own license.</span>
+    <a href="https://github.com/libano23/triceratops-rs">github.com/libano23/triceratops-rs</a>
+  </div>
+</footer>
+</body>
+</html>
