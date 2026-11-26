@@ -33,3 +33,6 @@ jobs:
         run: |
           cargo build --locked --bin triceratops
           python3 scripts/mcp-smoke.py target/debug/triceratops$([ "$RUNNER_OS" = Windows ] && echo .exe)
+      - name: Release notes come from CHANGELOG.md
+        if: runner.os == 'Linux'
+        run: python3 scripts/changelog_section.py --self-test
