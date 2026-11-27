@@ -7,6 +7,28 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+### Fixed
+
+* **STEP export no longer writes broken faces.** Every face without trims (each face of a box, an
+  untrimmed cylinder wall) was written with a wrong boundary, so other programs, and Triceratops
+  itself, read a box back as a handful of triangles with a volume of about a third. Flat faces are
+  now written as planes. Solids made with the exact tools (Box, Cylinder, Sphere, Torus and the
+  Booleans between them) are written by the kernel itself: spheres, cylinders and planes stay
+  analytic, edges are real edges shared by two faces, and a different CAD kernel reads the file
+  back with exactly the volume of the solid.
+* **Mesh exports (STL, OBJ, 3MF, PLY, glTF, COLLADA, FBX and the other mesh formats) are no longer
+  coarse and full of random triangles.** A fixed 16 × 16 grid was laid on every face (OBJ: 8 × 8),
+  so a box came out as 3072 triangles and a sphere was off by 0.05 mm. Meshes are now adaptive:
+  a flat face is two triangles, round shapes follow a chord tolerance of 1/20000 of the size, and
+  solids with exact bodies are meshed by the kernel with no cracks between faces.
+* **Units.** STEP and VDA-FS are written in millimetres whatever the document unit (an inch cube
+  was 1 mm); IGES, 3MF, AMF and COLLADA declare the real unit; glTF is written in metres, as its
+  specification says, and imported back into the document unit.
+* VDA-FS keeps the trim boundaries of trimmed faces as curves (it wrote the whole surface); DXF
+  carries surfaces, solids and meshes as 3D faces besides their edges.
+* **STEP import:** flat faces with long straight edges kept their boundary instead of coming back
+  whole and 2 % too large, a solid the file declares is closed, and loops are oriented.
+
 ## 0.5.0 - 2026-11-27
 
 ### New

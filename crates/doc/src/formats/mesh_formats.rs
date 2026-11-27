@@ -529,10 +529,13 @@ pub fn export_gltf(doc: &Document, path: &Path, only_selected: bool) -> Result<u
     let mut accessors = Vec::new();
     let mut gmeshes = Vec::new();
     let mut nodes = Vec::new();
+    // glTF is in metres by its specification
+    let to_metres = super::mm_per_unit(&doc.settings.units) * 0.001;
     for (mi, m) in meshes.iter().enumerate() {
         let (mut lo, mut hi) = (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
         let voff = bin.len();
         for v in &m.mesh.vertices {
+            let v = &(*v * to_metres);
             lo = lo.min(*v);
             hi = hi.max(*v);
             for c in [v.x, v.y, v.z] {
@@ -695,6 +698,11 @@ pub fn import_gltf(doc: &mut Document, path: &Path) -> Result<usize> {
                 }
             }
         }
+        // glTF is in metres: bring it into the document's unit
+        let per_metre = 1000.0 / super::mm_per_unit(&doc.settings.units);
+        if (per_metre - 1.0).abs() > 1e-12 {
+            m.vertices.iter_mut().for_each(|v| *v *= per_metre);
+        }
         count += add_mesh(doc, &name, m, None) as usize;
     }
     Ok(count)
@@ -727,7 +735,7 @@ fn coords_text(m: &Mesh) -> String {
 
 pub fn export_dae(doc: &Document, path: &Path, only_selected: bool) -> Result<usize> {
     let meshes = collect_meshes(doc, only_selected);
-    let mut s = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<COLLADA xmlns=\"http://www.collada.org/2005/11/COLLADASchema\" version=\"1.4.1\">\n<asset><contributor><authoring_tool>Triceratops</authoring_tool></contributor><unit name=\"millimeter\" meter=\"0.001\"/><up_axis>Z_UP</up_axis></asset>\n<library_geometries>\n");
+    let mut s = format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<COLLADA xmlns=\"http://www.collada.org/2005/11/COLLADASchema\" version=\"1.4.1\">\n<asset><contributor><authoring_tool>Triceratops</authoring_tool></contributor><unit name=\"{}\" meter=\"{}\"/><up_axis>Z_UP</up_axis></asset>\n<library_geometries>\n", super::unit_names(&doc.settings.units).1, super::unit_names(&doc.settings.units).2);
     for (i, m) in meshes.iter().enumerate() {
         let normals = m.mesh.normals.iter().map(|v| f3(*v)).collect::<Vec<_>>().join(" ");
         let idx = m.mesh.indices.iter().map(|k| format!("{k} {k}")).collect::<Vec<_>>().join(" ");
@@ -891,7 +899,7 @@ pub fn import_wrl(doc: &mut Document, path: &Path) -> Result<usize> {
 
 pub fn export_amf(doc: &Document, path: &Path, only_selected: bool) -> Result<usize> {
     let meshes = collect_meshes(doc, only_selected);
-    let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<amf unit=\"millimeter\" version=\"1.1\">\n<metadata type=\"producer\">Triceratops</metadata>\n");
+    let mut s = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<amf unit=\"{}\" version=\"1.1\">\n<metadata type=\"producer\">Triceratops</metadata>\n", super::unit_names(&doc.settings.units).0);
     for (i, m) in meshes.iter().enumerate() {
         writeln!(s, "<object id=\"{i}\"><metadata type=\"name\">{}</metadata><mesh><vertices>", xml_escape(&m.name))?;
         for v in &m.mesh.vertices {
@@ -930,7 +938,7 @@ pub fn import_amf(doc: &mut Document, path: &Path) -> Result<usize> {
 
 pub fn export_3mf(doc: &Document, path: &Path, only_selected: bool) -> Result<usize> {
     let meshes = collect_meshes(doc, only_selected);
-    let mut model = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<model unit=\"millimeter\" xml:lang=\"en-US\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n<metadata name=\"Application\">Triceratops</metadata>\n<resources>\n");
+    let mut model = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<model unit=\"{}\" xml:lang=\"en-US\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n<metadata name=\"Application\">Triceratops</metadata>\n<resources>\n", super::unit_names(&doc.settings.units).0);
     for (i, m) in meshes.iter().enumerate() {
         writeln!(model, "<object id=\"{}\" name=\"{}\" type=\"model\"><mesh><vertices>", i + 1, xml_escape(&m.name))?;
         for v in &m.mesh.vertices {

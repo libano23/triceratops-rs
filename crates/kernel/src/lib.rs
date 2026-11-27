@@ -9,6 +9,14 @@ mod convert;
 mod faces;
 #[cfg(feature = "solidcore")]
 mod solid;
+#[cfg(feature = "solidcore")]
+mod mesh;
+#[cfg(feature = "solidcore")]
+mod step;
 
 #[cfg(feature = "solidcore")]
 pub use solid::{BooleanOp, KernelError, Solid};
+#[cfg(feature = "solidcore")]
+pub use mesh::export_mesh;
+#[cfg(feature = "solidcore")]
+pub use step::step_text;

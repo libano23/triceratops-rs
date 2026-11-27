@@ -101,28 +101,29 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
     let mut s = String::from("VDAFS   = HEADER /  4\n$$ Triceratops VDA-FS 2.0 export\n$$ UNITS mm\n$$\n$$\n");
     let mut count = 0;
     let mut n = 0;
+    let mm = super::mm_per_unit(&doc.settings.units);
     for o in doc.objects() {
         if !exported(doc, o, only_selected) {
             continue;
         }
         n += 1;
-        match &o.geometry {
+        // VDA-FS is in millimetres: scale a copy from the document's unit
+        let scaled;
+        let geometry = if (mm - 1.0).abs() > 1e-12 {
+            let mut g = o.geometry.clone();
+            g.transform(&glam::DAffine3::from_scale(DVec3::splat(mm)));
+            scaled = g;
+            &scaled
+        } else {
+            &o.geometry
+        };
+        match geometry {
             Geometry::Point(p) => {
                 writeln!(s, "P{n:<7}= POINT / {}, {}, {}", p.x, p.y, p.z)?;
                 count += 1;
             }
             Geometry::Curve(c) => {
-                let segs = bezier_segments(c);
-                let mut vals: Vec<String> = vec![segs.len().to_string()];
-                vals.extend((0..=segs.len()).map(|i| i.to_string()));
-                for seg in &segs {
-                    vals.push((seg.len()).to_string());
-                    let coef = bezier_to_power(seg);
-                    for axis in 0..3 {
-                        vals.extend(coef.iter().map(|c| c[axis].to_string()));
-                    }
-                }
-                writeln!(s, "C{n:<7}= CURVE / {}", vals.join(", "))?;
+                write_curve_named(&mut s, &format!("C{n}"), c)?;
                 count += 1;
             }
             Geometry::Surface(srf) => {
@@ -132,6 +133,18 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
             Geometry::Brep(b) => {
                 for (k, f) in b.faces.iter().enumerate() {
                     write_surface_named(&mut s, &format!("S{n}F{k}"), &f.surface)?;
+                    // this VDA-FS subset has no trimmed faces: the face's boundary loops go out as
+                    // curves on the surface (S{n}F{k}L{l}), or the face would read as the whole patch
+                    for (l, lp) in f.loops.iter().enumerate() {
+                        let mut pts: Vec<DVec3> = lp.iter().map(|uv| f.surface.point_at(uv.x, uv.y)).collect();
+                        if pts.len() < 2 {
+                            continue;
+                        }
+                        pts.push(pts[0]);
+                        if let Ok(c) = NurbsCurve::polyline(pts) {
+                            write_curve_named(&mut s, &format!("S{n}F{k}L{l}"), &c)?;
+                        }
+                    }
                 }
                 count += 1;
             }
@@ -141,6 +154,22 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
     s.push_str("END     = END\n");
     write_text(path, &fold(&s))?;
     Ok(count)
+}
+
+/// A curve as polynomial segments (`CURVE`), named `name`.
+fn write_curve_named(s: &mut String, name: &str, c: &NurbsCurve) -> Result<()> {
+    let segs = bezier_segments(c);
+    let mut vals: Vec<String> = vec![segs.len().to_string()];
+    vals.extend((0..=segs.len()).map(|i| i.to_string()));
+    for seg in &segs {
+        vals.push((seg.len()).to_string());
+        let coef = bezier_to_power(seg);
+        for axis in 0..3 {
+            vals.extend(coef.iter().map(|c| c[axis].to_string()));
+        }
+    }
+    writeln!(s, "{name:<8}= CURVE / {}", vals.join(", "))?;
+    Ok(())
 }
 
 fn write_surface(s: &mut String, n: usize, srf: &NurbsSurface) -> Result<()> {

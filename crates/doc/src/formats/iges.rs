@@ -52,11 +52,20 @@ impl Writer {
         de
     }
 
-    fn finish(self, filename: &str) -> String {
+    fn finish(self, filename: &str, units: &str) -> String {
+        // IGES global parameter 14/15: unit flag and name (1 inch, 2 millimetre, 4 foot, 6 metre, 10 centimetre)
+        let (unit_flag, unit_name) = match units.to_ascii_lowercase().as_str() {
+            "inches" => (1, "IN"),
+            "feet" => (4, "FT"),
+            "meters" => (6, "M"),
+            "centimeters" => (10, "CM"),
+            _ => (2, "MM"),
+        };
+        let unit_len = unit_name.len();
         let mut out = String::new();
         writeln!(out, "{:<72}S{:>7}", "Triceratops IGES export", 1).ok();
         let now = chrono_like_now();
-        let global = format!("1H,,1H;,10HTriceratops,{}H{},11HTriceratops,3H1.0,32,38,6,308,15,10HTriceratops,1.0,2,2HMM,1,0.01,15H{},0.001,1000.0,10HTriceratops,10HTriceratops,11,0,15H{};", filename.len(), filename, now, now);
+        let global = format!("1H,,1H;,10HTriceratops,{}H{},11HTriceratops,3H1.0,32,38,6,308,15,10HTriceratops,1.0,{unit_flag},{unit_len}H{unit_name},1,0.01,15H{},0.001,1000.0,10HTriceratops,10HTriceratops,11,0,15H{};", filename.len(), filename, now, now);
         let mut g_lines = 0;
         let mut rest = global.as_str();
         while !rest.is_empty() {
@@ -240,7 +249,7 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
         bail!("nothing to export");
     }
     let filename = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    write_text(path, &w.finish(&filename))?;
+    write_text(path, &w.finish(&filename, &doc.settings.units))?;
     Ok(count)
 }
 

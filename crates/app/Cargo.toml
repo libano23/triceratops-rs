@@ -12,7 +12,7 @@ path = "src/main.rs"
 # On while 0.5.0 is developed; `--no-default-features` builds without it.
 default = ["kernel-solidcore"]
 # Exact solids on the solidcore kernel (docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md).
-kernel-solidcore = ["dep:tri-kernel", "tri-kernel/solidcore"]
+kernel-solidcore = ["dep:tri-kernel", "tri-kernel/solidcore", "tri-doc/kernel-solidcore"]
 
 [dependencies]
 tri-geom = { path = "../geom" }

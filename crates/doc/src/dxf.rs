@@ -304,7 +304,8 @@ fn to_v3(p: DVec3) -> Vec3 {
     Vec3::new(p.x, p.y, p.z)
 }
 
-/// Export curves and points (and the edges of surfaces) to DXF or DWG.
+/// Export curves and points to DXF or DWG; surfaces, solids and meshes as their edges and as 3D
+/// faces.
 pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize> {
     let mut d = Drawing::new_metric();
     let layers: Vec<&Layer> = doc.layers().iter().collect();
@@ -322,7 +323,7 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
         if !doc.is_visible(o) || (only_selected && !doc.is_selected(o.id)) {
             continue;
         }
-        let kinds: Vec<EntityKind> = match &o.geometry {
+        let mut kinds: Vec<EntityKind> = match &o.geometry {
             Geometry::Point(p) => vec![EntityKind::Point(cadcraft_doc::Point { p: to_v3(*p), angle: 0.0 })],
             Geometry::Curve(c) => vec![curve_entity(c)],
             Geometry::Surface(s) => s.boundary_curves().iter().map(curve_entity).collect(),
@@ -338,6 +339,16 @@ pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize>
                 .filter_map(|(g, _)| g.as_curve().map(curve_entity))
                 .collect(),
         };
+        // surfaces, solids and meshes also go out as 3D faces (triangles with their inner edges
+        // hidden), or they would arrive as a wireframe with nothing to shade
+        if matches!(o.geometry, Geometry::Surface(_) | Geometry::Brep(_) | Geometry::Mesh(_)) {
+            if let Some(m) = crate::formats::export_mesh_of(&o.geometry) {
+                for t in 0..m.triangle_count() {
+                    let (a, b, c) = m.triangle(t);
+                    kinds.push(EntityKind::Face3d(cadcraft_doc::Face3d { corners: [to_v3(a), to_v3(b), to_v3(c), to_v3(c)], hidden_edges: 7 }));
+                }
+            }
+        }
         let layer_name = layers.get(o.attributes.layer).map(|l| l.name.clone()).unwrap_or_else(|| "0".into());
         for k in kinds {
             let mut e = Entity::new(d.new_handle(), k);
