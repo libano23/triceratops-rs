@@ -493,7 +493,7 @@ pub fn match_crv() -> SeqCmd {
 }
 
 pub fn modify_radius() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select arc or circle", ObjFilter::Curve), Ask::Number("New radius", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select arc or circle", ObjFilter::Curve), Ask::Radius("New radius", 1.0)], |a, ctx| {
         let id = a[0].ids()[0];
         let Some(c) = curve_of(ctx.doc, id) else { return Step::Cancelled };
         let Some(center) = arc_center(&c) else {
@@ -533,7 +533,7 @@ pub fn move_crv() -> SeqCmd {
 }
 
 pub fn offset_crv_on_srf() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select curve on surface", ObjFilter::Curve), Ask::Pick("Select surface", ObjFilter::Surface), Ask::Number("Offset distance", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select curve on surface", ObjFilter::Curve), Ask::Pick("Select surface", ObjFilter::Surface), Ask::Distance("Offset distance", 1.0)], |a, ctx| {
         let (Some(c), Some(faces)) = (curve_of(ctx.doc, a[0].ids()[0]), faces_of(ctx.doc, a[1].ids()[0])) else { return Step::Cancelled };
         let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
         // offset in the local tangent plane: sample, move along (normal x tangent), pull back
@@ -761,7 +761,7 @@ pub fn arrowhead() -> SeqCmd {
 }
 
 pub fn fillet_corners() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select polylines", ObjFilter::Curve, 1), Ask::Number("Fillet radius", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select polylines", ObjFilter::Curve, 1), Ask::Distance("Fillet radius", 1.0)], |a, ctx| {
         let r = a[1].number().abs();
         ctx.doc.begin_undo("FilletCorners");
         for id in a[0].ids() {
@@ -1053,7 +1053,7 @@ fn soft_move(g: &mut Geometry, center: DVec3, radius: f64, delta: DVec3) {
 }
 
 pub fn soft_edit(label: &'static str, filter: ObjFilter) -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select objects to edit", filter, 1), Ask::Point("Point to move"), Ask::Number("Falloff distance", 5.0), Ask::Point("Point to move to")], move |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select objects to edit", filter, 1), Ask::Point("Point to move"), Ask::Distance("Falloff distance", 5.0), Ask::Point("Point to move to")], move |a, ctx| {
         let center = a[1].point();
         let radius = a[2].number().abs();
         let delta = a[3].point() - center;
@@ -1086,7 +1086,7 @@ pub fn fixed_length_edit() -> SeqCmd {
 }
 
 pub fn end_bulge() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select curve near the end to adjust", ObjFilter::Curve), Ask::Number("Bulge factor (1 keeps, 2 doubles the end tangent length)", 1.5)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select curve near the end to adjust", ObjFilter::Curve), Ask::Factor("Bulge factor (1 keeps, 2 doubles the end tangent length)", 1.5)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(mut c) = curve_of(ctx.doc, *id) else { return Step::Cancelled };
         let (_, _, at_end) = curve_end(&c, *p);

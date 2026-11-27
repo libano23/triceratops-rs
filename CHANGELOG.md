@@ -15,10 +15,12 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ### New
 
-* **Interactive previews.** WireCut shows the flattened wire, the cutter and the depth planes
-  while you choose the cut depth. PushPull shows the volume it adds or removes and Pipe the pipe
-  at the cursor's distance from the curve; in both a click answers the distance (a typed number
-  still works).
+* **Interactive previews, for almost every command.** WireCut shows the flattened wire, the cutter
+  and the depth planes while you choose the cut depth. Any command that asks a distance, radius,
+  angle or scale factor now accepts a click for it and shows what it would make while the cursor
+  moves (PushPull, Pipe, Ribbon, Contour, Slab, ScaleNU, Twist, Maelstrom, mesh Inset/Offset and
+  about forty more); a typed number still works. Questions that are not lengths in the model (page
+  sizes, camera lenses, settings) stay typed.
 
 ## 0.4.1 - 2026-11-27
 

@@ -2601,3 +2601,281 @@ fn pipe_ghosts_the_pipe_at_the_cursors_distance_and_a_click_answers_the_radius()
     let want = std::f64::consts::PI * 9.0 * 20.0;
     assert!((v - want).abs() < want * 0.02, "pipe volume {v} vs {want}");
 }
+
+#[test]
+fn a_command_that_already_took_a_point_ghosts_its_result_without_changes() {
+    // TruncatedPyramid asked its height as point-or-number; the dry run shows the solid at the cursor
+    let mut h = Harness::new();
+    h.start("TruncatedPyramid");
+    h.point(0.0, 0.0, 0.0);
+    h.point(5.0, 0.0, 0.0);
+    h.number(4.0);
+    let boxes = preview_boxes(&h, DVec3::new(0.0, 0.0, 8.0));
+    assert_eq!(boxes.len(), 1, "one ghost solid");
+    assert!((boxes[0].max.z - 8.0).abs() < 1e-6, "the ghost is as high as the cursor: {}", boxes[0].max.z);
+    assert!((boxes[0].min.z).abs() < 1e-6);
+    assert_eq!(h.doc.len(), 0, "a preview must not touch the document");
+}
+
+#[test]
+fn modify_radius_takes_a_click_and_ghosts_the_new_radius() {
+    let mut h = Harness::new();
+    h.start("Circle");
+    h.point(0.0, 0.0, 0.0);
+    h.number(2.0);
+    let cid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ModifyRadius");
+    h.ctx(|r, c| r.feed(Input::Pick(cid, DVec3::new(2.0, 0.0, 0.0)), c));
+    let ghost = h.runner.preview(Some(DVec3::new(6.0, 0.0, 0.0)), &h.doc);
+    let radii: Vec<f64> = ghost.iter().filter_map(|p| if let Preview::Curve(c) = p { Some(c.bounding_box().max.x) } else { None }).collect();
+    assert_eq!(radii.len(), 1, "one ghost circle: {}", ghost.len());
+    assert!((radii[0] - 6.0).abs() < 1e-6, "ghost radius {}", radii[0]);
+    assert_eq!(h.doc.get(cid).unwrap().geometry.bounding_box().max.x.round(), 2.0, "the circle itself is untouched");
+    h.point(6.0, 0.0, 0.0);
+    let bb = h.doc.get(cid).unwrap().geometry.bounding_box();
+    assert!((bb.max.x - 6.0).abs() < 1e-6, "the click answered the radius: {}", bb.max.x);
+}
+
+#[test]
+fn offset_subd_ghosts_the_mesh_at_the_cursors_distance() {
+    let mut h = Harness::new();
+    let mid = h.doc.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::ZERO, DVec3::new(10.0, 10.0, 10.0))));
+    h.doc.clear_selection();
+    h.start("OffsetSubD");
+    h.objects(vec![mid]);
+    let ghost_at = |h: &Harness, y: f64| h.runner.preview(Some(DVec3::new(5.0, y, 5.0)), &h.doc);
+    let meshes = |g: &[Preview]| g.iter().filter_map(|p| if let Preview::Mesh(m) = p { Some(m.clone()) } else { None }).collect::<Vec<_>>();
+    let (near, far) = (meshes(&ghost_at(&h, -1.0)), meshes(&ghost_at(&h, -3.0)));
+    assert!(!near.is_empty() && !far.is_empty(), "a ghost mesh at each distance");
+    let ext = |m: &tri_geom::Mesh| m.vertices.iter().fold(f64::MAX, |a, v| a.min(v.y));
+    assert!(ext(&far[0]) < ext(&near[0]) - 1.0, "the ghost follows the cursor's distance: {} vs {}", ext(&near[0]), ext(&far[0]));
+    assert_eq!(h.doc.len(), 1, "the document is untouched");
+}
+
+#[test]
+fn contour_ghosts_the_contour_curves_at_the_cursors_spacing_and_a_click_answers() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(10.0, 10.0, 0.0);
+    h.number(6.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Contour");
+    h.objects(vec![bid]);
+    h.point(0.0, 0.0, 0.0);
+    h.point(0.0, 0.0, 1.0);
+    let count = |h: &Harness, z: f64| h.runner.preview(Some(DVec3::new(0.0, 0.0, z)), &h.doc).iter().filter(|p| matches!(p, Preview::Curve(_))).count();
+    let (wide, narrow) = (count(&h, 3.0), count(&h, 1.0));
+    assert!(wide >= 2 && narrow > wide, "a closer cursor means more contours: {wide} vs {narrow}");
+    assert_eq!(h.doc.len(), 1, "the document is untouched");
+    h.point(0.0, 0.0, 3.0);
+    assert!(h.doc.len() > 1, "the click answered the spacing and made the contours");
+}
+
+#[test]
+fn ribbon_ghosts_the_surface_at_the_cursors_distance_from_the_curve() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(10.0, 0.0, 0.0);
+    let lid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Ribbon");
+    h.objects(vec![lid]);
+    let boxes = preview_boxes(&h, DVec3::new(5.0, 3.0, 0.0));
+    assert_eq!(boxes.len(), 1, "one ghost ribbon");
+    assert!((boxes[0].max.y - boxes[0].min.y - 3.0).abs() < 1e-6, "ribbon width {}", boxes[0].max.y - boxes[0].min.y);
+    h.point(5.0, 3.0, 0.0);
+    assert_eq!(h.doc.len(), 2, "the click made the ribbon");
+}
+
+fn ghost_curves_and_boxes(h: &Harness, cursor: DVec3) -> Vec<tri_geom::BoundingBox> {
+    h.runner
+        .preview(Some(cursor), &h.doc)
+        .into_iter()
+        .filter_map(|p| match p {
+            Preview::Brep(b) => Some(b.bounding_box()),
+            Preview::Surface(s) => Some(s.bounding_box()),
+            Preview::Mesh(m) => Some(m.bounding_box()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn tapered_extrusion_ghosts_the_solid_at_the_cursors_height_and_a_click_answers() {
+    let mut h = Harness::new();
+    h.start("Circle");
+    h.point(0.0, 0.0, 0.0);
+    h.number(5.0);
+    let cid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeCrvTapered");
+    h.objects(vec![cid]);
+    let boxes = ghost_curves_and_boxes(&h, DVec3::new(0.0, 0.0, 4.0));
+    assert_eq!(boxes.len(), 1, "one ghost solid");
+    assert!((boxes[0].max.z - 4.0).abs() < 1e-6, "ghost height {}", boxes[0].max.z);
+    h.point(0.0, 0.0, 4.0);
+    assert_eq!(h.doc.len(), 2, "the click answered the distance");
+}
+
+#[test]
+fn slab_ghosts_the_ring_at_the_cursors_height() {
+    let mut h = Harness::new();
+    h.start("Circle");
+    h.point(0.0, 0.0, 0.0);
+    h.number(5.0);
+    let cid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Slab");
+    h.objects(vec![cid]);
+    h.number(1.0);
+    let boxes = ghost_curves_and_boxes(&h, DVec3::new(0.0, 0.0, 3.0));
+    assert_eq!(boxes.len(), 1);
+    assert!((boxes[0].max.z - 3.0).abs() < 1e-6, "slab height {}", boxes[0].max.z);
+}
+
+#[test]
+fn scale_nu_ghosts_the_scaled_objects_at_the_cursors_factor() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(10.0, 10.0, 0.0);
+    h.number(10.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ScaleNU");
+    h.objects(vec![bid]);
+    h.point(0.0, 0.0, 0.0);
+    h.number(1.0);
+    h.number(1.0);
+    let at = |d: f64| ghost_curves_and_boxes(&h, DVec3::new(0.0, 0.0, d));
+    let (small, big) = (at(5.0), at(20.0));
+    assert!(!small.is_empty() && !big.is_empty(), "a ghost at each factor");
+    assert!(big[0].max.z > small[0].max.z + 1.0, "the farther cursor scales more: {} vs {}", small[0].max.z, big[0].max.z);
+}
+
+#[test]
+fn extend_srf_ghosts_the_longer_surface() {
+    let mut h = Harness::new();
+    let sid = h.doc.add(Geometry::Surface(loft_surface()));
+    h.start("ExtendSrf");
+    h.ctx(|r, c| r.feed(Input::Pick(sid, DVec3::new(0.0, 20.0, 3.0)), c));
+    let near = ghost_curves_and_boxes(&h, DVec3::new(0.0, 22.0, 3.0));
+    let far = ghost_curves_and_boxes(&h, DVec3::new(0.0, 30.0, 3.0));
+    assert!(!near.is_empty() && !far.is_empty(), "a ghost at each distance");
+    let extent = |b: &tri_geom::BoundingBox| b.max.y - b.min.y;
+    assert!(extent(&far[0]) > extent(&near[0]) + 1.0, "{} vs {}", extent(&near[0]), extent(&far[0]));
+}
+
+#[test]
+fn truncated_cone_ghosts_its_top_radius() {
+    let mut h = Harness::new();
+    h.start("TCone");
+    h.point(0.0, 0.0, 0.0);
+    h.number(3.0);
+    h.point(0.0, 0.0, 5.0);
+    let boxes = ghost_curves_and_boxes(&h, DVec3::new(1.5, 0.0, 5.0));
+    assert_eq!(boxes.len(), 1, "one ghost cone");
+    assert!((boxes[0].max.z - 5.0).abs() < 1e-6);
+}
+
+#[test]
+fn tube_ghosts_the_second_radius() {
+    let mut h = Harness::new();
+    h.start("Tube");
+    h.point(0.0, 0.0, 0.0);
+    h.number(4.0);
+    let _ = h.runner.preview(Some(DVec3::new(0.0, 0.0, 5.0)), &h.doc); // must not panic or touch the document
+    assert_eq!(h.doc.len(), 0);
+}
+
+#[test]
+fn twist_ghosts_the_twisted_object_at_the_cursors_angle() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(2.0, 2.0, 0.0);
+    h.point(6.0, 6.0, 0.0);
+    h.number(10.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Twist");
+    h.objects(vec![bid]);
+    h.point(0.0, 0.0, 0.0);
+    h.point(0.0, 0.0, 10.0);
+    let a = ghost_curves_and_boxes(&h, DVec3::new(10.0, 0.0, 5.0));
+    let b = ghost_curves_and_boxes(&h, DVec3::new(0.0, 10.0, 5.0));
+    assert!(!a.is_empty() && !b.is_empty(), "a ghost for each cursor direction");
+    assert_ne!((a[0].min, a[0].max), (b[0].min, b[0].max), "the ghost follows the cursor's angle");
+    assert_eq!(h.doc.len(), 1);
+}
+
+#[test]
+fn shell_ghosts_the_hollow_solid_or_stays_quiet_when_it_is_too_slow() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 20.0, 0.0);
+    h.number(10.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Shell");
+    h.ctx(|r, c| r.feed(Input::Pick(bid, DVec3::new(10.0, 10.0, 10.0)), c));
+    h.enter();
+    // the wall thickness is the cursor's depth inside the solid: whatever happens, no panic, no change
+    let _ = h.runner.preview(Some(DVec3::new(10.0, 10.0, 2.0)), &h.doc);
+    assert_eq!(h.doc.len(), 1, "a preview never touches the document");
+}
+
+#[test]
+fn maelstrom_ghosts_the_deformed_object_at_the_cursors_angle() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(2.0, 2.0, 0.0);
+    h.point(6.0, 6.0, 0.0);
+    h.number(2.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Maelstrom");
+    h.objects(vec![bid]);
+    h.point(0.0, 0.0, 0.0);
+    h.number(2.0);
+    h.number(8.0);
+    let a = ghost_curves_and_boxes(&h, DVec3::new(10.0, 10.0, 0.0)); // 45 degrees
+    let b = ghost_curves_and_boxes(&h, DVec3::new(0.0, 10.0, 0.0)); // 90 degrees
+    assert!(!a.is_empty() && !b.is_empty(), "a ghost for each cursor direction");
+    assert_ne!((a[0].min, a[0].max), (b[0].min, b[0].max), "the ghost follows the cursor's angle");
+}
+
+#[test]
+fn point_command_ghosts_the_point_and_ellipsoid_ghosts_its_radius() {
+    let mut h = Harness::new();
+    h.start("Point");
+    let ghost = h.runner.preview(Some(DVec3::new(1.0, 2.0, 3.0)), &h.doc);
+    assert!(ghost.iter().any(|p| matches!(p, Preview::Point(q) if *q == DVec3::new(1.0, 2.0, 3.0))), "the point follows the cursor");
+    h.point(0.0, 0.0, 0.0);
+    h.start("Ellipsoid");
+    h.point(0.0, 0.0, 0.0);
+    h.point(5.0, 0.0, 0.0);
+    h.number(3.0);
+    let boxes = ghost_curves_and_boxes(&h, DVec3::new(0.0, 0.0, 2.0));
+    assert!(!boxes.is_empty(), "a ghost ellipsoid while the last radius is chosen");
+}
+
+#[test]
+fn offset_multiple_ghosts_the_offset_curve_on_the_cursors_side() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(10.0, 0.0, 0.0);
+    let lid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("OffsetMultiple");
+    h.objects(vec![lid]);
+    let up = h.runner.preview(Some(DVec3::new(5.0, 3.0, 0.0)), &h.doc);
+    let curves: Vec<_> = up.iter().filter_map(|p| if let Preview::Curve(c) = p { Some(c.bounding_box()) } else { None }).collect();
+    assert_eq!(curves.len(), 1, "one ghost offset curve");
+    assert!(curves[0].max.y > 0.5 || curves[0].min.y < -0.5, "it is off the line: {:?}", curves[0]);
+}

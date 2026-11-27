@@ -462,9 +462,11 @@ impl Command for MakeHoleCmd {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ShellCmd {
     picks: Vec<(ObjectId, DVec3)>,
+    /// The wall thickness is the pending question.
+    asking: bool,
 }
 
 impl Command for ShellCmd {
@@ -477,9 +479,15 @@ impl Command for ShellCmd {
                 self.picks.push((id, p));
                 Prompt::pick("Select faces to remove. Press Enter when done", ObjFilter::Polysurface).step()
             }
-            Input::Option(_) => Prompt::number("Thickness").default_num(ctx.mem_num("Shell.Thickness", 1.0)).step(),
+            Input::Option(_) => {
+                self.asking = true;
+                Prompt::point_or_number("Thickness").default_num(ctx.mem_num("Shell.Thickness", 1.0)).step()
+            }
             Input::Empty if self.picks.is_empty() => Step::Cancelled,
-            Input::Empty => Prompt::number("Thickness").default_num(ctx.mem_num("Shell.Thickness", 1.0)).step(),
+            Input::Empty => {
+                self.asking = true;
+                Prompt::point_or_number("Thickness").default_num(ctx.mem_num("Shell.Thickness", 1.0)).step()
+            }
             Input::Number(t) => {
                 ctx.mem_set("Shell.Thickness", fmt_num(t));
                 if self.picks.is_empty() {
@@ -502,6 +510,12 @@ impl Command for ShellCmd {
             }
             _ => Step::Cancelled,
         }
+    }
+    ghost_by_trial!(|s| s.picks.iter().map(|(id, _)| *id).collect());
+    /// The wall thickness a click means: how far it lies inside the solid from its nearest side.
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        let bb = doc.get(self.picks.first()?.0)?.geometry.bounding_box();
+        self.asking.then(|| (p - bb.min).min(bb.max - p).min_element().abs().max(1e-6))
     }
 }
 
@@ -789,7 +803,7 @@ impl Command for StretchCmd {
 
 // ---- Dot, NamedCPlane, SelChain, control points, Conic -----------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DotCmd {
     text: Option<String>,
 }
@@ -826,6 +840,7 @@ impl Command for DotCmd {
             _ => Step::Cancelled,
         }
     }
+    ghost_by_trial!(|_| Vec::new());
 }
 
 pub struct NamedCPlaneCmd;
