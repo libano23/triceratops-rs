@@ -7,6 +7,8 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+## 0.5.1 - 2026-11-27
+
 ### Fixed
 
 * **STEP export no longer writes broken faces.** Every face without trims (each face of a box, an
