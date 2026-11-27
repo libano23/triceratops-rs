@@ -268,7 +268,14 @@ pub fn geometry_nonempty(g: &Geometry) -> bool {
 /// Boolean between two solids: a NURBS polysurface when both operands are surfaces or
 /// polysurfaces and the face outlines can be rebuilt, otherwise a mesh (meshes stay meshes).
 pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geometry> {
-    boolean_geometry_checked(a, b, op).ok()
+    match boolean_geometry_checked(a, b, op) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            // the caller skips this step; the job's owner still learns why
+            tri_geom::job::note(format!("a Boolean was refused: {e}"));
+            None
+        }
+    }
 }
 
 /// `boolean_geometry` saying why there is no result ("cancelled", "Boolean too complex …").
@@ -563,9 +570,7 @@ pub fn shell_geometry(outer: &Geometry, t: f64, remove: &[DVec3]) -> Result<Geom
     if !inner.closed {
         return Err("Shell: the inner solid is not closed (thickness too large?).".into());
     }
-    let Some(mut result) = boolean_geometry(outer, &Geometry::Brep(inner), BooleanOp::Difference) else {
-        return Err("Shell failed.".into());
-    };
+    let mut result = boolean_geometry_checked(outer, &Geometry::Brep(inner), BooleanOp::Difference).map_err(|e| format!("Shell failed: {e}"))?;
     // open the picked faces: remove the lids between the outer and inner surfaces
     for p in remove {
         // the lid: the inner outline of the picked face, between the two surfaces

@@ -11,6 +11,8 @@ use crate::convert;
 
 /// Relative accuracy asked of the kernel's volume.
 const VOLUME_ACCURACY: f64 = 1e-9;
+/// Relative accuracy asked of the kernel's area (it clamps to 1e-8 at the finest).
+const AREA_ACCURACY: f64 = 1e-8;
 
 /// Why the kernel did not give a result. `Display` is the text shown to the user.
 #[derive(Clone, Debug, PartialEq)]
@@ -136,6 +138,11 @@ impl Solid {
         Ok(self.body.volume(VOLUME_ACCURACY)?)
     }
 
+    /// Surface area (mm²).
+    pub fn area(&self) -> Result<f64, KernelError> {
+        Ok(self.body.area(AREA_ACCURACY)?)
+    }
+
     /// A moved copy; `self` is unchanged.
     pub fn transformed(&self, xf: &DAffine3) -> Result<Solid, KernelError> {
         let copy = self.duplicate()?;
@@ -151,9 +158,10 @@ impl Solid {
 
 /// Runs `f` so that cancelling the current Triceratops job (`tri_geom::job`) cancels the
 /// solidcore call it makes: a watcher thread polls the job's token and cancels solidcore's.
-/// Outside a job `f` just runs.
+/// The watcher stops as soon as `f` ends, also when it panics (its end of the channel is
+/// dropped with the stack). Outside a job `f` just runs.
 fn with_job_cancel<R>(f: impl FnOnce() -> R) -> R {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::{channel, RecvTimeoutError};
     use std::time::Duration;
 
     let Some(job) = tri_geom::job::current() else { return f() };
@@ -161,19 +169,74 @@ fn with_job_cancel<R>(f: impl FnOnce() -> R) -> R {
     if job.is_cancelled() {
         token.cancel();
     }
-    let done = AtomicBool::new(false);
+    let (alive, watcher_rx) = channel::<()>();
     std::thread::scope(|scope| {
-        scope.spawn(|| {
-            while !done.load(Ordering::Relaxed) {
-                if job.is_cancelled() {
-                    token.cancel();
-                    break;
+        let (job, token) = (&job, &token);
+        scope.spawn(move || loop {
+            match watcher_rx.recv_timeout(Duration::from_millis(10)) {
+                Err(RecvTimeoutError::Timeout) => {
+                    if job.is_cancelled() {
+                        token.cancel();
+                        return;
+                    }
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                // `alive` was dropped: the call is over (or unwinding)
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
             }
         });
         let r = solidcore_ops::cancel::within(&token, f);
-        done.store(true, Ordering::Relaxed);
+        drop(alive);
         r
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_panic_inside_a_job_call_does_not_hang_the_scope() {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _g = tri_geom::job::install(tri_geom::job::Token::new());
+            let r = std::panic::catch_unwind(|| with_job_cancel(|| -> () { panic!("boom") }));
+            tx.send(r.is_err()).ok();
+        });
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)), Ok(true), "with_job_cancel must return when its closure panics");
+    }
+
+    #[test]
+    fn the_watcher_adds_no_wait_to_quick_calls() {
+        let _g = tri_geom::job::install(tri_geom::job::Token::new());
+        let t = Instant::now();
+        for _ in 0..50 {
+            assert_eq!(with_job_cancel(|| 1), 1);
+        }
+        assert!(t.elapsed() < Duration::from_millis(150), "50 quick calls took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn cancelling_mid_call_reaches_the_closure() {
+        let token = tri_geom::job::Token::new();
+        let _g = tri_geom::job::install(token.clone());
+        let t2 = token.clone();
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            t2.cancel();
+        });
+        let seen = with_job_cancel(|| {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(3) {
+                if solidcore_ops::cancel::is_cancelled() {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            false
+        });
+        canceller.join().unwrap();
+        assert!(seen, "the solidcore token must be cancelled soon after the job's");
+    }
 }

@@ -14,3 +14,6 @@ tri-geom = { path = "../geom" }
 solidcore-ops = { workspace = true, optional = true }
 solidcore-record = { workspace = true, optional = true }
 solidcore-tess = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

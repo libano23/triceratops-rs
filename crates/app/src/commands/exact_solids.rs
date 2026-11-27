@@ -5,9 +5,6 @@
 //! of the same solid is attached next to them. Each function returns its `Brep` unchanged when
 //! the feature is off or the kernel refuses the input.
 
-use glam::DVec3;
-use tri_geom::{Brep, NurbsCurve, Plane};
-
 #[cfg(feature = "kernel-solidcore")]
 mod on {
     use std::sync::Arc;
@@ -21,7 +18,7 @@ mod on {
         if let Ok(s) = solid {
             if let Ok(rec) = s.record() {
                 b.closed = true;
-                b.attach_exact_with_volume(Arc::new(rec), s.volume().ok());
+                b.attach_exact_measured(Arc::new(rec), s.volume().ok(), s.area().ok());
             }
         }
         b
@@ -70,7 +67,9 @@ pub use on::*;
 
 #[cfg(not(feature = "kernel-solidcore"))]
 mod off {
-    use super::*;
+    use glam::DVec3;
+    use tri_geom::{Brep, NurbsCurve, Plane};
+
     pub fn cuboid(b: Brep, _: &Plane, _: f64, _: f64, _: f64) -> Brep {
         b
     }

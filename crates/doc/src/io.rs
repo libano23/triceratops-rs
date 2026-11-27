@@ -22,12 +22,29 @@ struct FileData {
     state: State,
 }
 
+/// `state` as it is written: an exact body that no longer matches its faces is of no use and is
+/// left out.
+fn without_stale_exact_bodies(mut state: State) -> State {
+    let strip = |g: &mut Geometry| {
+        if let Geometry::Brep(b) = g {
+            if b.exact.is_some() && b.exact_valid().is_none() {
+                b.exact = None;
+            }
+        }
+    };
+    state.objects.values_mut().for_each(|o| strip(&mut o.geometry));
+    for block in &mut state.blocks {
+        block.objects.iter_mut().for_each(|(g, _)| strip(g));
+    }
+    state
+}
+
 pub fn save(doc: &Document, path: &Path) -> Result<()> {
     let data = FileData {
         format: "triceratops".into(),
         version: FILE_VERSION,
         settings: doc.settings.clone(),
-        state: doc.state.clone(),
+        state: without_stale_exact_bodies(doc.state.clone()),
     };
     let json = serde_json::to_string(&data)?;
     std::fs::write(path, json).with_context(|| format!("writing {}", path.display()))?;
@@ -277,6 +294,62 @@ mod tests {
         b.faces[0].surface.control_points[0].x += 0.1; // stale now: the mesh volume is used again
         let (v2, _) = Document::volume_of(&Geometry::Brep(b)).unwrap();
         assert!((v2 - 24.5).abs() > 0.01 && (v2 - 24.0).abs() < 0.5, "{v2}");
+    }
+
+    #[test]
+    fn area_of_prefers_the_exact_area() {
+        let rec = std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        });
+        let mut b = tri_geom::Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_measured(rec, Some(24.0), Some(77.5));
+        assert!((Document::area_of(&Geometry::Brep(b.clone())).unwrap() - 77.5).abs() < 1e-12);
+        b.faces[0].surface.control_points[0].x += 0.1; // stale: the mesh area is used again
+        let a = Document::area_of(&Geometry::Brep(b)).unwrap();
+        assert!((a - 77.5).abs() > 1.0, "{a}");
+    }
+
+    #[test]
+    fn a_stale_exact_body_is_not_written_to_the_file() {
+        let rec = std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        });
+        let mut stale = tri_geom::Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        stale.attach_exact(rec.clone());
+        stale.faces[0].surface.control_points[0].x += 0.5; // an in-place edit: the body is stale
+        let mut fresh = tri_geom::Brep::cuboid(&Plane::world_xy(), 5.0, 5.0, 5.0).unwrap();
+        fresh.attach_exact(rec);
+        let mut d = Document::new();
+        let (sid, fid) = (d.add(Geometry::Brep(stale)), d.add(Geometry::Brep(fresh)));
+        let dir = std::env::temp_dir().join(format!("triceratops-stale-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("s.tri");
+        save(&d, &p).unwrap();
+        let (state, _) = load(&p).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let exact_of = |id| match &state.objects[&id].geometry {
+            Geometry::Brep(b) => b.exact.is_some(),
+            _ => panic!("not a brep"),
+        };
+        assert!(!exact_of(sid), "a stale exact body only bloats the file");
+        assert!(exact_of(fid), "a valid one is kept");
+        // saving does not touch the open document
+        match &d.state.objects[&sid].geometry {
+            Geometry::Brep(b) => assert!(b.exact.is_some()),
+            _ => unreachable!(),
+        }
     }
 
     #[test]

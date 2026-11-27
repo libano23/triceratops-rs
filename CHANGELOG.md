@@ -14,7 +14,7 @@ before tagging a release, rename "Unreleased" to the version and date (see
   Rib) carry an exact B-rep of the solid next to their faces. A Boolean between two such solids
   runs on the kernel and gives exact results: sphere − two cylinders (+11 % off before) and
   torus − a bore along its tube (+5.9 % off before) are now within 0.1 % of the true volume.
-  Volume readouts of such solids come from the kernel. Move, Rotate, Mirror, Copy and arrays keep
+  Volume and area readouts of such solids come from the kernel. Move, Rotate, Mirror, Copy and arrays keep
   the exact body. A kernel refusal in a Boolean command is reported with its message and leaves
   both objects as they were. Everything else, and every file, works as before.
 

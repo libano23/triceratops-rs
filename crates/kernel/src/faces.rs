@@ -27,14 +27,14 @@ impl Solid {
         if !b.closed {
             return Err(refused("the kernel body is not a closed solid"));
         }
-        b.attach_exact_with_volume(Arc::new(record), self.volume().ok());
+        b.attach_exact_measured(Arc::new(record), self.volume().ok(), self.area().ok());
         Ok(b)
     }
 
     /// The solid behind `brep`'s exact body, only while that body still matches its faces.
     pub fn from_exact(brep: &Brep) -> Option<Solid> {
         let exact = brep.exact_valid()?;
-        let (body, _order) = solidcore_ops::Body::from_record(&exact.record, false).ok()?;
+        let (body, _order) = solidcore_ops::Body::from_record(&exact.record, exact.trusted).ok()?;
         if exact.placement != glam::DAffine3::IDENTITY {
             body.transform(&crate::convert::matrix(&exact.placement)).ok()?;
         }
@@ -89,7 +89,14 @@ fn face_of(r: &Record, i: usize, chord: f64, counts: &mut HashMap<u32, usize>) -
                 }
             };
             let pc = pcurve(&oe.pcurve)?;
-            let (a, b) = pc.domain();
+            // the record says a pcurve runs on its edge's own interval; a different range would
+            // misplace every trim point, so it is refused rather than guessed
+            let (a, b) = (e.interval[0], e.interval[1]);
+            let (pa, pb) = pc.domain();
+            let tol = 1e-9 * (b - a).abs().max(1.0);
+            if (pa - a).abs() > tol || (pb - b).abs() > tol {
+                return Err(refused("a pcurve does not run on its edge's interval"));
+            }
             let mut pts: Vec<DVec2> = (0..=n)
                 .map(|k| {
                     let p = pc.point_at(a + (b - a) * k as f64 / n as f64);
@@ -171,4 +178,31 @@ fn plane_patch(o: DVec3, ua: DVec3, va: DVec3, d: [[f64; 2]; 2]) -> Result<Nurbs
         vec![d[1][0], d[1][0], d[1][1], d[1][1]],
     )
     .map_err(|e| refused(&e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use glam::DVec3;
+    use solidcore_record::brep::Curve2;
+
+    fn box_record() -> Record {
+        Solid::cuboid(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).unwrap().record().unwrap()
+    }
+
+    #[test]
+    fn an_untouched_record_converts() {
+        assert_eq!(faces_of(&box_record(), 0.05).unwrap().len(), 6);
+    }
+
+    #[test]
+    fn a_pcurve_on_a_different_range_than_its_edge_is_refused_not_misplaced() {
+        let mut r = box_record();
+        let oe = &mut r.faces[0].loops.iter_mut().find_map(|l| if let Loop::Edges { edges } = l { edges.first_mut() } else { None }).unwrap();
+        match &mut oe.pcurve {
+            Curve2::Spline { knots, .. } | Curve2::RationalSpline { knots, .. } => knots.iter_mut().for_each(|k| *k *= 2.0),
+        }
+        let e = faces_of(&r, 0.05).err().expect("a pcurve that does not follow its edge's interval must be refused");
+        assert!(e.to_string().contains("pcurve"), "{e}");
+    }
 }

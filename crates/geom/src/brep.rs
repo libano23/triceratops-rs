@@ -721,7 +721,12 @@ impl Brep {
 
     /// [`Brep::attach_exact`] with the kernel's volume of the solid.
     pub fn attach_exact_with_volume(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>, volume: Option<f64>) {
-        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, volume, faces_fingerprint: self.fingerprint() });
+        self.attach_exact_measured(record, volume, None);
+    }
+
+    /// [`Brep::attach_exact`] with the kernel's volume and surface area of the solid.
+    pub fn attach_exact_measured(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>, volume: Option<f64>, area: Option<f64>) {
+        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, volume, area, faces_fingerprint: self.fingerprint(), trusted: true });
     }
 
     pub fn from_surfaces(surfaces: Vec<NurbsSurface>) -> Self {
@@ -841,7 +846,9 @@ impl Brep {
         }
         if let Some(e) = exact.as_mut() {
             e.placement = *xf * e.placement;
-            e.volume = e.volume.map(|v| v * xf.matrix3.determinant().abs());
+            let det = xf.matrix3.determinant().abs();
+            e.volume = e.volume.map(|v| v * det);
+            e.area = e.area.map(|a| a * det.powf(2.0 / 3.0));
             e.faces_fingerprint = self.fingerprint();
         }
         self.exact = exact;
@@ -1120,13 +1127,38 @@ mod tests {
     }
 
     #[test]
+    fn exact_area_follows_similarities_by_the_square_of_the_scale() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_measured(dummy_record(), Some(24.0), Some(52.0));
+        b.transform(&DAffine3::from_rotation_translation(glam::DQuat::from_rotation_z(0.3), DVec3::X));
+        assert_eq!(b.exact_valid().unwrap().area.map(|a| (a * 1e9).round() / 1e9), Some(52.0));
+        b.transform(&DAffine3::from_scale(DVec3::splat(3.0)));
+        let e = b.exact_valid().unwrap();
+        assert!((e.area.unwrap() - 52.0 * 9.0).abs() < 1e-9 && (e.volume.unwrap() - 24.0 * 27.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn exact_survives_a_serde_roundtrip() {
         let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
         b.attach_exact(dummy_record());
         let json = serde_json::to_string(&b).unwrap();
-        let back: Brep = serde_json::from_str(&json).unwrap();
+        let mut back: Brep = serde_json::from_str(&json).unwrap();
+        // the record is the same; that it came from this process's kernel is not persisted
+        assert!(!back.exact.as_ref().unwrap().trusted);
+        back.exact.as_mut().unwrap().trusted = true;
         assert_eq!(back, b);
         assert!(back.exact_valid().is_some());
+    }
+
+    #[test]
+    fn only_a_freshly_attached_record_is_trusted_and_moves_keep_that() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        assert!(b.exact.as_ref().unwrap().trusted);
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert!(b.exact.as_ref().unwrap().trusted);
+        let back: Brep = serde_json::from_str(&serde_json::to_string(&b).unwrap()).unwrap();
+        assert!(!back.exact.unwrap().trusted, "a record read from a file is validated before use");
     }
 
     #[test]

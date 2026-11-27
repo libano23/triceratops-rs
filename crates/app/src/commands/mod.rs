@@ -597,8 +597,14 @@ impl CommandRunner {
 
     fn finish_job(&mut self, ctx: &mut CmdCtx) {
         let Some(job) = self.job.take() else { return };
-        let Job { label, cancelled, handle, apply, undo_on_cancel, .. } = job;
+        let Job { label, cancelled, handle, apply, undo_on_cancel, token, .. } = job;
         let result = handle.join();
+        if cancelled.is_none() {
+            // steps the work skipped (a refused Boolean inside Boss, Shell, BooleanSplit...)
+            for n in token.take_notes() {
+                ctx.log(format!("{label}: {n}"));
+            }
+        }
         match (cancelled, result) {
             (Some(reason), _) => {
                 ctx.log(format!("{label} {reason}"));

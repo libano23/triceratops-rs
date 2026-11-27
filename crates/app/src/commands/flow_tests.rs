@@ -2327,6 +2327,41 @@ mod exact_primitives {
     }
 
     #[test]
+    fn booleansplit_tells_the_user_when_the_kernel_refuses() {
+        use std::f64::consts::PI;
+        let blob = |cx: f64| {
+            let pts: Vec<DVec3> = (0..8)
+                .map(|i| {
+                    let a = 2.0 * PI * i as f64 / 8.0;
+                    let r = 12.0 * (1.0 + 0.2 * (3.0 * a).cos());
+                    DVec3::new(cx + r * a.cos(), r * a.sin(), 15.0)
+                })
+                .collect();
+            tri_geom::NurbsCurve::periodic(3, pts).unwrap()
+        };
+        let plane = Plane { origin: DVec3::new(0.0, 0.0, 15.0), ..Plane::world_xy() };
+        let mut h = Harness::new();
+        let a = h.doc.add(Geometry::Brep(Solid::extrude_closed_curve(&blob(0.0), &plane, 15.0).unwrap().to_brep(0.05).unwrap()));
+        let b = h.doc.add(Geometry::Brep(Solid::extrude_closed_curve(&blob(0.001), &plane, 15.0).unwrap().to_brep(0.05).unwrap()));
+        h.start("BooleanSplit");
+        h.objects(vec![a]);
+        h.objects(vec![b]);
+        assert!(h.log.iter().any(|l| l.contains("refused") && l.contains("solid kernel")), "the log must say why nothing was split: {:?}", h.log);
+    }
+
+    #[test]
+    fn the_area_readout_of_an_exact_solid_comes_from_the_kernel() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let g = h.doc.objects().next().unwrap().geometry.clone();
+        let a = Document::area_of(&g).unwrap();
+        let exact = 4.0 * PI * 400.0;
+        assert!((a - exact).abs() < exact * 1e-6, "{a} vs {exact}");
+    }
+
+    #[test]
     fn a_non_uniform_scale_drops_the_exact_body() {
         let mut h = Harness::new();
         let id = exact_box(&mut h);

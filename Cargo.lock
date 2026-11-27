@@ -4233,6 +4233,7 @@ name = "tri-kernel"
 version = "0.4.0"
 dependencies = [
  "glam",
+ "serde_json",
  "solidcore-ops",
  "solidcore-record",
  "solidcore-tess",

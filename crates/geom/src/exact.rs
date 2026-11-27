@@ -24,7 +24,15 @@ pub struct ExactBody {
     /// instead of the display mesh.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume: Option<f64>,
+    /// The kernel's surface area of the solid (mm²), kept through similarities.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<f64>,
     pub faces_fingerprint: u64,
+    /// The record was made by this process's kernel, which keeps its own rules: importing it
+    /// skips the kernel's healer (2000 times faster on a complex body). Never saved: a record read
+    /// from a file is validated before use.
+    #[serde(skip)]
+    pub trusted: bool,
 }
 
 fn identity() -> DAffine3 {

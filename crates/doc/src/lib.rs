@@ -710,6 +710,8 @@ impl Document {
                 }
                 Some(nn.length() * 0.5)
             }
+            // a solid with a valid exact body is measured by the kernel
+            Geometry::Brep(b) if b.closed && b.exact_valid().is_some_and(|e| e.area.is_some()) => b.exact_valid().and_then(|e| e.area),
             Geometry::Surface(_) | Geometry::Brep(_) => measure_mesh(g).map(|m| tri_area(&m)),
             Geometry::Mesh(m) => Some(tri_area(m)),
             _ => None,

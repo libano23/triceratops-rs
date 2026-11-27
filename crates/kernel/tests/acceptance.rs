@@ -503,3 +503,47 @@ fn a_small_hole_in_a_huge_part_keeps_a_round_trim() {
     assert!(!hole_loops.is_empty(), "the cap faces have an inner loop");
     assert!(hole_loops.iter().all(|n| *n >= 24), "a 5 mm hole must not become a square: {hole_loops:?}");
 }
+
+#[test]
+fn surface_area_of_primitives_and_a_boolean() {
+    let close = |got: f64, want: f64| assert!((got - want).abs() <= want * 1e-6, "area {got} vs {want}");
+    close(Solid::sphere(DVec3::ZERO, 20.0).unwrap().area().unwrap(), 4.0 * PI * 400.0);
+    close(Solid::cuboid(DVec3::ZERO, DVec3::new(2.0, 3.0, 4.0)).unwrap().area().unwrap(), 2.0 * (6.0 + 8.0 + 12.0));
+    close(Solid::cylinder(DVec3::ZERO, DVec3::Z, 3.0, 7.0).unwrap().area().unwrap(), 2.0 * PI * 3.0 * 7.0 + 2.0 * PI * 9.0);
+    // the bicylinder (Steinmetz) has surface 16 r^2
+    let r = 10.0;
+    close(cyl_x(r).boolean(&cyl_y(r), BooleanOp::Intersection).unwrap().area().unwrap(), 16.0 * r * r);
+}
+
+
+#[test]
+fn importing_an_exact_body_is_cheap_next_to_the_boolean_it_feeds() {
+    use std::time::Instant;
+    let s = Solid::sphere(DVec3::ZERO, 20.0).unwrap();
+    let c1 = Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap();
+    let c2 = Solid::cylinder(DVec3::new(-30.0, 0.0, 8.0), DVec3::new(1.0, 0.3, 0.1), 6.0, 60.0).unwrap();
+    let r = s.boolean(&c1, BooleanOp::Difference).unwrap().boolean(&c2, BooleanOp::Difference).unwrap();
+    let b = r.to_brep(0.05).unwrap();
+    let t = Instant::now();
+    for _ in 0..20 {
+        assert!(Solid::from_exact(&b).is_some());
+    }
+    let per = t.elapsed() / 20;
+    println!("from_exact: {per:?} per import");
+    assert!(per < std::time::Duration::from_millis(100), "{per:?}");
+}
+
+#[test]
+fn a_record_read_from_a_file_is_validated_and_a_corrupt_one_is_refused() {
+    let b = Solid::cuboid(DVec3::ZERO, DVec3::new(10.0, 20.0, 30.0)).unwrap().to_brep(0.05).unwrap();
+    let json = serde_json::to_string(&b).unwrap();
+    // as loaded: still usable
+    let loaded: tri_geom::Brep = serde_json::from_str(&json).unwrap();
+    assert_vol(&Solid::from_exact(&loaded).expect("an intact record from a file imports"), 6000.0, 1e-6);
+    // a record with a face torn out of its shell must never reach the kernel unchecked
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    v["exact"]["record"]["faces"].as_array_mut().unwrap().pop();
+    let torn: tri_geom::Brep = serde_json::from_value(v).unwrap();
+    // the faces fingerprint still matches (only the record was damaged): the import must say no
+    assert!(Solid::from_exact(&torn).is_none(), "a damaged record is refused");
+}
