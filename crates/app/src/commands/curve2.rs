@@ -729,7 +729,7 @@ impl Command for SectionCmd {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ContourCmd {
     ids: Vec<ObjectId>,
     base: Option<DVec3>,
@@ -757,7 +757,7 @@ impl Command for ContourCmd {
                     return Step::Cancelled;
                 }
                 self.dir = Some(d.normalize());
-                Prompt::number("Distance between contours").default_num(ctx.mem_num("Contour.Distance", 1.0)).step()
+                Prompt::point_or_number("Distance between contours").default_num(ctx.mem_num("Contour.Distance", 1.0)).step()
             }
             (Some(b), Some(d), Input::Number(spacing)) => {
                 let spacing = spacing.abs().max(1e-6);
@@ -785,6 +785,12 @@ impl Command for ContourCmd {
     }
     fn base_point(&self) -> Option<DVec3> {
         self.base
+    }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The spacing a click means: its distance from the base point along the contour direction.
+    fn point_as_number(&self, p: DVec3, _doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        let (b, d) = (self.base?, self.dir?);
+        Some((p - b).dot(d).abs().max(1e-6))
     }
 }
 

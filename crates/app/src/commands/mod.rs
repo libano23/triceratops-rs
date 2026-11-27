@@ -5,8 +5,23 @@
 //! Prompt wording and option names follow Triceratops as documented in
 //! docs/ui-reference.md.
 
+/// For a command whose state is a few clonable fields: a trial copy for the ghost. `$ids` gives
+/// the objects the copy needs on the scratch document, from the command.
+macro_rules! ghost_by_trial {
+    ($ids:expr) => {
+        fn trial(&self) -> Option<Box<dyn Command>> {
+            Some(Box::new(self.clone()))
+        }
+        fn trial_objects(&self) -> Vec<ObjectId> {
+            let ids: fn(&Self) -> Vec<ObjectId> = $ids;
+            ids(self)
+        }
+    };
+}
+
 pub mod create;
 pub mod previews;
+mod preview_rules;
 pub mod exact_solids;
 pub mod curve2;
 pub mod curve_edit;
@@ -535,6 +550,21 @@ pub enum Preview {
 pub trait Command {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step;
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step;
+    /// A copy of the command as it stands, to be fed the cursor on a scratch document for a ghost
+    /// (the copy runs the command's own code, so the ghost is the result). `None`: no ghost.
+    fn trial(&self) -> Option<Box<dyn Command>> {
+        None
+    }
+    /// The objects the trial copy needs on the scratch document.
+    fn trial_objects(&self) -> Vec<ObjectId> {
+        Vec::new()
+    }
+    /// What a point means when the pending question wants a number (a distance, radius, angle,
+    /// factor), or `None` when the point is the answer itself. The runner turns a click into
+    /// that number before the command sees it.
+    fn point_as_number(&self, _p: DVec3, _doc: &Document, _ambient: &previews::Ambient) -> Option<f64> {
+        None
+    }
     /// Dynamic feedback given the current cursor position (already snapped).
     fn preview(&self, _cursor: Option<DVec3>, _doc: &Document) -> Vec<Preview> {
         Vec::new()
@@ -559,6 +589,12 @@ pub struct CommandRunner {
     pub finished: Option<(String, Vec<Input>)>,
     /// Work the active command is waiting for.
     job: Option<Job>,
+    /// The construction plane and view the last input came with: a trial run has no context.
+    ambient: Option<previews::Ambient>,
+    /// The last trial ghost (cursor, inputs fed, when, ghost): the window asks every frame.
+    trial_cache: std::cell::RefCell<previews::LastGhost>,
+    /// Set when a trial ran too long: the command is not tried again.
+    trial_off: std::cell::Cell<bool>,
 }
 
 impl CommandRunner {
@@ -644,7 +680,39 @@ impl CommandRunner {
     }
 
     pub fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
-        self.active.as_ref().map_or_else(Vec::new, |(_, c)| c.preview(cursor, doc))
+        let Some((_, cmd)) = self.active.as_ref() else { return Vec::new() };
+        let mut out = cmd.preview(cursor, doc);
+        if let Some(c) = cursor {
+            out.extend(self.trial_ghost(cmd.as_ref(), c, doc));
+        }
+        out
+    }
+
+    /// The ghost of a command that offers a trial copy: the copy fed the cursor, rate limited, and
+    /// switched off for good once it is too slow.
+    fn trial_ghost(&self, cmd: &dyn Command, cursor: DVec3, doc: &Document) -> Vec<Preview> {
+        let (Some(ambient), false) = (self.ambient.as_ref(), self.trial_off.get()) else { return Vec::new() };
+        if !matches!(self.prompt.as_ref().map(|p| &p.kind), Some(PromptKind::Point | PromptKind::PointOrNumber | PromptKind::Number)) {
+            return Vec::new();
+        }
+        let stage = self.recorded.len();
+        #[cfg(not(test))]
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
+        #[cfg(test)]
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::ZERO;
+        if let Some((c, k, at, ghost)) = &*self.trial_cache.borrow() {
+            if *k == stage && ((*c - cursor).length() < 1e-9 || at.elapsed() < MIN_INTERVAL) {
+                return ghost.clone();
+            }
+        }
+        let started = std::time::Instant::now();
+        let ghost = previews::trial_run(cmd, cursor, doc, ambient);
+        if previews::too_slow(started.elapsed()) {
+            self.trial_off.set(true);
+        }
+        let ghost = ghost.unwrap_or_default();
+        *self.trial_cache.borrow_mut() = Some((cursor, stage, std::time::Instant::now(), ghost.clone()));
+        ghost
     }
 
     fn echo_prompt(&mut self, ctx: &mut CmdCtx) {
@@ -671,6 +739,9 @@ impl CommandRunner {
         self.last_command = Some(name.to_string());
         self.recorded.clear();
         self.finished = None;
+        self.ambient = Some(previews::Ambient::of(ctx));
+        self.trial_cache.take();
+        self.trial_off.set(false);
         let step = cmd.start(ctx);
         self.active = Some((name.to_string(), cmd));
         self.apply_step(step, ctx);
@@ -699,8 +770,17 @@ impl CommandRunner {
             // the command is waiting for its work: only Esc (above) reaches it
             return;
         }
+        let ambient = previews::Ambient::of(ctx);
+        self.ambient = Some(ambient.clone());
+        self.trial_cache.take();
+        // a click answers a distance, radius, angle or factor by where it lies
+        let input = match input {
+            Input::Point(p) if matches!(self.prompt.as_ref().map(|p| &p.kind), Some(PromptKind::PointOrNumber)) => cmd.point_as_number(p, ctx.doc, &ambient).map_or(Input::Point(p), Input::Number),
+            other => other,
+        };
         self.recorded.push(input.clone());
         let step = cmd.input(input, ctx);
+        self.ambient = Some(previews::Ambient::of(ctx));
         self.finish_step(step, ctx);
     }
 

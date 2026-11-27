@@ -5225,7 +5225,7 @@ impl App {
                     // each edge once; a very dense mesh shows only its outline loops
                     if m.triangle_count() <= 20_000 {
                         let mut seen = std::collections::HashSet::new();
-                        for t in m.indices.chunks_exact(3) {
+                        for t in m.indices.as_chunks::<3>().0 {
                             for k in 0..3 {
                                 let (i, j) = (t[k] as usize, t[(k + 1) % 3] as usize);
                                 if seen.insert((i.min(j), i.max(j))) {

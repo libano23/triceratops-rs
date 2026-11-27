@@ -335,7 +335,7 @@ pub fn create_command(name: &str) -> Option<Box<dyn Command>> {
         "Pipe" => Box::new(PipeCmd::default()),
         "ExtrudeCrvTapered" => Box::new(ExtrudeTaperedCmd::default()),
         "ExtrudeCrvToPoint" => Box::new(ExtrudeToPointCmd::default()),
-        "ExtendSrf" => Box::new(ExtendSrfCmd),
+        "ExtendSrf" => Box::new(ExtendSrfCmd::default()),
         "Untrim" => Box::new(UntrimCmd),
         "MeshToNURB" => Box::new(MeshToNurbCmd),
         "Ellipsoid" => Box::new(EllipsoidCmd::default()),

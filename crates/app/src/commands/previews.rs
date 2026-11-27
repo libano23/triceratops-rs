@@ -19,6 +19,25 @@ use super::{CmdCtx, Preview, Step};
 /// stutter), and how long a worker job is waited for.
 const BUDGET: Duration = Duration::from_millis(150);
 
+/// The last ghost made for a command: the cursor, how many answers it had, when, and the ghost.
+pub type LastGhost = Option<(DVec3, usize, Instant, Vec<Preview>)>;
+
+/// What a dry run or a trial needs from the context it cannot ask for: the construction plane, the
+/// view and the values the session remembers (the last angle, option states).
+#[derive(Clone)]
+pub struct Ambient {
+    pub cplane: Plane,
+    pub view_dir: DVec3,
+    pub view_eye: DVec3,
+    pub memory: std::collections::HashMap<String, String>,
+}
+
+impl Ambient {
+    pub fn of(ctx: &CmdCtx) -> Ambient {
+        Ambient { cplane: ctx.cplane, view_dir: ctx.view_dir, view_eye: ctx.view_eye, memory: ctx.memory.clone() }
+    }
+}
+
 /// What a distance, radius, factor or angle is measured from.
 pub enum Reference {
     /// A point the user gave: the last point or pick among the answers.
@@ -89,7 +108,7 @@ impl Reference {
     }
 }
 
-fn object_ids(answers: &[Ans]) -> Vec<ObjectId> {
+pub fn object_ids(answers: &[Ans]) -> Vec<ObjectId> {
     answers.iter().flat_map(|a| a.ids()).collect()
 }
 
@@ -127,10 +146,10 @@ pub fn default_answer(ask: &Ask) -> Option<Ans> {
     })
 }
 
-/// A scratch document with copies of the objects the answers name.
-fn scratch_of(doc: &Document, answers: &[Ans]) -> Document {
+/// A scratch document with copies of the objects `ids` name and of the selection.
+fn scratch_of(doc: &Document, ids: &[ObjectId]) -> Document {
     let mut state = tri_doc::State::default();
-    for id in object_ids(answers) {
+    for id in ids.iter().copied() {
         if let Some(o) = doc.get(id) {
             state.objects.insert(id, o.clone());
         }
@@ -162,16 +181,17 @@ pub fn geometry_previews(g: &Geometry) -> Vec<Preview> {
     }
 }
 
-/// Run `finish` on a scratch copy and return what it added or changed as previews. `None` when it
-/// does not finish within the budget or has nothing to show.
-pub fn dry_run(finish: &dyn Fn(&[Ans], &mut CmdCtx) -> Step, answers: &[Ans], doc: &Document, cplane: Plane, view_dir: DVec3, view_eye: DVec3) -> Option<Vec<Preview>> {
+/// Run `step` on a scratch copy of the objects `ids` (and the selection) and return what it added
+/// or changed as previews. `None` when it does not finish within the budget or shows nothing.
+pub fn in_scratch(doc: &Document, ids: &[ObjectId], ambient: &Ambient, step: impl FnOnce(&mut CmdCtx) -> Step) -> Option<Vec<Preview>> {
     let started = Instant::now();
-    let mut scratch = scratch_of(doc, answers);
+    let mut scratch = scratch_of(doc, ids);
     let before: std::collections::HashMap<ObjectId, Geometry> = scratch.objects().map(|o| (o.id, o.geometry.clone())).collect();
-    let (mut log, mut requests, mut memory) = (Vec::new(), Vec::new(), std::collections::HashMap::new());
-    let mut ctx = CmdCtx { doc: &mut scratch, log: &mut log, cplane, view_dir, view_eye, requests: &mut requests, memory: &mut memory };
-    let step = finish(answers, &mut ctx);
-    if let Step::Work(job) = step {
+    let (mut log, mut requests, mut memory) = (Vec::new(), Vec::new(), ambient.memory.clone());
+    let mut ctx = CmdCtx { doc: &mut scratch, log: &mut log, cplane: ambient.cplane, view_dir: ambient.view_dir, view_eye: ambient.view_eye, requests: &mut requests, memory: &mut memory };
+    // a command run half-way with guessed answers may panic: a preview must never take the app down
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| step(&mut ctx))).ok()?;
+    if let Step::Work(job) = result {
         // a worker job (a Boolean, a long mesh operation): wait a little, then give up on it
         let super::Job { token, handle, apply, .. } = job;
         while !handle.is_finished() {
@@ -196,7 +216,69 @@ pub fn dry_run(finish: &dyn Fn(&[Ans], &mut CmdCtx) -> Step, answers: &[Ans], do
     (!out.is_empty()).then_some(out)
 }
 
+/// A sequential command's `finish` run with `answers`.
+pub fn dry_run(finish: &dyn Fn(&[Ans], &mut CmdCtx) -> Step, answers: &[Ans], doc: &Document, ambient: &Ambient) -> Option<Vec<Preview>> {
+    in_scratch(doc, &object_ids(answers), ambient, |ctx| finish(answers, ctx))
+}
+
+/// A command with its own state: a copy of it fed the cursor (as the number or point the pending
+/// question means), on a scratch document.
+pub fn trial_run(cmd: &dyn super::Command, cursor: DVec3, doc: &Document, ambient: &Ambient) -> Option<Vec<Preview>> {
+    let mut copy = cmd.trial()?;
+    let input = match cmd.point_as_number(cursor, doc, ambient) {
+        Some(n) => super::Input::Number(n),
+        None => super::Input::Point(cursor),
+    };
+    in_scratch(doc, &cmd.trial_objects(), ambient, move |ctx| copy.input(input, ctx))
+}
+
 /// The cost of a dry run that took `took`: past the budget the command is no longer previewed.
 pub fn too_slow(took: Duration) -> bool {
     took > BUDGET
+}
+
+/// The distance from `p` to the nearest of the objects: to a curve along the curve, to anything
+/// else to its box (0 inside it).
+pub fn distance_to_objects(ids: &[ObjectId], doc: &Document, p: DVec3) -> f64 {
+    ids.iter()
+        .filter_map(|id| doc.get(*id))
+        .map(|o| match &o.geometry {
+            Geometry::Curve(c) => (c.point_at(c.closest_parameter(p)) - p).length(),
+            g => Reference::Box(g.bounding_box()).distance(p),
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ambient() -> Ambient {
+        Ambient { cplane: Plane::world_xy(), view_dir: -DVec3::Z, view_eye: DVec3::new(0.0, 0.0, 100.0), memory: Default::default() }
+    }
+
+    #[test]
+    fn a_panicking_command_gives_no_ghost_instead_of_taking_the_app_down() {
+        let doc = Document::new();
+        let ghost = in_scratch(&doc, &[], &ambient(), |_ctx| panic!("a command that cannot run on guessed answers"));
+        assert!(ghost.is_none());
+    }
+
+    #[test]
+    fn what_a_command_adds_is_the_ghost_and_the_real_document_is_untouched() {
+        let doc = Document::new();
+        let ghost = in_scratch(&doc, &[], &ambient(), |ctx| {
+            ctx.doc.add(Geometry::Point(DVec3::new(1.0, 2.0, 3.0)));
+            Step::Done
+        })
+        .expect("something was added");
+        assert!(matches!(ghost.as_slice(), [Preview::Point(p)] if *p == DVec3::new(1.0, 2.0, 3.0)));
+        assert_eq!(doc.len(), 0);
+    }
+
+    #[test]
+    fn a_command_that_changes_nothing_has_no_ghost() {
+        let doc = Document::new();
+        assert!(in_scratch(&doc, &[], &ambient(), |_ctx| Step::Done).is_none());
+    }
 }

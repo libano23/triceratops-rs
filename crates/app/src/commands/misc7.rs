@@ -439,6 +439,7 @@ impl Command for MoveFaceCmd {
 
 // ---- ExtrudeSrfToPoint / ExtrudeSrfTapered ----------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct ExtrudeSrfVariantCmd {
     tapered: bool,
     ids: Vec<ObjectId>,
@@ -459,7 +460,7 @@ impl Command for ExtrudeSrfVariantCmd {
             Input::Objects(ids) => {
                 self.ids = ids;
                 if self.tapered {
-                    Prompt::number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).opts([optv("DraftAngle", fmt_num(ctx.mem_num("ExtrudeTapered.Angle", 10.0)))]).step()
+                    Prompt::point_or_number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).opts([optv("DraftAngle", fmt_num(ctx.mem_num("ExtrudeTapered.Angle", 10.0)))]).step()
                 } else {
                     Prompt::point("Point to extrude to").step()
                 }
@@ -503,11 +504,16 @@ impl Command for ExtrudeSrfVariantCmd {
             _ => Step::Cancelled,
         }
     }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The height of a tapered extrusion a click means: its distance from the surfaces.
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        (self.tapered && !self.ids.is_empty()).then(|| super::previews::distance_to_objects(&self.ids, doc, p))
+    }
 }
 
 // ---- OffsetMultiple ------------------------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct OffsetMultipleCmd {
     ids: Vec<ObjectId>,
     distance: f64,
@@ -548,4 +554,5 @@ impl Command for OffsetMultipleCmd {
             _ => Step::Cancelled,
         }
     }
+    ghost_by_trial!(|s| s.ids.clone());
 }

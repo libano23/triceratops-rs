@@ -427,7 +427,7 @@ impl Command for PipeCmd {
 
 // ---- ExtrudeCrvTapered / ExtrudeCrvToPoint ----------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ExtrudeTaperedCmd {
     curves: Vec<ObjectId>,
     angle: f64,
@@ -442,14 +442,14 @@ impl Command for ExtrudeTaperedCmd {
         match input {
             Input::Objects(ids) => {
                 self.curves = ids;
-                Prompt::number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).opts([optv("DraftAngle", fmt_num(self.angle)), optv("Solid", "Yes"), optv("Corners", "Sharp")]).step()
+                Prompt::point_or_number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).opts([optv("DraftAngle", fmt_num(self.angle)), optv("Solid", "Yes"), optv("Corners", "Sharp")]).step()
             }
             Input::Option(o) if o == "DraftAngle" => Prompt::number("Draft angle").default_num(self.angle).step(),
-            Input::Option(_) => Prompt::number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).step(),
+            Input::Option(_) => Prompt::point_or_number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).step(),
             Input::Number(v) if ctx.memory.get("ExtrudeTapered.Asking").is_some() => {
                 ctx.memory.remove("ExtrudeTapered.Asking");
                 self.angle = v;
-                Prompt::number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).step()
+                Prompt::point_or_number("Extrusion distance").default_num(ctx.mem_num("ExtrudeTapered.Distance", 1.0)).step()
             }
             Input::Number(h) => {
                 ctx.mem_set("ExtrudeTapered.Distance", fmt_num(h));
@@ -479,6 +479,13 @@ impl Command for ExtrudeTaperedCmd {
             }
             _ => Step::Cancelled,
         }
+    }
+    ghost_by_trial!(|s| s.curves.clone());
+    /// The extrusion distance a click means: its height over the curve's plane (negative below).
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        let c = curve_of(doc, *self.curves.first()?)?;
+        let n = tri_geom::curve_plane(&c).map_or(DVec3::Z, |pl| pl.z_axis);
+        Some((p - c.start_point()).dot(n))
     }
 }
 
@@ -540,7 +547,11 @@ impl Command for ExtrudeToPointCmd {
 
 // ---- ExtendSrf / Untrim / MeshToNURB ----------------------------------------------------------
 
-pub struct ExtendSrfCmd;
+#[derive(Default, Clone)]
+pub struct ExtendSrfCmd {
+    /// The surface and the spot on its edge that was picked.
+    pick: Option<(ObjectId, DVec3)>,
+}
 
 impl Command for ExtendSrfCmd {
     fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
@@ -549,18 +560,15 @@ impl Command for ExtendSrfCmd {
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
         match input {
             Input::Pick(id, p) => {
-                ctx.mem_set("ExtendSrf.Id", id);
-                ctx.mem_set("ExtendSrf.P", format!("{},{},{}", p.x, p.y, p.z));
-                Prompt::number("Extension factor").default_num(ctx.mem_num("ExtendSrf.Length", 1.0)).step()
+                self.pick = Some((id, p));
+                Prompt::point_or_number("Extension factor").default_num(ctx.mem_num("ExtendSrf.Length", 1.0)).step()
             }
             Input::Number(len) => {
-                let id: ObjectId = ctx.memory.get("ExtendSrf.Id").and_then(|s| s.parse().ok()).unwrap_or(0);
-                let p: Vec<f64> = ctx.memory.get("ExtendSrf.P").map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_default();
+                let Some((id, pick)) = self.pick else { return Step::Cancelled };
                 let Some(Geometry::Surface(s)) = ctx.doc.get(id).map(|o| o.geometry.clone()) else {
                     ctx.log("ExtendSrf works on untrimmed surfaces.");
                     return Step::Cancelled;
                 };
-                let pick = DVec3::new(p[0], p[1], p[2]);
                 ctx.mem_set("ExtendSrf.Length", fmt_num(len));
                 // which side? compare distances to the four boundary curves
                 let (u0, u1) = s.domain_u();
@@ -601,6 +609,11 @@ impl Command for ExtendSrfCmd {
             Input::Option(_) => Prompt::pick("Select edge of surface to extend", ObjFilter::Surface).step(),
             _ => Step::Cancelled,
         }
+    }
+    ghost_by_trial!(|s| s.pick.iter().map(|(id, _)| *id).collect());
+    /// The extension a click means: its distance from the picked spot on the edge.
+    fn point_as_number(&self, p: DVec3, _doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        self.pick.map(|(_, at)| (p - at).length())
     }
 }
 
@@ -682,7 +695,7 @@ pub fn mesh_to_brep(m: &tri_geom::Mesh) -> Option<Brep> {
 
 // ---- solids ------------------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct EllipsoidCmd {
     center: Option<DVec3>,
     radii: Vec<f64>,
@@ -730,6 +743,7 @@ impl Command for EllipsoidCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.center
     }
+    ghost_by_trial!(|_| Vec::new());
 }
 
 pub struct PyramidCmd {
@@ -816,7 +830,7 @@ impl Command for PyramidCmd {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TConeCmd {
     base: Option<DVec3>,
     r1: Option<f64>,
@@ -866,9 +880,10 @@ impl Command for TConeCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.base
     }
+    ghost_by_trial!(|_| Vec::new());
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TubeCmd {
     base: Option<DVec3>,
     r1: Option<f64>,
@@ -931,9 +946,10 @@ impl Command for TubeCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.base
     }
+    ghost_by_trial!(|_| Vec::new());
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SlabCmd {
     curves: Vec<ObjectId>,
     distance: Option<f64>,
@@ -947,12 +963,12 @@ impl Command for SlabCmd {
         match (self.distance, input) {
             (_, Input::Objects(ids)) => {
                 self.curves = ids;
-                Prompt::number("Offset distance").default_num(ctx.mem_num("Slab.Offset", 1.0)).step()
+                Prompt::point_or_number("Offset distance").default_num(ctx.mem_num("Slab.Offset", 1.0)).step()
             }
             (None, Input::Number(d)) => {
                 self.distance = Some(d);
                 ctx.mem_set("Slab.Offset", fmt_num(d));
-                Prompt::number("Height").default_num(ctx.mem_num("Slab.Height", 1.0)).step()
+                Prompt::point_or_number("Height").default_num(ctx.mem_num("Slab.Height", 1.0)).step()
             }
             (Some(d), Input::Number(h)) => {
                 ctx.mem_set("Slab.Height", fmt_num(h));
@@ -978,6 +994,22 @@ impl Command for SlabCmd {
                 add_selected(ctx, "Slab", out)
             }
             _ => Step::Cancelled,
+        }
+    }
+    ghost_by_trial!(|s| s.curves.clone());
+    /// The offset (then the height) a click means: its distance from the curves (then its height
+    /// over their plane).
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        if self.curves.is_empty() {
+            return None;
+        }
+        match self.distance {
+            None => Some(super::previews::distance_to_objects(&self.curves, doc, p)),
+            Some(_) => {
+                let c = curve_of(doc, self.curves[0])?;
+                let n = tri_geom::curve_plane(&c).map_or(DVec3::Z, |pl| pl.z_axis);
+                Some((p - c.start_point()).dot(n))
+            }
         }
     }
 }

@@ -5,7 +5,6 @@ use tri_doc::{Document, Geometry, Object, ObjectId};
 use tri_geom::{curve_curve_intersections, mesh_ops, NurbsCurve};
 
 use super::{fmt_num, opt, AppRequest, CmdCtx, Command, Input, ObjFilter, Opt, Preview, Prompt, Step};
-use tri_geom::Plane;
 
 /// A command that only prints a message (features that have no equivalent in triceratops).
 pub struct MsgCmd(pub &'static str);
@@ -110,9 +109,9 @@ pub struct SeqCmd {
     in_then: bool,
     previewer: Option<Previewer>,
     /// The context a dry run needs and the preview cannot ask for.
-    ambient: Option<(Plane, DVec3, DVec3)>,
+    ambient: Option<super::previews::Ambient>,
     /// The last dry run (cursor, answers, when, result): the window asks every frame.
-    last_dry: std::cell::RefCell<Option<(DVec3, usize, std::time::Instant, Vec<Preview>)>>,
+    last_dry: std::cell::RefCell<super::previews::LastGhost>,
     /// Set once a dry run was too slow: the command is not previewed again.
     dry_off: std::cell::Cell<bool>,
 }
@@ -160,7 +159,7 @@ impl SeqCmd {
 
 impl Command for SeqCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
-        self.ambient = Some((ctx.cplane, ctx.view_dir, ctx.view_eye));
+        self.ambient = Some(super::previews::Ambient::of(ctx));
         self.next(ctx)
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
@@ -170,6 +169,7 @@ impl Command for SeqCmd {
                 None => Step::Done,
             };
         }
+        self.ambient = Some(super::previews::Ambient::of(ctx));
         let Some(ask) = self.asks.get(self.answers.len()).cloned() else { return Step::Cancelled };
         let ans = match (&ask, input) {
             (Ask::Objects(..), Input::Objects(ids)) => {
@@ -195,6 +195,7 @@ impl Command for SeqCmd {
             _ => return Step::Cancelled,
         };
         self.answers.push(ans);
+        self.ambient = Some(super::previews::Ambient::of(ctx));
         self.next(ctx)
     }
     fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
@@ -232,7 +233,8 @@ impl SeqCmd {
             return Vec::new();
         }
         let n = self.answers.len();
-        let (Some(ask), Some((cplane, view_dir, view_eye))) = (self.asks.get(n), self.ambient) else { return Vec::new() };
+        let (Some(ask), Some(ambient)) = (self.asks.get(n), self.ambient.as_ref()) else { return Vec::new() };
+        let cplane = ambient.cplane;
         let Some(first) = super::previews::candidate(ask, &self.answers, doc, cursor, &cplane) else { return Vec::new() };
         // the same cursor, or a recent answer: reuse it (the window asks every frame)
         #[cfg(not(test))]
@@ -253,7 +255,7 @@ impl SeqCmd {
             }
         }
         let started = std::time::Instant::now();
-        let ghost = super::previews::dry_run(self.finish.as_ref(), &answers, doc, cplane, view_dir, view_eye);
+        let ghost = super::previews::dry_run(self.finish.as_ref(), &answers, doc, ambient);
         if super::previews::too_slow(started.elapsed()) {
             self.dry_off.set(true);
         }
