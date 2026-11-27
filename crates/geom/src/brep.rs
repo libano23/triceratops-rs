@@ -4,6 +4,7 @@
 use glam::{DAffine3, DVec2, DVec3};
 use serde::{Deserialize, Serialize};
 
+use crate::exact::ExactBody;
 use crate::{BoundingBox, Mesh, NurbsCurve, NurbsSurface, Plane, Result, GeomError};
 
 /// A surface with optional trim loops in parameter space. The first loop is the
@@ -690,13 +691,32 @@ pub struct Brep {
     pub faces: Vec<Face>,
     #[serde(default)]
     pub closed: bool,
+    /// The solidcore body this solid was made as, trusted only while it matches `faces`
+    /// ([`Brep::exact_valid`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact: Option<ExactBody>,
 }
 
 impl Brep {
     pub fn new(faces: Vec<Face>) -> Self {
-        let mut b = Self { faces, closed: false };
+        let mut b = Self { faces, closed: false, exact: None };
         b.closed = b.compute_closed();
         b
+    }
+
+    /// Hash of the geometry of the faces ([`crate::exact::fingerprint`]).
+    pub fn fingerprint(&self) -> u64 {
+        crate::exact::fingerprint(&self.faces, self.closed)
+    }
+
+    /// The exact body, only if it still matches the faces it was made with.
+    pub fn exact_valid(&self) -> Option<&ExactBody> {
+        self.exact.as_ref().filter(|e| e.faces_fingerprint == self.fingerprint())
+    }
+
+    /// Attach `record` as the exact body of these faces as they are now.
+    pub fn attach_exact(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>) {
+        self.exact = Some(ExactBody { record, faces_fingerprint: self.fingerprint() });
     }
 
     pub fn from_surfaces(surfaces: Vec<NurbsSurface>) -> Self {
@@ -809,6 +829,7 @@ impl Brep {
     }
 
     pub fn transform(&mut self, xf: &DAffine3) {
+        self.exact = None;
         for f in self.faces.iter_mut() {
             f.transform(xf);
         }
@@ -984,6 +1005,82 @@ pub fn distance_to_polyline_skipping_pub(p: DVec3, poly: &[DVec3], skip: usize, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dummy_record() -> std::sync::Arc<solidcore_record::brep::Brep> {
+        std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn exact_valid_until_faces_change() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        assert!(b.exact.is_none() && b.exact_valid().is_none());
+        b.attach_exact(dummy_record());
+        assert!(b.exact_valid().is_some());
+        b.faces[0].surface.control_points[0].x += 1e-9;
+        assert!(b.exact_valid().is_none(), "an in-place face edit must invalidate the exact body");
+    }
+
+    #[test]
+    fn exact_valid_ignores_nothing_a_face_edit_can_touch() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        let ok = b.clone();
+        let mut w = b.clone();
+        w.faces[1].surface.weights[0] *= 1.0000001;
+        let mut k = b.clone();
+        k.faces[2].surface.knots_u[0] -= 0.5;
+        let mut l = b.clone();
+        l.faces[3].loops.push(vec![DVec2::new(0.1, 0.1), DVec2::new(0.2, 0.1), DVec2::new(0.2, 0.2)]);
+        let mut n = b.clone();
+        n.faces.pop();
+        assert!(ok.exact_valid().is_some());
+        for (name, m) in [("weight", w), ("knot", k), ("loop", l), ("face count", n)] {
+            assert!(m.exact_valid().is_none(), "{name} edit not detected");
+        }
+    }
+
+    #[test]
+    fn transform_drops_the_exact_body() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert!(b.exact.is_none());
+    }
+
+    #[test]
+    fn exact_survives_a_serde_roundtrip() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        let json = serde_json::to_string(&b).unwrap();
+        let back: Brep = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, b);
+        assert!(back.exact_valid().is_some());
+    }
+
+    #[test]
+    fn json_without_exact_still_loads() {
+        let b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        let mut v = serde_json::to_value(&b).unwrap();
+        v.as_object_mut().unwrap().remove("exact");
+        let back: Brep = serde_json::from_value(v).unwrap();
+        assert!(back.exact.is_none());
+        assert_eq!(back.faces, b.faces);
+    }
+
+    #[test]
+    fn fingerprint_is_stable_across_runs() {
+        // pinned: the value is stored in documents, so it must not change with the toolchain
+        let b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        assert_eq!(b.fingerprint(), 15843823923039428258_u64, "the fingerprint changed: stored documents would lose their exact bodies");
+    }
 
     #[test]
     fn box_normals_outward_and_closed() {

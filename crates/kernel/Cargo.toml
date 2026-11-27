@@ -11,6 +11,6 @@ solidcore = ["dep:solidcore-ops", "dep:solidcore-record", "dep:solidcore-tess"]
 [dependencies]
 glam.workspace = true
 tri-geom = { path = "../geom" }
-solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97", optional = true }
-solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97", optional = true }
-solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97", optional = true }
+solidcore-ops = { workspace = true, optional = true }
+solidcore-record = { workspace = true, optional = true }
+solidcore-tess = { workspace = true, optional = true }

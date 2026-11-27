@@ -12,6 +12,7 @@ pub mod brep_boolean_exact;
 pub mod curve;
 pub mod curve_ops;
 pub mod display_mesh;
+pub mod exact;
 pub mod job;
 pub mod mesh;
 pub mod mesh_csg;

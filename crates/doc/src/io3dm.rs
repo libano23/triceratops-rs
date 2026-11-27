@@ -75,7 +75,7 @@ fn to_geometry(g: &on3dm::Geometry) -> Option<Geometry> {
             if out.len() == 1 && !out[0].is_trimmed() {
                 Geometry::Surface(out.pop().unwrap().surface)
             } else {
-                let mut b = Brep { faces: out, closed: *solid };
+                let mut b = Brep { faces: out, closed: *solid, exact: None };
                 if !*solid {
                     b.closed = b.compute_closed();
                 }

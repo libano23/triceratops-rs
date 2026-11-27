@@ -8,6 +8,10 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
+# one pin for every solidcore crate (docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md)
+solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97" }
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97" }
+solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "85298b6c435a64def982c944ccee213d94feeb97" }
 glam = { version = "0.30", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }

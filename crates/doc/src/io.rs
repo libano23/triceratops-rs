@@ -257,4 +257,51 @@ mod tests {
         assert_eq!(import_obj(&mut d2, &obj).unwrap(), 2);
         std::fs::remove_dir_all(dir).ok();
     }
+
+    #[test]
+    fn exact_body_survives_save_and_load_and_old_files_still_open() {
+        let mut brep = tri_geom::Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        brep.attach_exact(std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        }));
+        let mut d = Document::new();
+        let id = d.add(Geometry::Brep(brep));
+        let dir = std::env::temp_dir().join(format!("triceratops-exact-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("e.tri");
+        save(&d, &p).unwrap();
+        let (state, _) = load(&p).unwrap();
+        match &state.objects[&id].geometry {
+            Geometry::Brep(b) => assert!(b.exact_valid().is_some()),
+            other => panic!("not a brep: {other:?}"),
+        }
+        // the same file written by a version that had no `exact` field
+        let text = std::fs::read_to_string(&p).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        fn strip(v: &mut serde_json::Value) {
+            match v {
+                serde_json::Value::Object(m) => {
+                    m.remove("exact");
+                    m.values_mut().for_each(strip);
+                }
+                serde_json::Value::Array(a) => a.iter_mut().for_each(strip),
+                _ => {}
+            }
+        }
+        strip(&mut v);
+        let old = dir.join("old.tri");
+        std::fs::write(&old, serde_json::to_string(&v).unwrap()).unwrap();
+        let (state, _) = load(&old).unwrap();
+        match &state.objects[&id].geometry {
+            Geometry::Brep(b) => assert!(b.exact.is_none() && b.faces.len() == 6),
+            other => panic!("not a brep: {other:?}"),
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
 }
