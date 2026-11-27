@@ -377,7 +377,10 @@ taken from `CHANGELOG.md`: the AppImage downloads, verifies (size and SHA-256) a
 replaces itself, then restarts; Windows downloads the zip to Downloads. Nothing about the
 user is sent; `TRICERATOPS_NO_UPDATE_CHECK=1` or the option turns the check off.
 
-## Exact solids (experimental, cargo feature `kernel-solidcore`)
+## Exact solids (experimental, cargo feature `kernel-solidcore`, on by default)
+
+The feature is on by default in the development tree (for 0.5.0); `cargo build --no-default-features`
+builds without it. Releases up to 0.4.1 were built without.
 
 Design: `docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md`; plan:
 `docs/superpowers/plans/2026-11-27-solidcore-kernel.md`.
