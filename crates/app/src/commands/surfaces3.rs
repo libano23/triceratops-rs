@@ -154,7 +154,7 @@ pub fn create_solid() -> SeqCmd {
 }
 
 pub fn chamfer_srf() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select first planar surface", ObjFilter::Surface), Ask::Pick("Select second planar surface", ObjFilter::Surface), Ask::Number("Chamfer distance", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select first planar surface", ObjFilter::Surface), Ask::Pick("Select second planar surface", ObjFilter::Surface), Ask::Distance("Chamfer distance", 1.0)], |a, ctx| {
         let (Ans::Pick(ida, pa), Ans::Pick(idb, pb)) = (&a[0], &a[1]) else { return Step::Cancelled };
         let d = a[2].number().abs();
         let (Some(fa), Some(fb)) = (faces_of(ctx.doc, *ida), faces_of(ctx.doc, *idb)) else { return Step::Cancelled };
@@ -496,7 +496,7 @@ pub fn drape(points_only: bool) -> SeqCmd {
 }
 
 pub fn heightfield() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Text("Image file"), Ask::Point("First corner"), Ask::Point("Other corner"), Ask::Number("Height", 5.0), Ask::Number("Samples per side", 40.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Text("Image file"), Ask::Point("First corner"), Ask::Point("Other corner"), Ask::Distance("Height", 5.0), Ask::Number("Samples per side", 40.0)], |a, ctx| {
         let path = a[0].text();
         let Ok(img) = image::open(&path) else {
             ctx.log(format!("Unable to read image {path}."));
@@ -575,7 +575,7 @@ pub fn flow_along_srf(label: &'static str) -> SeqCmd {
 }
 
 pub fn scale_by_plane() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select objects", ObjFilter::Any, 1), Ask::Point("Origin"), Ask::Number("X scale factor", 1.0), Ask::Number("Y scale factor", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select objects", ObjFilter::Any, 1), Ask::Point("Origin"), Ask::Factor("X scale factor", 1.0), Ask::Factor("Y scale factor", 1.0)], |a, ctx| {
         let cp = ctx.cplane;
         let o = a[1].point();
         let (sx, sy) = (a[2].number(), a[3].number());
@@ -590,7 +590,7 @@ pub fn scale_by_plane() -> SeqCmd {
 }
 
 pub fn scale_positions() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select objects", ObjFilter::Any, 2), Ask::Point("Base point"), Ask::Number("Scale factor", 2.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select objects", ObjFilter::Any, 2), Ask::Point("Base point"), Ask::Factor("Scale factor", 2.0)], |a, ctx| {
         let base = a[1].point();
         let s = a[2].number();
         ctx.doc.begin_undo("ScalePositions");
@@ -748,7 +748,7 @@ pub fn rail_revolve() -> SeqCmd {
 }
 
 pub fn fold_face() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select planar face to fold", ObjFilter::Polysurface), Ask::Point("Start of fold axis"), Ask::Point("End of fold axis"), Ask::Number("Angle", 30.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select planar face to fold", ObjFilter::Polysurface), Ask::Point("Start of fold axis"), Ask::Point("End of fold axis"), Ask::Angle("Angle", 30.0)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(faces) = faces_of(ctx.doc, *id) else { return Step::Cancelled };
         let fi = face_under(&faces, *p);
@@ -1320,7 +1320,7 @@ pub fn boss_rib(rib: bool) -> SeqCmd {
 }
 
 pub fn ribbon_offset() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select closed planar curves", ObjFilter::Curve, 1), Ask::Number("Offset distance", 1.0), Ask::Number("Height", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select closed planar curves", ObjFilter::Curve, 1), Ask::Distance("Offset distance", 1.0), Ask::Distance("Height", 1.0)], |a, ctx| {
         let (d, h) = (a[1].number(), a[2].number());
         let tol = ctx.doc.settings.absolute_tolerance.max(1e-6);
         let mut out = Vec::new();
@@ -1453,7 +1453,7 @@ pub fn edge_continuity() -> SeqCmd {
 }
 
 pub fn point_cloud_section(contour: bool) -> SeqCmd {
-    let asks = if contour { vec![Ask::Objects("Select points", ObjFilter::Point, 3), Ask::Point("Contour base point"), Ask::Point("Contour direction"), Ask::Number("Distance between contours", 1.0)] } else { vec![Ask::Objects("Select points", ObjFilter::Point, 3), Ask::Point("First point on section plane"), Ask::Point("Second point on section plane")] };
+    let asks = if contour { vec![Ask::Objects("Select points", ObjFilter::Point, 3), Ask::Point("Contour base point"), Ask::Point("Contour direction"), Ask::Distance("Distance between contours", 1.0)] } else { vec![Ask::Objects("Select points", ObjFilter::Point, 3), Ask::Point("First point on section plane"), Ask::Point("Second point on section plane")] };
     SeqCmd::new(asks, move |a, ctx| {
         let pts: Vec<DVec3> = a[0].ids().iter().filter_map(|id| ctx.doc.get(*id)).filter_map(|o| if let Geometry::Point(p) = o.geometry { Some(p) } else { None }).collect();
         let cp = ctx.cplane;
@@ -1494,7 +1494,7 @@ pub fn point_cloud_section(contour: bool) -> SeqCmd {
 }
 
 pub fn sphere_tangent_three() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select first planar surface", ObjFilter::Surface), Ask::Pick("Select second planar surface", ObjFilter::Surface), Ask::Pick("Select third planar surface", ObjFilter::Surface), Ask::Number("Radius", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select first planar surface", ObjFilter::Surface), Ask::Pick("Select second planar surface", ObjFilter::Surface), Ask::Pick("Select third planar surface", ObjFilter::Surface), Ask::Radius("Radius", 1.0)], |a, ctx| {
         let mut planes = Vec::new();
         for k in 0..3 {
             let Ans::Pick(id, p) = &a[k] else { return Step::Cancelled };
@@ -1641,7 +1641,7 @@ pub fn extract_piped_curve() -> SeqCmd {
 }
 
 pub fn draft_angle_point() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select surface", ObjFilter::Surface), Ask::Number("Draft angle (degrees)", 10.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select surface", ObjFilter::Surface), Ask::Angle("Draft angle (degrees)", 10.0)], |a, ctx| {
         let Some(faces) = faces_of(ctx.doc, a[0].ids()[0]) else { return Step::Cancelled };
         let up = ctx.cplane.z_axis;
         let target = a[1].number().to_radians();

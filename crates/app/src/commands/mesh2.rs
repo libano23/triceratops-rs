@@ -345,7 +345,7 @@ pub fn reduce_mesh() -> SeqCmd {
 }
 
 pub fn align_vertices() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select meshes", ObjFilter::Mesh, 1), Ask::Number("Distance", 0.01)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select meshes", ObjFilter::Mesh, 1), Ask::Distance("Distance", 0.01)], |a, ctx| {
         let tol = a[1].number().abs().max(1e-12);
         ctx.doc.begin_undo("AlignVertices");
         for id in a[0].ids() {

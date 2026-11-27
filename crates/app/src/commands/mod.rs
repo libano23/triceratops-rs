@@ -6,6 +6,7 @@
 //! docs/ui-reference.md.
 
 pub mod create;
+pub mod previews;
 pub mod exact_solids;
 pub mod curve2;
 pub mod curve_edit;
@@ -526,6 +527,8 @@ pub enum Preview {
     Curve(NurbsCurve),
     Surface(NurbsSurface),
     Brep(Brep),
+    /// A mesh result (the ghost of a mesh operation): drawn as its edges.
+    Mesh(tri_geom::Mesh),
     Point(DVec3),
 }
 

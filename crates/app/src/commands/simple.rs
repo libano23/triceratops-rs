@@ -5,6 +5,7 @@ use tri_doc::{Document, Geometry, Object, ObjectId};
 use tri_geom::{curve_curve_intersections, mesh_ops, NurbsCurve};
 
 use super::{fmt_num, opt, AppRequest, CmdCtx, Command, Input, ObjFilter, Opt, Preview, Prompt, Step};
+use tri_geom::Plane;
 
 /// A command that only prints a message (features that have no equivalent in triceratops).
 pub struct MsgCmd(pub &'static str);
@@ -38,6 +39,15 @@ pub enum Ask {
     Pick(&'static str, ObjFilter),
     Point(&'static str),
     PointOrNumber(&'static str, f64),
+    /// A length in model space measured from the objects (or the point) already answered: a
+    /// clicked point answers it, and the result follows the cursor as a ghost.
+    Distance(&'static str, f64),
+    /// A radius measured from the centre of what was answered (or the point given).
+    Radius(&'static str, f64),
+    /// A scale factor: the cursor's distance from the centre in units of half the objects' size.
+    Factor(&'static str, f64),
+    /// An angle in degrees: the direction of the cursor from the centre, in the construction plane.
+    Angle(&'static str, f64),
     Number(&'static str, f64),
     Text(&'static str),
     Options(&'static str, Vec<Opt>),
@@ -99,11 +109,17 @@ pub struct SeqCmd {
     then: Option<Continuation>,
     in_then: bool,
     previewer: Option<Previewer>,
+    /// The context a dry run needs and the preview cannot ask for.
+    ambient: Option<(Plane, DVec3, DVec3)>,
+    /// The last dry run (cursor, answers, when, result): the window asks every frame.
+    last_dry: std::cell::RefCell<Option<(DVec3, usize, std::time::Instant, Vec<Preview>)>>,
+    /// Set once a dry run was too slow: the command is not previewed again.
+    dry_off: std::cell::Cell<bool>,
 }
 
 impl SeqCmd {
     pub fn new(asks: Vec<Ask>, finish: impl Fn(&[Ans], &mut CmdCtx) -> Step + 'static) -> Self {
-        Self { asks, answers: Vec::new(), finish: Box::new(finish), clear_selection_after_objects: true, then: None, in_then: false, previewer: None }
+        Self { asks, answers: Vec::new(), finish: Box::new(finish), clear_selection_after_objects: true, then: None, in_then: false, previewer: None, ambient: None, last_dry: std::cell::RefCell::new(None), dry_off: std::cell::Cell::new(false) }
     }
     /// Show a ghost of the result while a question is pending: `f` gets the answers so far and
     /// the cursor, as the answer the next click would give. A distance asked in model space
@@ -122,7 +138,7 @@ impl SeqCmd {
             Ask::Objects(m, f, n) => Prompt::objects(*m, *f, *n),
             Ask::Pick(m, f) => Prompt::pick(*m, *f),
             Ask::Point(m) => Prompt::point(*m),
-            Ask::PointOrNumber(m, d) => Prompt::point_or_number(*m).default_num(*d),
+            Ask::PointOrNumber(m, d) | Ask::Distance(m, d) | Ask::Radius(m, d) | Ask::Factor(m, d) | Ask::Angle(m, d) => Prompt::point_or_number(*m).default_num(*d),
             Ask::Number(m, d) => Prompt::number(*m).default_num(*d),
             Ask::Text(m) => Prompt::text(*m),
             Ask::Options(m, o) => Prompt::options(*m).opts(o.clone()),
@@ -144,6 +160,7 @@ impl SeqCmd {
 
 impl Command for SeqCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
+        self.ambient = Some((ctx.cplane, ctx.view_dir, ctx.view_eye));
         self.next(ctx)
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
@@ -163,8 +180,13 @@ impl Command for SeqCmd {
             }
             (Ask::Pick(..), Input::Pick(id, p)) => Ans::Pick(id, p),
             (Ask::Point(_), Input::Point(p)) | (Ask::PointOrNumber(..), Input::Point(p)) => Ans::Point(p),
-            (Ask::Number(..), Input::Number(n)) | (Ask::PointOrNumber(..), Input::Number(n)) => Ans::Number(n),
-            (Ask::Number(_, d), Input::Empty) | (Ask::PointOrNumber(_, d), Input::Empty) => Ans::Number(*d),
+            // a point answers a distance, radius, factor or angle by where it lies
+            (Ask::Distance(..) | Ask::Radius(..) | Ask::Factor(..) | Ask::Angle(..), Input::Point(p)) => match super::previews::number_from_point(&ask, &self.answers, ctx.doc, p, &ctx.cplane) {
+                Some(n) => Ans::Number(n),
+                None => return Step::Cancelled,
+            },
+            (Ask::Number(..) | Ask::PointOrNumber(..) | Ask::Distance(..) | Ask::Radius(..) | Ask::Factor(..) | Ask::Angle(..), Input::Number(n)) => Ans::Number(n),
+            (Ask::Number(_, d) | Ask::PointOrNumber(_, d) | Ask::Distance(_, d) | Ask::Radius(_, d) | Ask::Factor(_, d) | Ask::Angle(_, d), Input::Empty) => Ans::Number(*d),
             (Ask::Text(_), Input::Text(t)) => Ans::Text(t),
             (Ask::Text(_), Input::Empty) => Ans::Text(String::new()),
             (Ask::Options(..), Input::Option(o)) => Ans::Option(o),
@@ -184,13 +206,60 @@ impl Command for SeqCmd {
                 }
             }
         }
-        match (self.answers.last(), cursor) {
-            (Some(a), Some(c)) if matches!(a, Ans::Point(_)) && matches!(self.asks.get(self.answers.len()), Some(Ask::Point(_)) | Some(Ask::PointOrNumber(..))) => vec![Preview::Line(a.point(), c)],
-            _ => vec![],
+        let mut out = Vec::new();
+        if let (Some(Ans::Point(a)), Some(c)) = (self.answers.last(), cursor) {
+            if matches!(self.asks.get(self.answers.len()), Some(Ask::Point(_)) | Some(Ask::PointOrNumber(..))) {
+                out.push(Preview::Line(*a, c));
+            }
         }
+        if let Some(c) = cursor {
+            out.extend(self.dry_preview(c, doc));
+        }
+        out
     }
     fn base_point(&self) -> Option<DVec3> {
         self.answers.iter().rev().find_map(|a| if let Ans::Point(p) = a { Some(*p) } else { None })
+    }
+}
+
+impl SeqCmd {
+    /// The command run for real on a scratch copy with the cursor as the pending answer: what it
+    /// would add or change, as a ghost. Only for a question the mouse answers, and only when the
+    /// rest of the questions have defaults.
+    fn dry_preview(&self, cursor: DVec3, doc: &Document) -> Vec<Preview> {
+        // a command's own previewer wins (PushPull's ghost is not its result)
+        if self.previewer.is_some() || self.in_then || self.dry_off.get() {
+            return Vec::new();
+        }
+        let n = self.answers.len();
+        let (Some(ask), Some((cplane, view_dir, view_eye))) = (self.asks.get(n), self.ambient) else { return Vec::new() };
+        let Some(first) = super::previews::candidate(ask, &self.answers, doc, cursor, &cplane) else { return Vec::new() };
+        // the same cursor, or a recent answer: reuse it (the window asks every frame)
+        #[cfg(not(test))]
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
+        #[cfg(test)]
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::ZERO;
+        if let Some((c, k, at, ghost)) = &*self.last_dry.borrow() {
+            if *k == n && ((*c - cursor).length() < 1e-9 || at.elapsed() < MIN_INTERVAL) {
+                return ghost.clone();
+            }
+        }
+        let mut answers = self.answers.clone();
+        answers.push(first);
+        for later in &self.asks[n + 1..] {
+            match super::previews::default_answer(later) {
+                Some(a) => answers.push(a),
+                None => return Vec::new(), // a later pick or point cannot be guessed
+            }
+        }
+        let started = std::time::Instant::now();
+        let ghost = super::previews::dry_run(self.finish.as_ref(), &answers, doc, cplane, view_dir, view_eye);
+        if super::previews::too_slow(started.elapsed()) {
+            self.dry_off.set(true);
+        }
+        let ghost = ghost.unwrap_or_default();
+        *self.last_dry.borrow_mut() = Some((cursor, n, std::time::Instant::now(), ghost.clone()));
+        ghost
     }
 }
 

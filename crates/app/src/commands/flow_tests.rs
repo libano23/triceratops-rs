@@ -2601,3 +2601,54 @@ fn pipe_ghosts_the_pipe_at_the_cursors_distance_and_a_click_answers_the_radius()
     let want = std::f64::consts::PI * 9.0 * 20.0;
     assert!((v - want).abs() < want * 0.02, "pipe volume {v} vs {want}");
 }
+
+#[test]
+fn a_command_that_already_took_a_point_ghosts_its_result_without_changes() {
+    // TruncatedPyramid asked its height as point-or-number; the dry run shows the solid at the cursor
+    let mut h = Harness::new();
+    h.start("TruncatedPyramid");
+    h.point(0.0, 0.0, 0.0);
+    h.point(5.0, 0.0, 0.0);
+    h.number(4.0);
+    let boxes = preview_boxes(&h, DVec3::new(0.0, 0.0, 8.0));
+    assert_eq!(boxes.len(), 1, "one ghost solid");
+    assert!((boxes[0].max.z - 8.0).abs() < 1e-6, "the ghost is as high as the cursor: {}", boxes[0].max.z);
+    assert!((boxes[0].min.z).abs() < 1e-6);
+    assert_eq!(h.doc.len(), 0, "a preview must not touch the document");
+}
+
+#[test]
+fn modify_radius_takes_a_click_and_ghosts_the_new_radius() {
+    let mut h = Harness::new();
+    h.start("Circle");
+    h.point(0.0, 0.0, 0.0);
+    h.number(2.0);
+    let cid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ModifyRadius");
+    h.ctx(|r, c| r.feed(Input::Pick(cid, DVec3::new(2.0, 0.0, 0.0)), c));
+    let ghost = h.runner.preview(Some(DVec3::new(6.0, 0.0, 0.0)), &h.doc);
+    let radii: Vec<f64> = ghost.iter().filter_map(|p| if let Preview::Curve(c) = p { Some(c.bounding_box().max.x) } else { None }).collect();
+    assert_eq!(radii.len(), 1, "one ghost circle: {}", ghost.len());
+    assert!((radii[0] - 6.0).abs() < 1e-6, "ghost radius {}", radii[0]);
+    assert_eq!(h.doc.get(cid).unwrap().geometry.bounding_box().max.x.round(), 2.0, "the circle itself is untouched");
+    h.point(6.0, 0.0, 0.0);
+    let bb = h.doc.get(cid).unwrap().geometry.bounding_box();
+    assert!((bb.max.x - 6.0).abs() < 1e-6, "the click answered the radius: {}", bb.max.x);
+}
+
+#[test]
+fn offset_subd_ghosts_the_mesh_at_the_cursors_distance() {
+    let mut h = Harness::new();
+    let mid = h.doc.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::ZERO, DVec3::new(10.0, 10.0, 10.0))));
+    h.doc.clear_selection();
+    h.start("OffsetSubD");
+    h.objects(vec![mid]);
+    let ghost_at = |h: &Harness, y: f64| h.runner.preview(Some(DVec3::new(5.0, y, 5.0)), &h.doc);
+    let meshes = |g: &[Preview]| g.iter().filter_map(|p| if let Preview::Mesh(m) = p { Some(m.clone()) } else { None }).collect::<Vec<_>>();
+    let (near, far) = (meshes(&ghost_at(&h, -1.0)), meshes(&ghost_at(&h, -3.0)));
+    assert!(!near.is_empty() && !far.is_empty(), "a ghost mesh at each distance");
+    let ext = |m: &tri_geom::Mesh| m.vertices.iter().fold(f64::MAX, |a, v| a.min(v.y));
+    assert!(ext(&far[0]) < ext(&near[0]) - 1.0, "the ghost follows the cursor's distance: {} vs {}", ext(&near[0]), ext(&far[0]));
+    assert_eq!(h.doc.len(), 1, "the document is untouched");
+}
