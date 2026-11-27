@@ -91,7 +91,7 @@ impl Command for PullCmd {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct FinCmd {
     curves: Vec<ObjectId>,
     surface: Option<ObjectId>,
@@ -110,7 +110,7 @@ impl Command for FinCmd {
             }
             (None, Input::Pick(id, _)) => {
                 self.surface = Some(id);
-                Prompt::number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).opts([optv("Direction", "Normal"), optv("BothSides", "No")]).step()
+                Prompt::point_or_number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).opts([optv("Direction", "Normal"), optv("BothSides", "No")]).step()
             }
             (Some(sid), Input::Number(d)) => {
                 ctx.mem_set("Fin.Distance", fmt_num(d));
@@ -128,9 +128,14 @@ impl Command for FinCmd {
                 }
                 add_all(ctx, "Fin", out)
             }
-            (_, Input::Option(_)) => Prompt::number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).step(),
+            (_, Input::Option(_)) => Prompt::point_or_number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).step(),
             _ => Step::Cancelled,
         }
+    }
+    ghost_by_trial!(|s| s.curves.iter().copied().chain(s.surface).collect());
+    /// The fin's height a click means: its distance from the curves (once the surface is picked).
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        self.surface.map(|_| super::previews::distance_to_objects(&self.curves, doc, p))
     }
 }
 
@@ -368,7 +373,7 @@ fn deform(g: &mut Geometry, f: &dyn Fn(DVec3) -> DVec3) {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MaelstromCmd {
     ids: Vec<ObjectId>,
     center: Option<DVec3>,
@@ -395,7 +400,7 @@ impl Command for MaelstromCmd {
                 if self.radii.len() < 2 {
                     return Prompt::point_or_number("Second radius").default_num(r * 2.0).step();
                 }
-                Prompt::number("Rotation angle in degrees").default_num(ctx.mem_num("Maelstrom.Angle", 90.0)).step()
+                Prompt::point_or_number("Rotation angle in degrees").default_num(ctx.mem_num("Maelstrom.Angle", 90.0)).step()
             }
             _ => Step::Cancelled,
         }
@@ -408,6 +413,15 @@ impl Command for MaelstromCmd {
     }
     fn base_point(&self) -> Option<DVec3> {
         self.center
+    }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The rotation a click means: the direction of the cursor from the centre in the construction plane.
+    fn point_as_number(&self, p: DVec3, _doc: &Document, ambient: &super::previews::Ambient) -> Option<f64> {
+        let c = self.center?;
+        (self.radii.len() >= 2).then(|| {
+            let d = p - c;
+            d.dot(ambient.cplane.y_axis).atan2(d.dot(ambient.cplane.x_axis)).to_degrees()
+        })
     }
 }
 
@@ -454,6 +468,15 @@ impl Command for MaelstromWrap {
     }
     fn base_point(&self) -> Option<DVec3> {
         self.0.base_point()
+    }
+    fn trial(&self) -> Option<Box<dyn Command>> {
+        Some(Box::new(MaelstromWrap(self.0.clone())))
+    }
+    fn trial_objects(&self) -> Vec<ObjectId> {
+        self.0.trial_objects()
+    }
+    fn point_as_number(&self, p: DVec3, doc: &Document, ambient: &super::previews::Ambient) -> Option<f64> {
+        self.0.point_as_number(p, doc, ambient)
     }
 }
 

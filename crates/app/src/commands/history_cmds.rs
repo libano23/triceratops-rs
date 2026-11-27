@@ -265,7 +265,7 @@ pub fn move_hole() -> SeqCmd {
 }
 
 pub fn rotate_hole() -> SeqCmd {
-    hole_xf("RotateHole", vec![Ask::Point("Center of rotation"), Ask::Number("Angle", 90.0)], false, |a, ctx| {
+    hole_xf("RotateHole", vec![Ask::Point("Center of rotation"), Ask::Angle("Angle", 90.0)], false, |a, ctx| {
         let c = a[1].point();
         vec![DAffine3::from_translation(c) * DAffine3::from_quat(DQuat::from_axis_angle(ctx.cplane.z_axis, a[2].number().to_radians())) * DAffine3::from_translation(-c)]
     })
@@ -281,7 +281,7 @@ pub fn mirror_hole() -> SeqCmd {
 }
 
 pub fn array_hole() -> SeqCmd {
-    hole_xf("ArrayHole", vec![Ask::Number("Number in X", 3.0), Ask::Number("Number in Y", 1.0), Ask::Number("X spacing", 5.0), Ask::Number("Y spacing", 5.0)], true, |a, ctx| {
+    hole_xf("ArrayHole", vec![Ask::Number("Number in X", 3.0), Ask::Number("Number in Y", 1.0), Ask::Distance("X spacing", 5.0), Ask::Distance("Y spacing", 5.0)], true, |a, ctx| {
         let (nx, ny) = (a[1].number().round().max(1.0) as usize, a[2].number().round().max(1.0) as usize);
         let (dx, dy) = (a[3].number(), a[4].number());
         let mut out = Vec::new();
@@ -298,7 +298,7 @@ pub fn array_hole() -> SeqCmd {
 }
 
 pub fn array_hole_polar() -> SeqCmd {
-    hole_xf("ArrayHolePolar", vec![Ask::Point("Center of polar array"), Ask::Number("Number of items", 4.0), Ask::Number("Angle to fill", 360.0)], true, |a, ctx| {
+    hole_xf("ArrayHolePolar", vec![Ask::Point("Center of polar array"), Ask::Number("Number of items", 4.0), Ask::Angle("Angle to fill", 360.0)], true, |a, ctx| {
         let c = a[1].point();
         let n = a[2].number().round().max(1.0) as usize;
         let total = a[3].number().to_radians();

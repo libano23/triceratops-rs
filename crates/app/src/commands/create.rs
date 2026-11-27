@@ -200,6 +200,9 @@ impl Command for PointCmd {
             _ => Step::Done,
         }
     }
+    fn preview(&self, cursor: Option<DVec3>, _doc: &Document) -> Vec<Preview> {
+        cursor.map(|c| vec![Preview::Point(c)]).unwrap_or_default()
+    }
 }
 
 #[derive(Default)]

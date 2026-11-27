@@ -239,7 +239,7 @@ pub fn bridge() -> SeqCmd {
 
 /// Inset the picked face: shrink it towards its centroid and connect with a ring.
 pub fn inset() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select mesh face to inset", ObjFilter::Mesh), Ask::Number("Inset distance", 0.5)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select mesh face to inset", ObjFilter::Mesh), Ask::Distance("Inset distance", 0.5)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(m) = mesh_of(ctx, *id) else { return Step::Cancelled };
         let d = a[1].number();
@@ -287,7 +287,7 @@ pub fn inset() -> SeqCmd {
 
 /// Bevel approximation: split the nearest edge and pull the new vertex in by the bevel size.
 pub fn bevel() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select mesh near the edge to bevel", ObjFilter::Mesh), Ask::Number("Bevel distance", 0.3)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select mesh near the edge to bevel", ObjFilter::Mesh), Ask::Distance("Bevel distance", 0.3)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(m) = mesh_of(ctx, *id) else { return Step::Cancelled };
         let d = a[1].number();
@@ -438,7 +438,7 @@ pub fn radiate(find: bool) -> SeqCmd {
 }
 
 pub fn multipipe() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select curves", ObjFilter::Curve, 1), Ask::Number("Radius", 1.0), Ask::Options("Output", vec![opt("SubD"), opt("Mesh")])], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select curves", ObjFilter::Curve, 1), Ask::Radius("Radius", 1.0), Ask::Options("Output", vec![opt("SubD"), opt("Mesh")])], |a, ctx| {
         let r = a[1].number().abs().max(1e-6);
         let mut pipes: Vec<Mesh> = Vec::new();
         for id in a[0].ids() {
@@ -560,7 +560,7 @@ pub fn sel_subd_friendly_crv() -> super::simple::FnCmd {
 
 /// Slide: move the nearest vertex along the direction of its nearest edge.
 pub fn slide() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select mesh near a vertex", ObjFilter::Mesh), Ask::Number("Slide distance (along the nearest edge)", 0.5)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select mesh near a vertex", ObjFilter::Mesh), Ask::Distance("Slide distance (along the nearest edge)", 0.5)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(mut m) = mesh_of(ctx, *id) else { return Step::Cancelled };
         let Some(vi) = (0..m.vertices.len()).min_by(|&i, &j| (m.vertices[i] - *p).length().partial_cmp(&(m.vertices[j] - *p).length()).unwrap()) else { return Step::Cancelled };
@@ -583,7 +583,7 @@ pub fn slide() -> SeqCmd {
 
 /// SubDExpandEdges: offset the nearest edge inside its faces (split + move).
 pub fn expand_edges() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select SubD near the edge to expand", ObjFilter::Mesh), Ask::Number("Expand distance", 0.3)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select SubD near the edge to expand", ObjFilter::Mesh), Ask::Distance("Expand distance", 0.3)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(m) = mesh_of(ctx, *id) else { return Step::Cancelled };
         let d = a[1].number();
@@ -611,7 +611,7 @@ pub fn expand_edges() -> SeqCmd {
 }
 
 pub fn extrude_subd() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select SubD face to extrude", ObjFilter::Mesh), Ask::Number("Distance", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select SubD face to extrude", ObjFilter::Mesh), Ask::Distance("Distance", 1.0)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(m) = mesh_of(ctx, *id) else { return Step::Cancelled };
         let d = a[1].number();
@@ -672,7 +672,7 @@ pub fn extrude_subd() -> SeqCmd {
 }
 
 pub fn offset_subd() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select SubDs or meshes to offset", ObjFilter::Mesh, 1), Ask::Number("Offset distance", 1.0), Ask::Options("Solid", vec![opt("Yes"), opt("No")])], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select SubDs or meshes to offset", ObjFilter::Mesh, 1), Ask::Distance("Offset distance", 1.0), Ask::Options("Solid", vec![opt("Yes"), opt("No")])], |a, ctx| {
         let d = a[1].number();
         let solid = a[2].text() != "No";
         ctx.doc.begin_undo("OffsetSubD");
@@ -1042,7 +1042,7 @@ pub fn refit_trim() -> SeqCmd {
 }
 
 pub fn remove_micro_edges() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select surfaces or polysurfaces", ObjFilter::Any, 1), Ask::Number("Maximum edge length to remove", 0.001)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select surfaces or polysurfaces", ObjFilter::Any, 1), Ask::Distance("Maximum edge length to remove", 0.001)], |a, ctx| {
         let max = a[1].number().abs();
         ctx.doc.begin_undo("RemoveAllNakedMicroEdges");
         let mut removed = 0;

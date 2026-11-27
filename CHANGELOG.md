@@ -5,20 +5,33 @@ becomes its release notes and is what the program shows when it offers an update
 before tagging a release, rename "Unreleased" to the version and date (see
 [docs/RELEASING.md](docs/RELEASING.md)).
 
-## Unreleased
+## 0.5.0 - 2026-11-27
+
+### New
+
+* **Exact solids.** Box, Cylinder, Cone, Sphere and Torus (and the prisms behind WireCut, holes,
+  Boss and Rib) now carry an exact B-rep from the solidcore kernel. A Boolean between two such
+  solids runs on the kernel: sphere − two cylinders (+11 % off before) and torus − a bore along
+  its tube (+5.9 % off before) are within 0.1 % of the true volume, and tangent or coincident
+  surfaces no longer break it. Volume and area readouts of such solids come from the kernel.
+  Move, Rotate, Mirror, Copy and arrays keep the exact body; a kernel refusal is reported with its
+  message and leaves both objects as they were. Sphere and Torus now create a solid polysurface
+  instead of a closed surface. Old files open as before. The program is about 40 MB larger.
+* **Interactive previews, for almost every command.** WireCut shows the flattened wire, the cutter
+  and the depth planes while you choose the cut depth. Any command that asks a distance, radius,
+  angle or scale factor now accepts a click for it and shows what it would make while the cursor
+  moves (PushPull, Pipe, Ribbon, Contour, Slab, ScaleNU, Twist, Maelstrom, mesh Inset/Offset and
+  about forty more); a typed number still works. Questions that are not lengths in the model (page
+  sizes, camera lenses, settings) stay typed.
 
 ### Fixed
 
 * **WireCut leaves a smooth cut.** The cutter used to be the curve sampled into flat facets,
   so every cut on a solid ended in a wall of tiny planes (a mesh look). It is now the curve itself
   extruded, so the wall is one smooth face.
-
-### New
-
-* **Interactive previews.** WireCut shows the flattened wire, the cutter and the depth planes
-  while you choose the cut depth. PushPull shows the volume it adds or removes and Pipe the pipe
-  at the cursor's distance from the curve; in both a click answers the distance (a typed number
-  still works).
+* A Boolean that is refused inside Boss, Rib, Shell, holes, BooleanSplit or WireCut now says why
+  in the command's log instead of silently doing nothing.
+* A curve with a repeated knot at the end of its domain no longer evaluates to garbage.
 
 ## 0.4.1 - 2026-11-27
 

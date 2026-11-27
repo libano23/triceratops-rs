@@ -377,7 +377,10 @@ taken from `CHANGELOG.md`: the AppImage downloads, verifies (size and SHA-256) a
 replaces itself, then restarts; Windows downloads the zip to Downloads. Nothing about the
 user is sent; `TRICERATOPS_NO_UPDATE_CHECK=1` or the option turns the check off.
 
-## Exact solids (experimental, cargo feature `kernel-solidcore`)
+## Exact solids (experimental, cargo feature `kernel-solidcore`, on by default)
+
+The feature is on by default in the development tree (for 0.5.0); `cargo build --no-default-features`
+builds without it. Releases up to 0.4.1 were built without.
 
 Design: `docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md`; plan:
 `docs/superpowers/plans/2026-11-27-solidcore-kernel.md`.
@@ -431,16 +434,23 @@ stay what the legacy construction makes, so every other command behaves as befor
 
 ## Interactive previews
 
-The rule (taken from Serpentine3D): a command that asks for a distance in model space accepts a
-point as the answer, shows what the click would make as a ghost that follows the cursor, and
-never leaves the screen dead after its first pick. A typed number is always accepted too.
+The rule (taken from Serpentine3D): a command that asks for a length, radius, angle or factor in
+model space accepts a point as the answer, shows what the click would make as a ghost that follows
+the cursor, and never leaves the screen dead after its first pick. A typed number is always
+accepted too. `commands/preview_rules.rs` keeps the rule: a question that asks a length typed-only
+must be converted or listed in a table with the reason it is exempt (page sizes, camera lenses,
+settings asked from an option before anything is picked, selections).
 
-* Done: ExtrudeCrv, Revolve, ExtrudeSrf, ExtrudeCrvToPoint and the edge rounds (earlier);
-  **WireCut** (flattened wire, cutter and depth planes, and the cut itself is the curve extruded),
-  **PushPull** and **Pipe**.
-* `SeqCmd::with_preview` gives a declarative command a ghost: the closure gets the answers so
-  far and the cursor.
-* Still asking for a distance without a ghost or a point answer: ExtrudeCrvTapered, Boss/Rib,
-  OffsetCrvOnSrf, FilletCorners, ChamferSrf, Heightfield, Truncated pyramid, Paraboloid, mesh
-  Bevel/Inset/ExtrudeSubD/OffsetSubD/MultiPipe/Slide, Cage and about thirty more of the same kind
-  (`grep "Ask::Number" crates/app/src/commands`).
+How the ghosts are made:
+
+* **Sequential commands** (`SeqCmd`): every pending point or distance question runs the command's
+  own `finish` on a scratch copy of the objects it names, with the cursor as the answer, and shows
+  what it added or changed (curves, surfaces, solids and meshes). `Ask::Distance`, `Radius`,
+  `Factor` and `Angle` turn a click into the number (measured from the objects, the centre or the
+  point already given). `SeqCmd::with_preview` overrides it (PushPull shows the added volume).
+* **Commands with their own state**: a trial copy of the command (`ghost_by_trial!`) is fed the
+  cursor the same way; `point_as_number` says what a click means.
+* A dry run is cached (60 ms), limited to 150 ms, and a command that is too slow, or panics, is
+  simply not previewed.
+* Also hand-made: ExtrudeCrv, Revolve, ExtrudeSrf, ExtrudeCrvToPoint, edge rounds, **WireCut**
+  (flattened wire, cutter, depth planes) and **Pipe**.

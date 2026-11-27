@@ -169,7 +169,7 @@ pub fn draw_order(delta: i32, absolute: bool) -> SeqCmd {
 }
 
 pub fn box_edit() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Objects("Select objects to edit", ObjFilter::Any, 1), Ask::Number("Size X (Enter keeps)", 0.0), Ask::Number("Size Y (Enter keeps)", 0.0), Ask::Number("Size Z (Enter keeps)", 0.0), Ask::Number("Position X of the bounding box corner (Enter keeps)", f64::NAN), Ask::Number("Position Y (Enter keeps)", f64::NAN), Ask::Number("Position Z (Enter keeps)", f64::NAN)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Objects("Select objects to edit", ObjFilter::Any, 1), Ask::Distance("Size X (Enter keeps)", 0.0), Ask::Distance("Size Y (Enter keeps)", 0.0), Ask::Distance("Size Z (Enter keeps)", 0.0), Ask::Number("Position X of the bounding box corner (Enter keeps)", f64::NAN), Ask::Number("Position Y (Enter keeps)", f64::NAN), Ask::Number("Position Z (Enter keeps)", f64::NAN)], |a, ctx| {
         let ids = a[0].ids();
         let bb = ids.iter().filter_map(|id| ctx.doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |b, o| b.union(&ctx.doc.object_bbox(o)));
         if bb.is_empty() {

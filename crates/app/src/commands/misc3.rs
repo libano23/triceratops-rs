@@ -95,6 +95,7 @@ impl Command for SelVolumeSphereCmd {
 
 // ---- curve utilities ------------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
 pub enum CurveUtil {
     SubCrv,
     ExtractSubCrv,
@@ -119,6 +120,7 @@ pub enum CurveUtil {
     MatchCrvDir,
 }
 
+#[derive(Clone)]
 pub struct CurveUtilCmd {
     op: CurveUtil,
     ids: Vec<ObjectId>,
@@ -553,6 +555,7 @@ impl Command for CurveUtilCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.pts.last().copied()
     }
+    ghost_by_trial!(|s| s.ids.iter().copied().chain(s.pick.map(|(id, _)| id)).collect());
 }
 
 /// Principal direction (largest spread) and normal (smallest spread) of a point set.
@@ -955,7 +958,7 @@ fn deform_geometry(g: &mut Geometry, f: &dyn Fn(DVec3) -> DVec3) {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ScaleNUCmd {
     ids: Vec<ObjectId>,
     origin: Option<DVec3>,
@@ -975,13 +978,13 @@ impl Command for ScaleNUCmd {
             }
             (None, Input::Point(p)) => {
                 self.origin = Some(p);
-                Prompt::number("X scale factor").default_num(1.0).step()
+                Prompt::point_or_number("X scale factor").default_num(1.0).step()
             }
             (Some(o), Input::Number(f)) => {
                 self.factors.push(f);
                 match self.factors.len() {
-                    1 => Prompt::number("Y scale factor").default_num(1.0).step(),
-                    2 => Prompt::number("Z scale factor").default_num(1.0).step(),
+                    1 => Prompt::point_or_number("Y scale factor").default_num(1.0).step(),
+                    2 => Prompt::point_or_number("Z scale factor").default_num(1.0).step(),
                     _ => {
                         let cp = ctx.cplane;
                         let (sx, sy, sz) = (self.factors[0], self.factors[1], self.factors[2]);
@@ -1005,8 +1008,16 @@ impl Command for ScaleNUCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.origin
     }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The factor a click means: its distance from the origin in units of half the objects' size.
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        let origin = self.origin?;
+        let bb = self.ids.iter().filter_map(|id| doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |b, o| b.union(&o.geometry.bounding_box()));
+        (bb.min.x <= bb.max.x).then(|| (p - origin).length() / (bb.diagonal() * 0.5).max(1e-9))
+    }
 }
 
+#[derive(Clone)]
 pub struct TwistTaperCmd {
     twist: bool,
     ids: Vec<ObjectId>,
@@ -1035,9 +1046,9 @@ impl Command for TwistTaperCmd {
                     return Prompt::point(if self.twist { "End of twist axis" } else { "End of taper axis" }).step();
                 }
                 if self.twist {
-                    Prompt::number("Twist angle").default_num(ctx.mem_num("Twist.Angle", 90.0)).opts([optv("Infinite", "No"), optv("Rigid", "No")]).step()
+                    Prompt::point_or_number("Twist angle").default_num(ctx.mem_num("Twist.Angle", 90.0)).opts([optv("Infinite", "No"), optv("Rigid", "No")]).step()
                 } else {
-                    Prompt::number("End distance (scale at the end of the axis)").default_num(ctx.mem_num("Taper.End", 0.5)).opts([optv("Flat", "No"), optv("Infinite", "No")]).step()
+                    Prompt::point_or_number("End distance (scale at the end of the axis)").default_num(ctx.mem_num("Taper.End", 0.5)).opts([optv("Flat", "No"), optv("Infinite", "No")]).step()
                 }
             }
             Input::Number(v) => {
@@ -1077,11 +1088,34 @@ impl Command for TwistTaperCmd {
     fn base_point(&self) -> Option<DVec3> {
         self.axis.last().copied()
     }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The twist angle (degrees about the axis, from the objects' side) or the taper scale (the
+    /// cursor's distance from the axis in units of the objects' reach) a click means.
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        let (&a, &b) = (self.axis.first()?, self.axis.get(1)?);
+        let axis = (b - a).normalize_or(DVec3::Z);
+        let radial = |q: DVec3| (q - a) - axis * (q - a).dot(axis);
+        let bb = self.ids.iter().filter_map(|id| doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |m, o| m.union(&o.geometry.bounding_box()));
+        if bb.min.x > bb.max.x {
+            return None;
+        }
+        if self.twist {
+            // from the direction of the objects' centre to the direction of the cursor, about the axis
+            let r0 = radial(bb.center());
+            let u = if r0.length() > 1e-9 { r0.normalize() } else { axis.any_orthonormal_vector() };
+            let v = axis.cross(u);
+            let r = radial(p);
+            Some(r.dot(v).atan2(r.dot(u)).to_degrees())
+        } else {
+            let reach = bb.corners().iter().map(|c| radial(*c).length()).fold(0.0, f64::max).max(1e-9);
+            Some(radial(p).length() / reach)
+        }
+    }
 }
 
 // ---- Ribbon ---------------------------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct RibbonCmd {
     ids: Vec<ObjectId>,
 }
@@ -1094,7 +1128,7 @@ impl Command for RibbonCmd {
         match input {
             Input::Objects(ids) => {
                 self.ids = ids;
-                Prompt::number("Offset distance").default_num(ctx.mem_num("Ribbon.Distance", 1.0)).step()
+                Prompt::point_or_number("Offset distance").default_num(ctx.mem_num("Ribbon.Distance", 1.0)).step()
             }
             Input::Number(d) => {
                 ctx.mem_set("Ribbon.Distance", fmt_num(d));
@@ -1112,6 +1146,11 @@ impl Command for RibbonCmd {
             }
             _ => Step::Cancelled,
         }
+    }
+    ghost_by_trial!(|s| s.ids.clone());
+    /// The offset a click means: its distance from the curves.
+    fn point_as_number(&self, p: DVec3, doc: &Document, _ambient: &super::previews::Ambient) -> Option<f64> {
+        (!self.ids.is_empty()).then(|| super::previews::distance_to_objects(&self.ids, doc, p))
     }
 }
 
