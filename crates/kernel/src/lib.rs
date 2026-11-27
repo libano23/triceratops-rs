@@ -6,6 +6,8 @@
 #[cfg(feature = "solidcore")]
 mod convert;
 #[cfg(feature = "solidcore")]
+mod faces;
+#[cfg(feature = "solidcore")]
 mod solid;
 
 #[cfg(feature = "solidcore")]

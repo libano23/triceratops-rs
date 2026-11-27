@@ -305,3 +305,99 @@ fn extrude_clamped_interpolated_spline() {
     // a circle of radius 10 through those points: area close to pi r^2 (spline bulge < 1 %)
     assert!((v / 2.0 - PI * 100.0).abs() / (PI * 100.0) < 0.01, "area {}", v / 2.0);
 }
+
+// ---- record -> NURBS faces ----
+
+/// Signed volume of a Brep's display mesh (divergence theorem), the measure the app uses.
+fn mesh_volume(b: &tri_geom::Brep, segs: usize) -> f64 {
+    let m = b.tessellate(segs, segs);
+    (0..m.triangle_count())
+        .map(|t| {
+            let (a, b, c) = m.triangle(t);
+            a.dot(b.cross(c)) / 6.0
+        })
+        .sum::<f64>()
+        .abs()
+}
+
+fn check_faces(name: &str, s: &Solid, tol_pct: f64) {
+    let size = 100.0;
+    let b = s.to_brep(1e-3 * size).unwrap_or_else(|e| panic!("{name}: {e}"));
+    assert!(b.closed, "{name}: the Brep is not closed");
+    assert_eq!(b.faces.len(), s.record().unwrap().faces.len(), "{name}: one face per record face");
+    let want = s.volume().unwrap();
+    let got = mesh_volume(&b, 64);
+    assert!(pct(got, want).abs() <= tol_pct, "{name}: mesh volume {got} vs kernel {want} ({:+.4} %)", pct(got, want));
+    assert!(b.exact_valid().is_some(), "{name}: exact body attached and valid");
+    let back = Solid::from_exact(&b).unwrap_or_else(|| panic!("{name}: from_exact"));
+    assert!(pct(back.volume().unwrap(), want).abs() < 1e-6, "{name}: round trip volume");
+}
+
+#[test]
+fn faces_of_a_box() {
+    check_faces("box", &Solid::cuboid(DVec3::ZERO, DVec3::new(20.0, 30.0, 40.0)).unwrap(), 1e-6);
+}
+
+#[test]
+fn faces_of_a_cylinder() {
+    check_faces("cylinder", &Solid::cylinder(DVec3::ZERO, DVec3::Z, 10.0, 30.0).unwrap(), 0.2);
+}
+
+#[test]
+fn faces_of_a_sphere() {
+    check_faces("sphere", &Solid::sphere(DVec3::new(5.0, 5.0, 5.0), 20.0).unwrap(), 0.2);
+}
+
+#[test]
+fn faces_of_a_torus() {
+    check_faces("torus", &Solid::torus(DVec3::ZERO, DVec3::Z, 14.0, 6.0).unwrap(), 0.2);
+}
+
+#[test]
+fn faces_of_a_cone() {
+    check_faces("cone", &Solid::cone(DVec3::ZERO, DVec3::Z, 10.0, 3.0, 25.0).unwrap(), 0.2);
+}
+
+#[test]
+fn faces_of_sphere_minus_two_cylinders() {
+    let s = Solid::sphere(DVec3::ZERO, 20.0).unwrap();
+    let c1 = Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap();
+    let c2 = Solid::cylinder(DVec3::new(-30.0, 0.0, 8.0), DVec3::new(1.0, 0.3, 0.1), 6.0, 60.0).unwrap();
+    let r = s.boolean(&c1, BooleanOp::Difference).unwrap().boolean(&c2, BooleanOp::Difference).unwrap();
+    check_faces("sphere minus two cylinders", &r, 0.3);
+}
+
+#[test]
+fn faces_of_a_torus_minus_a_bore() {
+    let t = Solid::torus(DVec3::ZERO, DVec3::Z, 14.0, 6.0).unwrap();
+    let bore = Solid::cylinder(DVec3::new(14.0, -20.0, 0.0), DVec3::Y, 3.0, 40.0).unwrap();
+    check_faces("torus minus a bore", &t.boolean(&bore, BooleanOp::Difference).unwrap(), 0.3);
+}
+
+#[test]
+fn faces_of_a_spline_prism() {
+    check_faces("spline prism", &free_form(), 0.3);
+}
+
+#[test]
+fn from_exact_refuses_a_stale_body() {
+    let s = Solid::cuboid(DVec3::ZERO, DVec3::splat(10.0)).unwrap();
+    let mut b = s.to_brep(0.01).unwrap();
+    b.faces[0].surface.control_points[0].x += 0.001;
+    assert!(Solid::from_exact(&b).is_none());
+}
+
+#[test]
+fn triceratops_own_closure_check_agrees_with_the_kernel() {
+    let cases: Vec<(&str, Solid)> = vec![
+        ("box", Solid::cuboid(DVec3::ZERO, DVec3::new(20.0, 30.0, 40.0)).unwrap()),
+        ("cylinder", Solid::cylinder(DVec3::ZERO, DVec3::Z, 10.0, 30.0).unwrap()),
+        ("sphere", Solid::sphere(DVec3::ZERO, 20.0).unwrap()),
+        ("torus", Solid::torus(DVec3::ZERO, DVec3::Z, 14.0, 6.0).unwrap()),
+        ("spline prism", free_form()),
+    ];
+    for (name, s) in cases {
+        let b = s.to_brep(0.1).unwrap();
+        assert!(b.compute_closed(), "{name}: tri-geom's own geometric closure check says open");
+    }
+}
