@@ -6,6 +6,7 @@
 //! docs/ui-reference.md.
 
 pub mod create;
+pub mod exact_solids;
 pub mod curve2;
 pub mod curve_edit;
 pub mod edit;

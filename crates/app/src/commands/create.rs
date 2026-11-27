@@ -28,6 +28,39 @@ fn add_curve(ctx: &mut CmdCtx, label: &str, c: tri_geom::Result<NurbsCurve>) -> 
     }
 }
 
+/// A sphere: with the kernel's exact body it is a solid polysurface of the legacy face,
+/// otherwise the legacy closed surface.
+fn add_sphere(ctx: &mut CmdCtx, c: DVec3, r: f64) -> Step {
+    match NurbsSurface::sphere(c, r) {
+        Ok(s) => {
+            let b = super::exact_solids::sphere(Brep::from_surface(s.clone()), c, r);
+            if b.exact.is_some() {
+                add_geometry(ctx, "Sphere", Geometry::Brep(b));
+                Step::Done
+            } else {
+                add_surface(ctx, "Sphere", Ok(s))
+            }
+        }
+        Err(e) => add_surface(ctx, "Sphere", Err(e)),
+    }
+}
+
+/// A torus, as `add_sphere`.
+fn add_torus(ctx: &mut CmdCtx, plane: &Plane, c: DVec3, big: f64, minor: f64) -> Step {
+    match NurbsSurface::torus(&plane_at(plane, c), big, minor) {
+        Ok(s) => {
+            let b = super::exact_solids::torus(Brep::from_surface(s.clone()), c, plane.z_axis, big, minor);
+            if b.exact.is_some() {
+                add_geometry(ctx, "Torus", Geometry::Brep(b));
+                Step::Done
+            } else {
+                add_surface(ctx, "Torus", Ok(s))
+            }
+        }
+        Err(e) => add_surface(ctx, "Torus", Err(e)),
+    }
+}
+
 fn add_surface(ctx: &mut CmdCtx, label: &str, s: tri_geom::Result<NurbsSurface>) -> Step {
     match s {
         Ok(s) => {
@@ -1657,7 +1690,7 @@ fn box_brep(cplane: &Plane, a: DVec3, b: DVec3, h: f64) -> tri_geom::Result<Brep
     let (u0, v0, w) = cplane.closest_parameters(a);
     let (u1, v1, _) = cplane.closest_parameters(b);
     let base = Plane { origin: cplane.point_at_3(u0, v0, w), ..*cplane };
-    Brep::cuboid(&base, u1 - u0, v1 - v0, h)
+    Ok(super::exact_solids::cuboid(Brep::cuboid(&base, u1 - u0, v1 - v0, h)?, &base, u1 - u0, v1 - v0, h))
 }
 
 impl BoxCmd {
@@ -1821,7 +1854,7 @@ impl Command for SphereCmd {
                 (0, Some(c)) => {
                     let r = (p - c).length();
                     ctx.mem_set("Sphere.Radius", fmt_num(r));
-                    add_surface(ctx, "Sphere", NurbsSurface::sphere(c, r))
+                    add_sphere(ctx, c, r)
                 }
                 (2, _) => {
                     if self.pts.is_empty() {
@@ -1829,7 +1862,7 @@ impl Command for SphereCmd {
                         return self.prompt(ctx).step();
                     }
                     let c = (self.pts[0] + p) * 0.5;
-                    add_surface(ctx, "Sphere", NurbsSurface::sphere(c, (p - c).length()))
+                    add_sphere(ctx, c, (p - c).length())
                 }
                 _ => {
                     self.pts.push(p);
@@ -1837,7 +1870,7 @@ impl Command for SphereCmd {
                         return self.prompt(ctx).step();
                     }
                     match tri_geom::curve::circle_through(self.pts[0], self.pts[1], self.pts[2]) {
-                        Ok((c, r, _)) => add_surface(ctx, "Sphere", NurbsSurface::sphere(c, r)),
+                        Ok((c, r, _)) => add_sphere(ctx, c, r),
                         Err(e) => {
                             ctx.log(format!("Sphere failed: {e}"));
                             Step::Cancelled
@@ -1848,7 +1881,7 @@ impl Command for SphereCmd {
             Input::Number(v) if self.center.is_some() => {
                 let r = if self.diameter { v.abs() * 0.5 } else { v.abs() };
                 ctx.mem_set("Sphere.Radius", fmt_num(r));
-                add_surface(ctx, "Sphere", NurbsSurface::sphere(self.center.unwrap(), r))
+                add_sphere(ctx, self.center.unwrap(), r)
             }
             _ => Step::Cancelled,
         }
@@ -1944,6 +1977,10 @@ impl CylinderCmd {
         let mut b = Brep::new(faces);
         b.orient_outward();
         b.closed = true;
+        let b = match self.kind {
+            Solid::Cylinder => super::exact_solids::cylinder(b, base, self.plane.z_axis, r, h),
+            Solid::Cone => super::exact_solids::cone(b, base, self.plane.z_axis, r, h),
+        };
         Ok(Geometry::Brep(b))
     }
 }
@@ -2126,7 +2163,7 @@ impl Command for TorusCmd {
                         _ => return Step::Cancelled,
                     };
                     ctx.mem_set("Torus.SecondRadius", fmt_num(minor));
-                    add_surface(ctx, "Torus", NurbsSurface::torus(&plane_at(&self.plane, c), big, minor))
+                    add_torus(ctx, &self.plane, c, big, minor)
                 }
                 _ => Step::Cancelled,
             },

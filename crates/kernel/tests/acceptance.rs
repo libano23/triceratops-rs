@@ -432,3 +432,4 @@ fn near_coincident_free_form_walls_are_refused_with_a_message() {
     let e = a.boolean(&b, BooleanOp::Difference).err().expect("the kernel refuses this pair");
     assert!(!e.to_string().is_empty());
 }
+

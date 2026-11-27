@@ -512,7 +512,9 @@ mod tests {
         assert_ne!(r.is_error, Some(true), "{}", text(&r));
         assert!(text(&r).contains("\"added\""), "{}", text(&r));
         let l = b.list_objects(Parameters(ListObjectsParams::default())).await.unwrap();
-        assert!(text(&l).contains("closed surface"), "{}", text(&l));
+        // with exact solids (feature kernel-solidcore) a sphere is a solid polysurface
+        let want = if cfg!(feature = "kernel-solidcore") { "closed solid polysurface" } else { "closed surface" };
+        assert!(text(&l).contains(want), "{}", text(&l));
     }
 
     #[tokio::test(flavor = "multi_thread")]

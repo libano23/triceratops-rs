@@ -2019,3 +2019,129 @@ mod exact_solids {
         assert!(h.log.iter().any(|l| l.contains("failed") && l.contains("solid kernel")), "the log names the kernel: {:?}", h.log);
     }
 }
+
+#[cfg(feature = "kernel-solidcore")]
+mod exact_primitives {
+    use super::*;
+    use std::f64::consts::PI;
+    use tri_geom::Brep;
+    use tri_kernel::Solid;
+
+    fn only_brep(h: &Harness) -> Brep {
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        match &h.doc.objects().next().unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("expected an exact polysurface, got {}; log: {:?}", other.type_name(), h.log),
+        }
+    }
+
+    fn volume(b: &Brep) -> f64 {
+        Solid::from_exact(b).expect("a valid exact body").volume().unwrap()
+    }
+
+    #[test]
+    fn box_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Box");
+        h.point(0.0, 0.0, 0.0);
+        h.point(20.0, 20.0, 0.0);
+        h.number(10.0);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn box_with_negative_extents_is_still_exact_and_positive() {
+        let mut h = Harness::new();
+        h.start("Box");
+        h.point(20.0, 20.0, 0.0);
+        h.point(0.0, 0.0, 0.0);
+        h.number(10.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+        let bb = b.bounding_box();
+        assert!((bb.min - DVec3::new(0.0, 0.0, 0.0)).length() < 1e-9 && (bb.max - DVec3::new(20.0, 20.0, 10.0)).length() < 1e-9, "{bb:?}");
+    }
+
+    #[test]
+    fn cylinder_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.point(1.0, 2.0, 3.0);
+        h.number(4.0);
+        h.number(20.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 16.0 * 20.0).abs() < 1e-2);
+        assert!((b.bounding_box().center() - DVec3::new(1.0, 2.0, 13.0)).length() < 1e-6);
+    }
+
+    #[test]
+    fn cone_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Cone");
+        h.point(0.0, 0.0, 0.0);
+        h.number(6.0);
+        h.number(15.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 36.0 * 15.0 / 3.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn sphere_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        assert!((volume(&b) - 4.0 / 3.0 * PI * 8000.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn torus_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Torus");
+        h.point(0.0, 0.0, 0.0);
+        h.number(14.0);
+        h.number(6.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - 2.0 * PI * PI * 14.0 * 36.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn a_torus_whose_tube_reaches_the_axis_falls_back_to_the_legacy_surface() {
+        let mut h = Harness::new();
+        h.start("Torus");
+        h.point(0.0, 0.0, 0.0);
+        h.number(5.0);
+        h.number(8.0); // minor > major: not a ring torus for the kernel
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        assert!(matches!(h.doc.objects().next().unwrap().geometry, Geometry::Surface(_)));
+    }
+
+    #[test]
+    fn non_solid_cylinder_stays_a_surface() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.option("Solid", None);
+        h.point(0.0, 0.0, 0.0);
+        h.number(4.0);
+        h.number(20.0);
+        assert!(matches!(h.doc.objects().next().unwrap().geometry, Geometry::Surface(_)));
+    }
+
+    #[test]
+    fn prism_of_a_closed_curve_is_exact_and_cuts_an_exact_sphere() {
+        let c = tri_geom::NurbsCurve::circle(&Plane::world_xy(), 6.0).unwrap();
+        let prism = super::misc4::prism_brep(&c, &Plane::world_xy(), 30.0).unwrap();
+        assert!((volume(&prism) - PI * 36.0 * 60.0).abs() < 1e-2);
+        let sphere = Solid::sphere(DVec3::ZERO, 20.0).unwrap().to_brep(0.05).unwrap();
+        let (gs, gp) = (Geometry::Brep(sphere), Geometry::Brep(prism));
+        let cut = super::misc4::boolean_geometry_checked(&gs, &gp, tri_geom::BooleanOp::Difference).unwrap();
+        let inter = super::misc4::boolean_geometry_checked(&gs, &gp, tri_geom::BooleanOp::Intersection).unwrap();
+        let (Geometry::Brep(cut), Geometry::Brep(inter)) = (cut, inter) else { panic!("polysurfaces expected") };
+        let total = volume(&cut) + volume(&inter);
+        assert!((total - 4.0 / 3.0 * PI * 8000.0).abs() < 1e-3, "V(S-P)+V(S^P) = {total}");
+    }
+}

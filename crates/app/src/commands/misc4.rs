@@ -331,7 +331,7 @@ pub fn prism_brep(c: &NurbsCurve, plane: &Plane, half: f64) -> Option<Brep> {
     let mut b = Brep::new(vec![Face::untrimmed(side), cap0, cap1]);
     b.orient_outward();
     b.closed = true;
-    Some(b)
+    Some(super::exact_solids::prism(b, c, plane, half))
 }
 
 /// Cutter for a planar closed curve: polysurface when possible, mesh otherwise.

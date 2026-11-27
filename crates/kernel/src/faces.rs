@@ -69,7 +69,7 @@ fn faces_of(r: &Record, chord: f64) -> Result<Vec<Face>, KernelError> {
 fn face_of(r: &Record, i: usize, chord: f64, counts: &mut HashMap<u32, usize>) -> Result<Face, KernelError> {
     let rf = r.faces.get(i).ok_or_else(|| refused("the record names a missing face"))?;
     let surface = nurbs_surface(rf.nurbs.as_ref().unwrap_or(&rf.surface), rf.domain)?;
-    let mut loops = Vec::new();
+    let mut loops: Vec<Vec<DVec2>> = Vec::new();
     for lp in &rf.loops {
         let Loop::Edges { edges } = lp else { continue }; // a pole or collapsed boundary: no trim
         let mut uv: Vec<DVec2> = Vec::new();
