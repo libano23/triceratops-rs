@@ -1902,3 +1902,120 @@ fn join_merges_meshes() {
     assert_eq!(meshes.len(), 1, "two meshes join into one");
     assert_eq!(meshes[0].vertices.len(), va + vb);
 }
+
+
+// ---- exact solids on solidcore (feature `kernel-solidcore`) ----
+
+#[cfg(feature = "kernel-solidcore")]
+mod exact_solids {
+    use super::*;
+    use tri_geom::Brep;
+    use tri_kernel::Solid;
+
+    fn add(h: &mut Harness, s: &Solid) -> tri_doc::ObjectId {
+        h.doc.add(Geometry::Brep(s.to_brep(0.05).unwrap()))
+    }
+
+    fn only_brep(h: &Harness) -> Brep {
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        match &h.doc.objects().next().unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("expected a polysurface, got {}", other.type_name()),
+        }
+    }
+
+    fn kernel_volume(b: &Brep) -> f64 {
+        Solid::from_exact(b).expect("the result carries a valid exact body").volume().unwrap()
+    }
+
+    #[test]
+    fn exact_sphere_minus_two_cylinders() {
+        let mut h = Harness::new();
+        let s = add(&mut h, &Solid::sphere(DVec3::ZERO, 20.0).unwrap());
+        let c1 = add(&mut h, &Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap());
+        let c2 = add(&mut h, &Solid::cylinder(DVec3::new(-30.0, 0.0, 8.0), DVec3::new(1.0, 0.3, 0.1), 6.0, 60.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![s]);
+        h.objects(vec![c1, c2]);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        let v = kernel_volume(&b);
+        // Monte Carlo reference 23658.8 (8e6 samples: +-0.03 %); the legacy Boolean gave 26268 (+11 %)
+        assert!((v - 23658.8).abs() < 23658.8 * 0.001, "volume {v}");
+    }
+
+    #[test]
+    fn exact_torus_minus_a_bore_along_its_tube() {
+        let mut h = Harness::new();
+        let t = add(&mut h, &Solid::torus(DVec3::ZERO, DVec3::Z, 14.0, 6.0).unwrap());
+        let c = add(&mut h, &Solid::cylinder(DVec3::new(14.0, -20.0, 0.0), DVec3::Y, 3.0, 40.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![t]);
+        h.objects(vec![c]);
+        let v = kernel_volume(&only_brep(&h));
+        // Monte Carlo reference 9163.74; the legacy Boolean gave 9704.6 (+5.9 %)
+        assert!((v - 9163.74).abs() < 9163.74 * 0.001, "volume {v}");
+    }
+
+    #[test]
+    fn legacy_operands_keep_the_legacy_path() {
+        let mut h = Harness::new();
+        let a = h.doc.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 10.0, 10.0, 10.0).unwrap()));
+        let moved = Plane { origin: DVec3::new(5.0, 5.0, 5.0), ..Plane::world_xy() };
+        let b = h.doc.add(Geometry::Brep(Brep::cuboid(&moved, 10.0, 10.0, 10.0).unwrap()));
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        let r = only_brep(&h);
+        assert!(r.exact.is_none(), "legacy operands give a legacy result");
+        let v = Document::volume_of(&Geometry::Brep(r)).unwrap().0;
+        assert!((v - 1875.0).abs() < 2.0, "union volume {v}");
+    }
+
+    #[test]
+    fn an_exact_and_a_legacy_operand_take_the_legacy_path() {
+        let mut h = Harness::new();
+        let a = add(&mut h, &Solid::cuboid(DVec3::ZERO, DVec3::splat(10.0)).unwrap());
+        let moved = Plane { origin: DVec3::new(5.0, 5.0, 5.0), ..Plane::world_xy() };
+        let b = h.doc.add(Geometry::Brep(Brep::cuboid(&moved, 10.0, 10.0, 10.0).unwrap()));
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        assert!(only_brep(&h).exact.is_none());
+    }
+
+    #[test]
+    fn a_stale_exact_body_is_not_used() {
+        let mut h = Harness::new();
+        let mut brep = Solid::cuboid(DVec3::ZERO, DVec3::splat(10.0)).unwrap().to_brep(0.05).unwrap();
+        brep.faces[0].surface.control_points[0].x += 0.01; // a legacy edit, in place
+        let a = h.doc.add(Geometry::Brep(brep));
+        let b = add(&mut h, &Solid::cuboid(DVec3::new(5.0, 5.0, 5.0), DVec3::splat(15.0)).unwrap());
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        assert!(only_brep(&h).exact.is_none(), "the edited operand must not reach the kernel");
+    }
+
+    #[test]
+    fn a_kernel_refusal_keeps_both_inputs_and_says_why() {
+        use std::f64::consts::PI;
+        let blob = |cx: f64| {
+            let pts: Vec<DVec3> = (0..8)
+                .map(|i| {
+                    let a = 2.0 * PI * i as f64 / 8.0;
+                    let r = 12.0 * (1.0 + 0.2 * (3.0 * a).cos());
+                    DVec3::new(cx + r * a.cos(), r * a.sin(), 15.0)
+                })
+                .collect();
+            tri_geom::NurbsCurve::periodic(3, pts).unwrap()
+        };
+        let plane = Plane { origin: DVec3::new(0.0, 0.0, 15.0), ..Plane::world_xy() };
+        let mut h = Harness::new();
+        let a = add(&mut h, &Solid::extrude_closed_curve(&blob(0.0), &plane, 15.0).unwrap());
+        let b = add(&mut h, &Solid::extrude_closed_curve(&blob(0.001), &plane, 15.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![b]);
+        assert!(h.doc.get(a).is_some() && h.doc.get(b).is_some(), "both inputs must stay; log: {:?}", h.log);
+        assert_eq!(h.doc.len(), 2);
+        assert!(h.log.iter().any(|l| l.contains("failed") && l.contains("solid kernel")), "the log names the kernel: {:?}", h.log);
+    }
+}

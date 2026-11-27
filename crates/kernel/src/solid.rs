@@ -125,7 +125,7 @@ impl Solid {
             BooleanOp::Intersection => solidcore_ops::boolean::BooleanOp::Intersect,
         };
         let (a, b) = (self.body.copy()?, other.body.copy()?);
-        match solidcore_ops::boolean::boolean(a, b, op)? {
+        match with_job_cancel(|| solidcore_ops::boolean::boolean(a, b, op))? {
             Some(body) => Ok(Solid::new(body)),
             None => Err(refused("the result is empty")),
         }
@@ -147,4 +147,33 @@ impl Solid {
     pub fn record(&self) -> Result<Record, KernelError> {
         Ok(self.body.to_record()?.0)
     }
+}
+
+/// Runs `f` so that cancelling the current Triceratops job (`tri_geom::job`) cancels the
+/// solidcore call it makes: a watcher thread polls the job's token and cancels solidcore's.
+/// Outside a job `f` just runs.
+fn with_job_cancel<R>(f: impl FnOnce() -> R) -> R {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    let Some(job) = tri_geom::job::current() else { return f() };
+    let token = solidcore_ops::cancel::CancelToken::new();
+    if job.is_cancelled() {
+        token.cancel();
+    }
+    let done = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                if job.is_cancelled() {
+                    token.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let r = solidcore_ops::cancel::within(&token, f);
+        done.store(true, Ordering::Relaxed);
+        r
+    })
 }

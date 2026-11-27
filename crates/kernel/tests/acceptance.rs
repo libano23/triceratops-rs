@@ -401,3 +401,34 @@ fn triceratops_own_closure_check_agrees_with_the_kernel() {
         assert!(b.compute_closed(), "{name}: tri-geom's own geometric closure check says open");
     }
 }
+
+// ---- cancellation ----
+
+#[test]
+fn a_cancelled_job_stops_a_boolean_and_leaves_the_operands() {
+    let a = plate();
+    let b = Solid::cylinder(DVec3::ZERO, DVec3::Z, 8.0, 20.0).unwrap();
+    let token = tri_geom::job::Token::new();
+    token.cancel();
+    let _guard = tri_geom::job::install(token);
+    let e = a.boolean(&b, BooleanOp::Difference).err().expect("cancelled");
+    assert_eq!(e, tri_kernel::KernelError::Cancelled);
+    assert_vol(&a, 32000.0, 1e-3);
+    assert_vol(&b, PI * 64.0 * 20.0, 1e-3);
+}
+
+#[test]
+fn a_job_that_is_not_cancelled_lets_the_boolean_finish() {
+    let a = plate();
+    let b = Solid::cylinder(DVec3::ZERO, DVec3::Z, 8.0, 20.0).unwrap();
+    let _guard = tri_geom::job::install(tri_geom::job::Token::new());
+    assert_vol(&a.boolean(&b, BooleanOp::Difference).unwrap(), 40.0 * 40.0 * 20.0 - PI * 64.0 * 20.0, 1e-3);
+}
+
+#[test]
+fn near_coincident_free_form_walls_are_refused_with_a_message() {
+    let a = Solid::extrude_closed_curve(&blob(0.0, 0.0, 15.0, 12.0, 0.2, 0.0), &plane_at(15.0), 15.0).unwrap();
+    let b = Solid::extrude_closed_curve(&blob(0.001, 0.0, 15.0, 12.0, 0.2, 0.0), &plane_at(15.0), 15.0).unwrap();
+    let e = a.boolean(&b, BooleanOp::Difference).err().expect("the kernel refuses this pair");
+    assert!(!e.to_string().is_empty());
+}

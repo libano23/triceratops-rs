@@ -273,6 +273,10 @@ pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geo
 
 /// `boolean_geometry` saying why there is no result ("cancelled", "Boolean too complex …").
 pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Result<Geometry, String> {
+    #[cfg(feature = "kernel-solidcore")]
+    if let Some(r) = exact_boolean(a, b, op) {
+        return r;
+    }
     if let (Some(ba), Some(bb)) = (geometry_brep(a), geometry_brep(b)) {
         // surfaces and polysurfaces always give a polysurface (no mesh fallback)
         let r = tri_geom::brep_boolean::brep_boolean_verbose(&ba, &bb, op, tri_geom::brep_boolean::DEFAULT_TOLERANCE)?;
@@ -284,6 +288,32 @@ pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Re
         return Err("the result is empty".into());
     }
     Ok(Geometry::Mesh(m))
+}
+
+/// Boolean of two solids that both carry a valid exact body, on the solidcore kernel. `None` when
+/// either operand is not exact: the legacy pipeline then takes it. A kernel refusal is an error
+/// with the kernel's message, never a silent fallback to the mesh Boolean.
+#[cfg(feature = "kernel-solidcore")]
+fn exact_boolean(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Result<Geometry, String>> {
+    use tri_kernel::{BooleanOp as K, Solid};
+    let (Geometry::Brep(ba), Geometry::Brep(bb)) = (a, b) else { return None };
+    let (sa, sb) = (Solid::from_exact(ba)?, Solid::from_exact(bb)?);
+    let op = match op {
+        BooleanOp::Union => K::Union,
+        BooleanOp::Difference => K::Difference,
+        BooleanOp::Intersection => K::Intersection,
+    };
+    let size = ba.bounding_box().union(&bb.bounding_box()).diagonal();
+    let chord = (size * 1e-3).max(1e-3);
+    Some(
+        sa.boolean(&sb, op)
+            .and_then(|r| r.to_brep(chord))
+            .map(Geometry::Brep)
+            .map_err(|e| match e {
+                tri_kernel::KernelError::Cancelled => "cancelled".to_string(),
+                other => format!("the solid kernel refused: {other}"),
+            }),
+    )
 }
 
 /// Extrusion solid of a closed planar curve, `half` on each side of its plane, as a polysurface
