@@ -7,6 +7,11 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+### Fixed
+
+* 3MF, AMF and COLLADA files are read in the unit they declare (an inch part opened in a
+  millimetre document is 25.4 times bigger, not the same number).
+
 ### Added
 
 * **One direction list for every command that asks for an axis.** WireCut, ExtrudeCrv, ExtrudeSrf,

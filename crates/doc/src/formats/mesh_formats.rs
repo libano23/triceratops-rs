@@ -750,9 +750,31 @@ pub fn export_dae(doc: &Document, path: &Path, only_selected: bool) -> Result<us
     Ok(meshes.len())
 }
 
+/// Millimetres in the unit a 3MF or AMF file names (millimetre when it names none).
+fn mm_of_named_unit(name: Option<&str>) -> f64 {
+    match name.map(|n| n.to_ascii_lowercase()).as_deref() {
+        Some("micron") => 0.001,
+        Some("centimeter") => 10.0,
+        Some("meter") => 1000.0,
+        Some("inch") => 25.4,
+        Some("foot") => 304.8,
+        _ => 1.0,
+    }
+}
+
+/// Bring points from a file unit (millimetres per file unit) into the document's unit.
+fn into_document_unit(points: &mut [DVec3], file_mm: f64, doc: &Document) {
+    let k = file_mm / super::mm_per_unit(&doc.settings.units);
+    if (k - 1.0).abs() > 1e-12 {
+        points.iter_mut().for_each(|p| *p *= k);
+    }
+}
+
 pub fn import_dae(doc: &mut Document, path: &Path) -> Result<usize> {
     let text = read_text(path)?;
     let xml = roxmltree::Document::parse(&text).context("parsing COLLADA")?;
+    // <unit meter="..."> is metres per file unit (1 when absent)
+    let file_mm = xml.descendants().find(|n| n.has_tag_name("unit")).and_then(|n| n.attribute("meter")).and_then(|m| m.parse::<f64>().ok()).unwrap_or(1.0) * 1000.0;
     let mut count = 0;
     for geom in xml.descendants().filter(|n| n.has_tag_name("geometry")) {
         let name = geom.attribute("name").or(geom.attribute("id")).unwrap_or("mesh").to_string();
@@ -792,6 +814,8 @@ pub fn import_dae(doc: &mut Document, path: &Path) -> Result<usize> {
                 }
             }
         }
+        let mut vertices = vertices;
+        into_document_unit(&mut vertices, file_mm, doc);
         count += add_mesh(doc, &name, mesh_from_polygons(vertices, &faces), None) as usize;
     }
     Ok(count)
@@ -919,6 +943,7 @@ pub fn export_amf(doc: &Document, path: &Path, only_selected: bool) -> Result<us
 pub fn import_amf(doc: &mut Document, path: &Path) -> Result<usize> {
     let text = read_text(path)?;
     let xml = roxmltree::Document::parse(&text).context("parsing AMF")?;
+    let file_mm = mm_of_named_unit(xml.root_element().attribute("unit"));
     let mut count = 0;
     for (i, obj) in xml.descendants().filter(|n| n.has_tag_name("object")).enumerate() {
         let name = obj.children().find(|n| n.has_tag_name("metadata") && n.attribute("type") == Some("name")).and_then(|n| n.text()).map(|s| s.to_string()).unwrap_or_else(|| format!("object_{i}"));
@@ -931,6 +956,8 @@ pub fn import_amf(doc: &mut Document, path: &Path) -> Result<usize> {
         for t in obj.descendants().filter(|n| n.has_tag_name("triangle")) {
             faces.push(vec![num(t, "v1") as usize, num(t, "v2") as usize, num(t, "v3") as usize]);
         }
+        let mut vertices = vertices;
+        into_document_unit(&mut vertices, file_mm, doc);
         count += add_mesh(doc, &name, mesh_from_polygons(vertices, &faces), None) as usize;
     }
     Ok(count)
@@ -968,6 +995,7 @@ pub fn import_3mf(doc: &mut Document, path: &Path) -> Result<usize> {
     let Some((_, model)) = entries.iter().find(|(n, _)| n.ends_with(".model")) else { bail!("no 3D model in the 3MF package") };
     let text = String::from_utf8_lossy(model).to_string();
     let xml = roxmltree::Document::parse(&text).context("parsing 3MF model")?;
+    let file_mm = mm_of_named_unit(xml.root_element().attribute("unit"));
     let mut count = 0;
     for (i, obj) in xml.descendants().filter(|n| n.has_tag_name("object")).enumerate() {
         let name = obj.attribute("name").map(|s| s.to_string()).unwrap_or_else(|| format!("object_{i}"));
@@ -975,6 +1003,8 @@ pub fn import_3mf(doc: &mut Document, path: &Path) -> Result<usize> {
         let vertices: Vec<DVec3> = obj.descendants().filter(|n| n.has_tag_name("vertex")).map(|v| DVec3::new(attr(v, "x"), attr(v, "y"), attr(v, "z"))).collect();
         let faces: Vec<Vec<usize>> = obj.descendants().filter(|n| n.has_tag_name("triangle")).map(|t| vec![attr(t, "v1") as usize, attr(t, "v2") as usize, attr(t, "v3") as usize]).collect();
         if !vertices.is_empty() {
+            let mut vertices = vertices;
+            into_document_unit(&mut vertices, file_mm, doc);
             count += add_mesh(doc, &name, mesh_from_polygons(vertices, &faces), None) as usize;
         }
     }
