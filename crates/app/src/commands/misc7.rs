@@ -428,7 +428,7 @@ impl Command for MoveFaceCmd {
     }
     fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
         match (self.base, cursor) {
-            (Some(b), Some(c)) => self.moved(doc, c - b).map(|f| vec![Preview::Brep(Brep { faces: f, closed: false })]).unwrap_or_default(),
+            (Some(b), Some(c)) => self.moved(doc, c - b).map(|f| vec![Preview::Brep(Brep { faces: f, closed: false, exact: None })]).unwrap_or_default(),
             _ => vec![],
         }
     }

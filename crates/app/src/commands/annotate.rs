@@ -363,7 +363,7 @@ impl Command for HatchCmd {
                     ctx.doc.begin_undo("Hatch");
                     ctx.doc.clear_selection();
                     for f in faces {
-                        let id = ctx.doc.add(Geometry::Brep(Brep { faces: vec![f], closed: false }));
+                        let id = ctx.doc.add(Geometry::Brep(Brep { faces: vec![f], closed: false, exact: None }));
                         ctx.doc.select(id, true);
                     }
                     return Step::Done;

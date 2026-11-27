@@ -24,7 +24,11 @@ struct Inner {
     cancelled: AtomicBool,
     count: AtomicU64,
     stage: Mutex<&'static str>,
+    notes: Mutex<Vec<String>>,
 }
+
+/// How many distinct notes a job keeps.
+const MAX_NOTES: usize = 8;
 
 /// Shared between the thread doing the work and whoever watches or cancels it.
 #[derive(Clone, Default)]
@@ -41,6 +45,12 @@ impl Token {
 
     pub fn is_cancelled(&self) -> bool {
         self.0.cancelled.load(Ordering::Relaxed)
+    }
+
+    /// The notes the work left (why a step inside it was refused), each once, in order; taking
+    /// them empties the list.
+    pub fn take_notes(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.notes.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     /// What the work is doing now and how far it got (units depend on the stage).
@@ -71,6 +81,18 @@ pub fn install(t: Token) -> Guard {
 /// The token of the job running on this thread, if any.
 pub fn current() -> Option<Token> {
     CURRENT.with(|c| c.borrow().clone())
+}
+
+/// Leave a note for whoever owns the running job (shown in the log when it ends): a step the
+/// work skipped, and why. No job, no note. The same text is kept once, and only a few are kept.
+pub fn note(msg: impl Into<String>) {
+    if let Some(t) = current() {
+        let msg = msg.into();
+        let mut notes = t.0.notes.lock().unwrap_or_else(|e| e.into_inner());
+        if notes.len() < MAX_NOTES && !notes.contains(&msg) {
+            notes.push(msg);
+        }
+    }
 }
 
 /// Name the stage the work is in (shown to the user) and restart its counter.
@@ -120,6 +142,34 @@ mod tests {
         t.cancel();
         assert_eq!(checkpoint(43), Err(Cancelled));
         assert_eq!(check(), Err(Cancelled));
+    }
+
+    #[test]
+    fn notes_reach_the_owner_of_the_token_once_each() {
+        let t = Token::new();
+        {
+            let _g = install(t.clone());
+            note("a Boolean was refused: x");
+            note("a Boolean was refused: x");
+            note("another");
+        }
+        assert_eq!(t.take_notes(), vec!["a Boolean was refused: x".to_string(), "another".to_string()]);
+        assert!(t.take_notes().is_empty(), "taking them empties the list");
+    }
+
+    #[test]
+    fn a_note_outside_a_job_is_dropped_quietly() {
+        note("nobody is listening");
+    }
+
+    #[test]
+    fn notes_are_capped() {
+        let t = Token::new();
+        let _g = install(t.clone());
+        for i in 0..100 {
+            note(format!("n{i}"));
+        }
+        assert_eq!(t.take_notes().len(), 8);
     }
 
     #[test]

@@ -710,6 +710,8 @@ impl Document {
                 }
                 Some(nn.length() * 0.5)
             }
+            // a solid with a valid exact body is measured by the kernel
+            Geometry::Brep(b) if b.closed && b.exact_valid().is_some_and(|e| e.area.is_some()) => b.exact_valid().and_then(|e| e.area),
             Geometry::Surface(_) | Geometry::Brep(_) => measure_mesh(g).map(|m| tri_area(&m)),
             Geometry::Mesh(m) => Some(tri_area(m)),
             _ => None,
@@ -718,6 +720,11 @@ impl Document {
 
     /// Signed volume of a closed mesh (divergence theorem) and its centroid.
     pub fn volume_of(g: &Geometry) -> Option<(f64, DVec3)> {
+        // a solid with a valid exact body is measured by the kernel; the mesh only gives the centroid
+        let exact = match g {
+            Geometry::Brep(b) if b.closed => b.exact_valid().and_then(|e| e.volume),
+            _ => None,
+        };
         let mesh = match g {
             Geometry::Surface(s) if surface_is_closed(s) => measure_mesh(g)?,
             Geometry::Brep(b) if b.closed => measure_mesh(g)?,
@@ -735,7 +742,7 @@ impl Document {
         if v.abs() < 1e-18 {
             return None;
         }
-        Some((v.abs(), c / v))
+        Some((exact.unwrap_or(v.abs()), c / v))
     }
 
     pub fn toggle_select(&mut self, id: ObjectId) {

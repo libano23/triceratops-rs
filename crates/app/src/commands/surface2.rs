@@ -1029,7 +1029,7 @@ impl Command for ExtractSrfCmd {
                 let face = rest.remove(fi);
                 ctx.doc.begin_undo("ExtractSrf");
                 ctx.doc.replace_geometry(id, Geometry::Brep(Brep::new(rest)));
-                let g = if face.is_trimmed() { Geometry::Brep(Brep { faces: vec![face], closed: false }) } else { Geometry::Surface(face.surface) };
+                let g = if face.is_trimmed() { Geometry::Brep(Brep { faces: vec![face], closed: false, exact: None }) } else { Geometry::Surface(face.surface) };
                 let nid = ctx.doc.add_with(g, attrs);
                 ctx.doc.select(nid, true);
                 Prompt::pick("Select surfaces to extract. Press Enter when done", ObjFilter::Polysurface).step()

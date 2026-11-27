@@ -1,0 +1,19 @@
+[package]
+name = "tri-kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Exact B-rep solids on the solidcore kernel (docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md).
+solidcore = ["dep:solidcore-ops", "dep:solidcore-record", "dep:solidcore-tess"]
+
+[dependencies]
+glam.workspace = true
+tri-geom = { path = "../geom" }
+solidcore-ops = { workspace = true, optional = true }
+solidcore-record = { workspace = true, optional = true }
+solidcore-tess = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

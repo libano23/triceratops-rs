@@ -735,6 +735,31 @@ mod acceptance_tests {
         assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
     }
 
+    /// The thread (legacy faces) fused to a rod that came out of an exact Boolean (kernel faces):
+    /// that goes through the legacy mesh Boolean, which copes with the coincident surfaces only
+    /// when the kernel's trims are as fine as the legacy engine's own (1e-3 mm); at the display
+    /// tolerance it said "Boolean too complex".
+    #[test]
+    fn screw_thread_on_a_rod_made_by_an_exact_boolean_is_bounded() {
+        let mut app = App::new();
+        let t = std::time::Instant::now();
+        for lines in [
+            json!(["Cylinder", "0,0,0", "5", "20"]),
+            json!(["Cylinder", "0,0,-1", "2", "22"]),
+            json!(["BooleanDifference", "#1", "", "#2", ""]),
+            json!(["Helix", "0,0,0", "0,0,20", "Turns", "10", "5"]),
+            json!(["Polyline", "5,0,-0.8", "5.9,0,0", "5,0,0.8", "Close"]),
+            json!(["Sweep1", "#4", "#5", ""]),
+            json!(["Cap", "last"]),
+        ] {
+            let _ = run_json(&mut app, &lines);
+        }
+        let ids: Vec<_> = app.doc.objects().map(|o| o.id).collect();
+        let r = run(&mut app, &["BooleanUnion", &format!("#{},#{}", ids[0], ids[ids.len() - 1]), ""]);
+        assert_eq!(r["added"].as_array().map_or(0, |a| a.len()), 1, "the thread and the exact rod make one solid: {r}");
+        assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
+    }
+
     #[test]
     fn mcp_run_commands_waits_for_job() {
         let mut app = App::new();

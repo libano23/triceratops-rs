@@ -774,7 +774,7 @@ impl Command for ExplodeCmd {
                 Geometry::Brep(b) => {
                     ctx.doc.remove(id);
                     for f in b.faces {
-                        let g = if f.is_trimmed() { Geometry::Brep(Brep { faces: vec![f], closed: false }) } else { Geometry::Surface(f.surface) };
+                        let g = if f.is_trimmed() { Geometry::Brep(Brep { faces: vec![f], closed: false, exact: None }) } else { Geometry::Surface(f.surface) };
                         let nid = ctx.doc.add_with(g, o.attributes.clone());
                         ctx.doc.select(nid, true);
                         n += 1;

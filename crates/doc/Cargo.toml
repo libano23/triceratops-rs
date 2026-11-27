@@ -23,3 +23,6 @@ cadcraft-constraints = { git = "https://github.com/storytold/cadcraft", package 
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+solidcore-record.workspace = true

@@ -8,8 +8,12 @@ license.workspace = true
 delaunator = "1.1.0"
 earcutr = "0.4"
 glam.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["rc"] }
+solidcore-record.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

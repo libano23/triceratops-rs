@@ -244,7 +244,12 @@ impl NurbsCurve {
     pub fn insert_knot(&mut self, t: f64, r: usize) {
         let p = self.degree;
         let n = self.control_points.len() - 1;
-        let k = find_span(n, p, t, &self.knots);
+        let mut k = find_span(n, p, t, &self.knots);
+        // `find_span` stops at the last span of the curve for t at the end of an unclamped
+        // domain; insertion needs the span u_k <= t < u_{k+1}, which lies further on
+        while k + 1 < self.knots.len() - 1 && self.knots[k + 1] <= t {
+            k += 1;
+        }
         let mut s = 0; // existing multiplicity
         for kv in &self.knots {
             if (kv - t).abs() < crate::KNOT_TOL {
@@ -666,6 +671,55 @@ pub fn circle_through(a: DVec3, b: DVec3, c: DVec3) -> Result<(DVec3, f64, Plane
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn split_of_an_unclamped_curve_follows_the_curve_on_both_sides() {
+        use super::*;
+        let pts: Vec<DVec3> = (0..8)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 8.0;
+                DVec3::new(12.0 * a.cos(), 9.0 * a.sin(), (3.0 * a).cos())
+            })
+            .collect();
+        let c = NurbsCurve::periodic(3, pts).unwrap();
+        let (t0, t1) = c.domain();
+        for cut in [1.0, 3.5, 7.25] {
+            let (l, r) = c.split(cut).expect("an interior parameter splits");
+            let (l0, l1) = l.domain();
+            let (r0, r1) = r.domain();
+            assert!((l0 - t0).abs() < 1e-9 && (l1 - cut).abs() < 1e-9 && (r0 - cut).abs() < 1e-9 && (r1 - t1).abs() < 1e-9, "domains {:?} {:?}", l.domain(), r.domain());
+            for i in 0..=40 {
+                let tl = l0 + (l1 - l0) * i as f64 / 40.0;
+                let tr = r0 + (r1 - r0) * i as f64 / 40.0;
+                assert!((l.point_at(tl) - c.point_at(tl)).length() < 1e-9, "left at {tl} (cut {cut})");
+                assert!((r.point_at(tr) - c.point_at(tr)).length() < 1e-9, "right at {tr} (cut {cut})");
+            }
+        }
+    }
+
+    #[test]
+    fn insert_knot_keeps_an_unclamped_curve_unchanged_at_every_knot_of_its_domain() {
+        use super::*;
+        let pts: Vec<DVec3> = (0..8)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 8.0;
+                DVec3::new(12.0 * a.cos(), 9.0 * a.sin(), (3.0 * a).cos())
+            })
+            .collect();
+        let c = NurbsCurve::periodic(3, pts).unwrap();
+        let (t0, t1) = c.domain();
+        // every knot of the domain, the two ends included, in both orders
+        for order in [(0..=8).collect::<Vec<_>>(), (0..=8).rev().collect::<Vec<_>>()] {
+            let mut w = c.clone();
+            for k in order {
+                w.insert_knot(k as f64, 3);
+            }
+            for i in 0..=80 {
+                let t = t0 + (t1 - t0) * i as f64 / 80.0;
+                assert!((w.point_at(t) - c.point_at(t)).length() < 1e-9, "t = {t}: {:?} vs {:?}", w.point_at(t), c.point_at(t));
+            }
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -786,3 +840,4 @@ mod tests {
         assert!((arc.point_at(0.5) - b).length() < 1e-9);
     }
 }
+

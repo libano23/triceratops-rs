@@ -4,6 +4,7 @@
 use glam::{DAffine3, DVec2, DVec3};
 use serde::{Deserialize, Serialize};
 
+use crate::exact::ExactBody;
 use crate::{BoundingBox, Mesh, NurbsCurve, NurbsSurface, Plane, Result, GeomError};
 
 /// A surface with optional trim loops in parameter space. The first loop is the
@@ -690,13 +691,42 @@ pub struct Brep {
     pub faces: Vec<Face>,
     #[serde(default)]
     pub closed: bool,
+    /// The solidcore body this solid was made as, trusted only while it matches `faces`
+    /// ([`Brep::exact_valid`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact: Option<ExactBody>,
 }
 
 impl Brep {
     pub fn new(faces: Vec<Face>) -> Self {
-        let mut b = Self { faces, closed: false };
+        let mut b = Self { faces, closed: false, exact: None };
         b.closed = b.compute_closed();
         b
+    }
+
+    /// Hash of the geometry of the faces ([`crate::exact::fingerprint`]).
+    pub fn fingerprint(&self) -> u64 {
+        crate::exact::fingerprint(&self.faces, self.closed)
+    }
+
+    /// The exact body, only if it still matches the faces it was made with.
+    pub fn exact_valid(&self) -> Option<&ExactBody> {
+        self.exact.as_ref().filter(|e| e.faces_fingerprint == self.fingerprint())
+    }
+
+    /// Attach `record` as the exact body of these faces as they are now.
+    pub fn attach_exact(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>) {
+        self.attach_exact_with_volume(record, None);
+    }
+
+    /// [`Brep::attach_exact`] with the kernel's volume of the solid.
+    pub fn attach_exact_with_volume(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>, volume: Option<f64>) {
+        self.attach_exact_measured(record, volume, None);
+    }
+
+    /// [`Brep::attach_exact`] with the kernel's volume and surface area of the solid.
+    pub fn attach_exact_measured(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>, volume: Option<f64>, area: Option<f64>) {
+        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, volume, area, faces_fingerprint: self.fingerprint(), trusted: true });
     }
 
     pub fn from_surfaces(surfaces: Vec<NurbsSurface>) -> Self {
@@ -809,9 +839,19 @@ impl Brep {
     }
 
     pub fn transform(&mut self, xf: &DAffine3) {
+        // the exact body follows a similarity, and only while it still matched the faces
+        let mut exact = self.exact_valid().cloned().filter(|_| crate::exact::is_similarity(xf));
         for f in self.faces.iter_mut() {
             f.transform(xf);
         }
+        if let Some(e) = exact.as_mut() {
+            e.placement = *xf * e.placement;
+            let det = xf.matrix3.determinant().abs();
+            e.volume = e.volume.map(|v| v * det);
+            e.area = e.area.map(|a| a * det.powf(2.0 / 3.0));
+            e.faces_fingerprint = self.fingerprint();
+        }
+        self.exact = exact;
     }
 
     pub fn flip(&mut self) {
@@ -984,6 +1024,159 @@ pub fn distance_to_polyline_skipping_pub(p: DVec3, poly: &[DVec3], skip: usize, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dummy_record() -> std::sync::Arc<solidcore_record::brep::Brep> {
+        std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn exact_valid_until_faces_change() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        assert!(b.exact.is_none() && b.exact_valid().is_none());
+        b.attach_exact(dummy_record());
+        assert!(b.exact_valid().is_some());
+        b.faces[0].surface.control_points[0].x += 1e-9;
+        assert!(b.exact_valid().is_none(), "an in-place face edit must invalidate the exact body");
+    }
+
+    #[test]
+    fn exact_valid_ignores_nothing_a_face_edit_can_touch() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        let ok = b.clone();
+        let mut w = b.clone();
+        w.faces[1].surface.weights[0] *= 1.0000001;
+        let mut k = b.clone();
+        k.faces[2].surface.knots_u[0] -= 0.5;
+        let mut l = b.clone();
+        l.faces[3].loops.push(vec![DVec2::new(0.1, 0.1), DVec2::new(0.2, 0.1), DVec2::new(0.2, 0.2)]);
+        let mut n = b.clone();
+        n.faces.pop();
+        assert!(ok.exact_valid().is_some());
+        for (name, m) in [("weight", w), ("knot", k), ("loop", l), ("face count", n)] {
+            assert!(m.exact_valid().is_none(), "{name} edit not detected");
+        }
+    }
+
+    #[test]
+    fn rigid_transform_keeps_the_exact_body_and_composes_the_placement() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        let a = DAffine3::from_rotation_translation(glam::DQuat::from_rotation_z(0.7), DVec3::new(1.0, 2.0, 3.0));
+        let c = DAffine3::from_translation(DVec3::new(-5.0, 0.0, 1.0));
+        b.transform(&a);
+        b.transform(&c);
+        let e = b.exact_valid().expect("a rigid move keeps the exact body valid");
+        let want = c * a;
+        assert!(e.placement.matrix3.abs_diff_eq(want.matrix3, 1e-12) && e.placement.translation.abs_diff_eq(want.translation, 1e-12), "{:?}", e.placement);
+    }
+
+    #[test]
+    fn uniform_scale_and_mirror_keep_the_exact_body() {
+        for xf in [
+            DAffine3::from_scale(DVec3::splat(2.5)),
+            DAffine3::from_mat3(glam::DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0))),
+        ] {
+            let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+            b.attach_exact(dummy_record());
+            b.transform(&xf);
+            assert!(b.exact_valid().is_some(), "{xf:?}");
+        }
+    }
+
+    #[test]
+    fn non_uniform_scale_and_shear_drop_the_exact_body() {
+        for xf in [
+            DAffine3::from_scale(DVec3::new(1.0, 2.0, 1.0)),
+            DAffine3::from_mat3(glam::DMat3::from_cols(DVec3::X, DVec3::new(0.5, 1.0, 0.0), DVec3::Z)),
+        ] {
+            let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+            b.attach_exact(dummy_record());
+            b.transform(&xf);
+            assert!(b.exact.is_none(), "{xf:?}");
+        }
+    }
+
+    #[test]
+    fn transforming_a_stale_exact_body_does_not_revive_it() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        b.faces[0].surface.control_points[0].x += 0.5; // an in-place edit
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert!(b.exact_valid().is_none());
+    }
+
+    #[test]
+    fn exact_volume_follows_similarities() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_with_volume(dummy_record(), Some(100.0));
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert_eq!(b.exact_valid().unwrap().volume, Some(100.0));
+        b.transform(&DAffine3::from_mat3(glam::DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0))));
+        assert_eq!(b.exact_valid().unwrap().volume, Some(100.0), "a mirror keeps the volume positive");
+        b.transform(&DAffine3::from_scale(DVec3::splat(2.0)));
+        assert!((b.exact_valid().unwrap().volume.unwrap() - 800.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn exact_area_follows_similarities_by_the_square_of_the_scale() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_measured(dummy_record(), Some(24.0), Some(52.0));
+        b.transform(&DAffine3::from_rotation_translation(glam::DQuat::from_rotation_z(0.3), DVec3::X));
+        assert_eq!(b.exact_valid().unwrap().area.map(|a| (a * 1e9).round() / 1e9), Some(52.0));
+        b.transform(&DAffine3::from_scale(DVec3::splat(3.0)));
+        let e = b.exact_valid().unwrap();
+        assert!((e.area.unwrap() - 52.0 * 9.0).abs() < 1e-9 && (e.volume.unwrap() - 24.0 * 27.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn exact_survives_a_serde_roundtrip() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        let json = serde_json::to_string(&b).unwrap();
+        let mut back: Brep = serde_json::from_str(&json).unwrap();
+        // the record is the same; that it came from this process's kernel is not persisted
+        assert!(!back.exact.as_ref().unwrap().trusted);
+        back.exact.as_mut().unwrap().trusted = true;
+        assert_eq!(back, b);
+        assert!(back.exact_valid().is_some());
+    }
+
+    #[test]
+    fn only_a_freshly_attached_record_is_trusted_and_moves_keep_that() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        assert!(b.exact.as_ref().unwrap().trusted);
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert!(b.exact.as_ref().unwrap().trusted);
+        let back: Brep = serde_json::from_str(&serde_json::to_string(&b).unwrap()).unwrap();
+        assert!(!back.exact.unwrap().trusted, "a record read from a file is validated before use");
+    }
+
+    #[test]
+    fn json_without_exact_still_loads() {
+        let b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        let mut v = serde_json::to_value(&b).unwrap();
+        v.as_object_mut().unwrap().remove("exact");
+        let back: Brep = serde_json::from_value(v).unwrap();
+        assert!(back.exact.is_none());
+        assert_eq!(back.faces, b.faces);
+    }
+
+    #[test]
+    fn fingerprint_is_stable_across_runs() {
+        // pinned: the value is stored in documents, so it must not change with the toolchain
+        let b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        assert_eq!(b.fingerprint(), 15843823923039428258_u64, "the fingerprint changed: stored documents would lose their exact bodies");
+    }
 
     #[test]
     fn box_normals_outward_and_closed() {

@@ -110,7 +110,7 @@ pub fn split_faces(ctx: &mut CmdCtx, id: ObjectId, cutters: &[NurbsCurve]) -> us
         // a split surface becomes separate surfaces
         ctx.doc.remove(id);
         for f in out {
-            let nid = ctx.doc.add_with(Geometry::Brep(Brep { faces: vec![f], closed: false }), attrs.clone());
+            let nid = ctx.doc.add_with(Geometry::Brep(Brep { faces: vec![f], closed: false, exact: None }), attrs.clone());
             ctx.doc.select(nid, true);
         }
     } else {
@@ -298,7 +298,7 @@ impl OffsetSrfCmd {
                     b.closed = true;
                     out.push(Geometry::Brep(b));
                 } else if offs.is_trimmed() {
-                    out.push(Geometry::Brep(Brep { faces: vec![offs], closed: false }));
+                    out.push(Geometry::Brep(Brep { faces: vec![offs], closed: false, exact: None }));
                 } else {
                     out.push(Geometry::Surface(offs.surface));
                 }

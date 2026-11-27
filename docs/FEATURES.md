@@ -376,3 +376,55 @@ Updates…, `CheckForUpdates`) for a newer release and shows the notes of every 
 taken from `CHANGELOG.md`: the AppImage downloads, verifies (size and SHA-256) and
 replaces itself, then restarts; Windows downloads the zip to Downloads. Nothing about the
 user is sent; `TRICERATOPS_NO_UPDATE_CHECK=1` or the option turns the check off.
+
+## Exact solids (experimental, cargo feature `kernel-solidcore`)
+
+Design: `docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md`; plan:
+`docs/superpowers/plans/2026-11-27-solidcore-kernel.md`.
+
+Solids made by `Box`, `Cylinder`, `Cone`, `Sphere` and `Torus`, and the planar prisms the solid
+tools build (WireCut, holes, Boss, Rib), carry the body the **solidcore** kernel (a Rust port of
+NVIDIA's SMLib) made of the same solid, next to their ordinary faces (`Brep::exact`). The faces
+stay what the legacy construction makes, so every other command behaves as before.
+
+* `BooleanUnion`, `BooleanDifference`, `BooleanIntersection` and the commands built on them run
+  on the kernel when **both** operands carry a valid exact body, and give exact results
+  (the result carries its own exact body and its faces are the kernel's NURBS faces with trims
+  sampled from the exact edges). Any other combination takes the existing pipeline.
+* The exact body is trusted only while it matches the faces (a fingerprint is stored with it):
+  a command that edits faces in place simply drops it. Move, Rotate, Mirror, Copy, arrays and
+  uniform Scale keep it (it carries a placement); non-uniform scale and shear drop it.
+* A kernel refusal (for instance two free-form faces within 0.001 mm of each other) is shown with
+  the kernel's message and **never** falls back to the mesh Boolean: both objects stay as they
+  were. Esc cancels a running kernel Boolean.
+* Exact bodies made in the current session are imported by the kernel without re-checking (well
+  under a millisecond); one read from a file is validated first (about a second for a body with
+  dozens of faces) and a damaged one is refused.
+* The exact body is saved in the document and survives undo and redo. The volume of such a solid
+  (Volume command, MCP `object_info`) and its surface area are the kernel's, kept through moves
+  and uniform scales.
+* Refusals inside the commands that call a Boolean as a step (Boss, Rib, Shell lids, holes,
+  BooleanSplit, WireCut) are listed in the command's log when it ends.
+* The faces of a Boolean result are the kernel's NURBS faces with trims sampled at 0.001 mm
+  (the legacy engine's own tolerance). A solid like that can still be combined with a legacy one
+  (a modelled thread fused to a rod that came out of an exact Boolean): the legacy mesh Boolean
+  copes with the coincident surfaces only when the trims are that fine.
+* Exact bodies made in the current session are imported by the kernel without re-checking (well
+  under a millisecond); one read from a file is validated first (about a second for a body with
+  dozens of faces) and a damaged one is refused.
+* The exact body is saved in the document and survives undo and redo. The volume of such a solid
+  (Volume command, MCP `object_info`) and its surface area are the kernel's, kept through moves
+  and uniform scales.
+* Refusals inside the commands that call a Boolean as a step (Boss, Rib, Shell lids, holes,
+  BooleanSplit, WireCut) are listed in the command's log when it ends.
+* **Known limit:** a Boolean between an exact solid and a legacy one (no exact body) uses the
+  legacy mesh Boolean on the kernel's faces. Coincident surfaces made by the two engines (a
+  modelled thread fused to a rod that came out of an exact Boolean) can fail there with "Boolean
+  too complex", which the legacy engine handles only when both sides were made by it. Make both
+  with the exact tools, or keep that rod legacy.
+* With the feature on, `Sphere` and `Torus` make a solid polysurface (one face) instead of a
+  closed surface.
+* Measured on the pinned kernel revision: 12 analytic, tangent and coincident cases and 3
+  free-form identity cases within 1e-5 % (and a near-coincident free-form pair that is refused) (see `crates/kernel/tests/acceptance.rs`).
+* Cost: compiling solidcore adds about 4.5 minutes of wall time (≈30 CPU minutes) to a clean
+  release build on 16 cores.

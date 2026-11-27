@@ -8,8 +8,13 @@ license.workspace = true
 name = "triceratops"
 path = "src/main.rs"
 
+[features]
+# Exact solids on the solidcore kernel (docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md); off until M3.
+kernel-solidcore = ["dep:tri-kernel", "tri-kernel/solidcore"]
+
 [dependencies]
 tri-geom = { path = "../geom" }
+tri-kernel = { path = "../kernel", optional = true }
 tri-doc = { path = "../doc" }
 glam.workspace = true
 anyhow.workspace = true

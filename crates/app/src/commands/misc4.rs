@@ -268,11 +268,22 @@ pub fn geometry_nonempty(g: &Geometry) -> bool {
 /// Boolean between two solids: a NURBS polysurface when both operands are surfaces or
 /// polysurfaces and the face outlines can be rebuilt, otherwise a mesh (meshes stay meshes).
 pub fn boolean_geometry(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Geometry> {
-    boolean_geometry_checked(a, b, op).ok()
+    match boolean_geometry_checked(a, b, op) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            // the caller skips this step; the job's owner still learns why
+            tri_geom::job::note(format!("a Boolean was refused: {e}"));
+            None
+        }
+    }
 }
 
 /// `boolean_geometry` saying why there is no result ("cancelled", "Boolean too complex …").
 pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Result<Geometry, String> {
+    #[cfg(feature = "kernel-solidcore")]
+    if let Some(r) = exact_boolean(a, b, op) {
+        return r;
+    }
     if let (Some(ba), Some(bb)) = (geometry_brep(a), geometry_brep(b)) {
         // surfaces and polysurfaces always give a polysurface (no mesh fallback)
         let r = tri_geom::brep_boolean::brep_boolean_verbose(&ba, &bb, op, tri_geom::brep_boolean::DEFAULT_TOLERANCE)?;
@@ -284,6 +295,35 @@ pub fn boolean_geometry_checked(a: &Geometry, b: &Geometry, op: BooleanOp) -> Re
         return Err("the result is empty".into());
     }
     Ok(Geometry::Mesh(m))
+}
+
+/// Boolean of two solids that both carry a valid exact body, on the solidcore kernel. `None` when
+/// either operand is not exact: the legacy pipeline then takes it. A kernel refusal is an error
+/// with the kernel's message, never a silent fallback to the mesh Boolean.
+#[cfg(feature = "kernel-solidcore")]
+fn exact_boolean(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Result<Geometry, String>> {
+    use tri_kernel::{BooleanOp as K, Solid};
+    let (Geometry::Brep(ba), Geometry::Brep(bb)) = (a, b) else { return None };
+    let (sa, sb) = (Solid::from_exact(ba)?, Solid::from_exact(bb)?);
+    let op = match op {
+        BooleanOp::Union => K::Union,
+        BooleanOp::Difference => K::Difference,
+        BooleanOp::Intersection => K::Intersection,
+    };
+    // The result's trims are sampled as finely as the legacy Boolean works (its absolute
+    // tolerance): a solid that later meets a legacy one, a thread fused to a rod for instance,
+    // goes through the mesh Boolean, which fails on coincident surfaces when the kernel's trims
+    // are coarser than its own.
+    let chord = tri_geom::brep_boolean::DEFAULT_TOLERANCE;
+    Some(
+        sa.boolean(&sb, op)
+            .and_then(|r| r.to_brep(chord))
+            .map(Geometry::Brep)
+            .map_err(|e| match e {
+                tri_kernel::KernelError::Cancelled => "cancelled".to_string(),
+                other => format!("the solid kernel refused: {other}"),
+            }),
+    )
 }
 
 /// Extrusion solid of a closed planar curve, `half` on each side of its plane, as a polysurface
@@ -301,7 +341,7 @@ pub fn prism_brep(c: &NurbsCurve, plane: &Plane, half: f64) -> Option<Brep> {
     let mut b = Brep::new(vec![Face::untrimmed(side), cap0, cap1]);
     b.orient_outward();
     b.closed = true;
-    Some(b)
+    Some(super::exact_solids::prism(b, c, plane, half))
 }
 
 /// Cutter for a planar closed curve: polysurface when possible, mesh otherwise.
@@ -533,9 +573,7 @@ pub fn shell_geometry(outer: &Geometry, t: f64, remove: &[DVec3]) -> Result<Geom
     if !inner.closed {
         return Err("Shell: the inner solid is not closed (thickness too large?).".into());
     }
-    let Some(mut result) = boolean_geometry(outer, &Geometry::Brep(inner), BooleanOp::Difference) else {
-        return Err("Shell failed.".into());
-    };
+    let mut result = boolean_geometry_checked(outer, &Geometry::Brep(inner), BooleanOp::Difference).map_err(|e| format!("Shell failed: {e}"))?;
     // open the picked faces: remove the lids between the outer and inner surfaces
     for p in remove {
         // the lid: the inner outline of the picked face, between the two surfaces

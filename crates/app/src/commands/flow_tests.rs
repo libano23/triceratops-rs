@@ -1902,3 +1902,484 @@ fn join_merges_meshes() {
     assert_eq!(meshes.len(), 1, "two meshes join into one");
     assert_eq!(meshes[0].vertices.len(), va + vb);
 }
+
+
+// ---- exact solids on solidcore (feature `kernel-solidcore`) ----
+
+#[cfg(feature = "kernel-solidcore")]
+mod exact_solids {
+    use super::*;
+    use tri_geom::Brep;
+    use tri_kernel::Solid;
+
+    fn add(h: &mut Harness, s: &Solid) -> tri_doc::ObjectId {
+        h.doc.add(Geometry::Brep(s.to_brep(0.05).unwrap()))
+    }
+
+    fn only_brep(h: &Harness) -> Brep {
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        match &h.doc.objects().next().unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("expected a polysurface, got {}", other.type_name()),
+        }
+    }
+
+    fn kernel_volume(b: &Brep) -> f64 {
+        Solid::from_exact(b).expect("the result carries a valid exact body").volume().unwrap()
+    }
+
+    #[test]
+    fn exact_sphere_minus_two_cylinders() {
+        let mut h = Harness::new();
+        let s = add(&mut h, &Solid::sphere(DVec3::ZERO, 20.0).unwrap());
+        let c1 = add(&mut h, &Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap());
+        let c2 = add(&mut h, &Solid::cylinder(DVec3::new(-30.0, 0.0, 8.0), DVec3::new(1.0, 0.3, 0.1), 6.0, 60.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![s]);
+        h.objects(vec![c1, c2]);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        let v = kernel_volume(&b);
+        // Monte Carlo reference 23658.8 (8e6 samples: +-0.03 %); the legacy Boolean gave 26268 (+11 %)
+        assert!((v - 23658.8).abs() < 23658.8 * 0.001, "volume {v}");
+    }
+
+    #[test]
+    fn exact_torus_minus_a_bore_along_its_tube() {
+        let mut h = Harness::new();
+        let t = add(&mut h, &Solid::torus(DVec3::ZERO, DVec3::Z, 14.0, 6.0).unwrap());
+        let c = add(&mut h, &Solid::cylinder(DVec3::new(14.0, -20.0, 0.0), DVec3::Y, 3.0, 40.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![t]);
+        h.objects(vec![c]);
+        let v = kernel_volume(&only_brep(&h));
+        // Monte Carlo reference 9163.74; the legacy Boolean gave 9704.6 (+5.9 %)
+        assert!((v - 9163.74).abs() < 9163.74 * 0.001, "volume {v}");
+    }
+
+    #[test]
+    fn legacy_operands_keep_the_legacy_path() {
+        let mut h = Harness::new();
+        let a = h.doc.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 10.0, 10.0, 10.0).unwrap()));
+        let moved = Plane { origin: DVec3::new(5.0, 5.0, 5.0), ..Plane::world_xy() };
+        let b = h.doc.add(Geometry::Brep(Brep::cuboid(&moved, 10.0, 10.0, 10.0).unwrap()));
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        let r = only_brep(&h);
+        assert!(r.exact.is_none(), "legacy operands give a legacy result");
+        let v = Document::volume_of(&Geometry::Brep(r)).unwrap().0;
+        assert!((v - 1875.0).abs() < 2.0, "union volume {v}");
+    }
+
+    #[test]
+    fn an_exact_and_a_legacy_operand_take_the_legacy_path() {
+        let mut h = Harness::new();
+        let a = add(&mut h, &Solid::cuboid(DVec3::ZERO, DVec3::splat(10.0)).unwrap());
+        let moved = Plane { origin: DVec3::new(5.0, 5.0, 5.0), ..Plane::world_xy() };
+        let b = h.doc.add(Geometry::Brep(Brep::cuboid(&moved, 10.0, 10.0, 10.0).unwrap()));
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        assert!(only_brep(&h).exact.is_none());
+    }
+
+    #[test]
+    fn a_stale_exact_body_is_not_used() {
+        let mut h = Harness::new();
+        let mut brep = Solid::cuboid(DVec3::ZERO, DVec3::splat(10.0)).unwrap().to_brep(0.05).unwrap();
+        brep.faces[0].surface.control_points[0].x += 0.01; // a legacy edit, in place
+        let a = h.doc.add(Geometry::Brep(brep));
+        let b = add(&mut h, &Solid::cuboid(DVec3::new(5.0, 5.0, 5.0), DVec3::splat(15.0)).unwrap());
+        h.start("BooleanUnion");
+        h.objects(vec![a, b]);
+        assert!(only_brep(&h).exact.is_none(), "the edited operand must not reach the kernel");
+    }
+
+    #[test]
+    fn a_kernel_refusal_keeps_both_inputs_and_says_why() {
+        use std::f64::consts::PI;
+        let blob = |cx: f64| {
+            let pts: Vec<DVec3> = (0..8)
+                .map(|i| {
+                    let a = 2.0 * PI * i as f64 / 8.0;
+                    let r = 12.0 * (1.0 + 0.2 * (3.0 * a).cos());
+                    DVec3::new(cx + r * a.cos(), r * a.sin(), 15.0)
+                })
+                .collect();
+            tri_geom::NurbsCurve::periodic(3, pts).unwrap()
+        };
+        let plane = Plane { origin: DVec3::new(0.0, 0.0, 15.0), ..Plane::world_xy() };
+        let mut h = Harness::new();
+        let a = add(&mut h, &Solid::extrude_closed_curve(&blob(0.0), &plane, 15.0).unwrap());
+        let b = add(&mut h, &Solid::extrude_closed_curve(&blob(0.001), &plane, 15.0).unwrap());
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![b]);
+        assert!(h.doc.get(a).is_some() && h.doc.get(b).is_some(), "both inputs must stay; log: {:?}", h.log);
+        assert_eq!(h.doc.len(), 2);
+        assert!(h.log.iter().any(|l| l.contains("failed") && l.contains("solid kernel")), "the log names the kernel: {:?}", h.log);
+    }
+}
+
+#[cfg(feature = "kernel-solidcore")]
+mod exact_primitives {
+    use super::*;
+    use std::f64::consts::PI;
+    use tri_geom::Brep;
+    use tri_kernel::Solid;
+
+    fn only_brep(h: &Harness) -> Brep {
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        match &h.doc.objects().next().unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("expected an exact polysurface, got {}; log: {:?}", other.type_name(), h.log),
+        }
+    }
+
+    fn volume(b: &Brep) -> f64 {
+        Solid::from_exact(b).expect("a valid exact body").volume().unwrap()
+    }
+
+    #[test]
+    fn box_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Box");
+        h.point(0.0, 0.0, 0.0);
+        h.point(20.0, 20.0, 0.0);
+        h.number(10.0);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn box_with_negative_extents_is_still_exact_and_positive() {
+        let mut h = Harness::new();
+        h.start("Box");
+        h.point(20.0, 20.0, 0.0);
+        h.point(0.0, 0.0, 0.0);
+        h.number(10.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+        let bb = b.bounding_box();
+        assert!((bb.min - DVec3::new(0.0, 0.0, 0.0)).length() < 1e-9 && (bb.max - DVec3::new(20.0, 20.0, 10.0)).length() < 1e-9, "{bb:?}");
+    }
+
+    #[test]
+    fn cylinder_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.point(1.0, 2.0, 3.0);
+        h.number(4.0);
+        h.number(20.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 16.0 * 20.0).abs() < 1e-2);
+        assert!((b.bounding_box().center() - DVec3::new(1.0, 2.0, 13.0)).length() < 1e-6);
+    }
+
+    #[test]
+    fn cone_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Cone");
+        h.point(0.0, 0.0, 0.0);
+        h.number(6.0);
+        h.number(15.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 36.0 * 15.0 / 3.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn sphere_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let b = only_brep(&h);
+        assert!(b.closed);
+        assert!((volume(&b) - 4.0 / 3.0 * PI * 8000.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn torus_command_makes_an_exact_solid() {
+        let mut h = Harness::new();
+        h.start("Torus");
+        h.point(0.0, 0.0, 0.0);
+        h.number(14.0);
+        h.number(6.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - 2.0 * PI * PI * 14.0 * 36.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn a_torus_whose_tube_reaches_the_axis_falls_back_to_the_legacy_surface() {
+        let mut h = Harness::new();
+        h.start("Torus");
+        h.point(0.0, 0.0, 0.0);
+        h.number(5.0);
+        h.number(8.0); // minor > major: not a ring torus for the kernel
+        assert_eq!(h.doc.len(), 1, "log: {:?}", h.log);
+        assert!(matches!(h.doc.objects().next().unwrap().geometry, Geometry::Surface(_)));
+    }
+
+    #[test]
+    fn non_solid_cylinder_stays_a_surface() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.option("Solid", None);
+        h.point(0.0, 0.0, 0.0);
+        h.number(4.0);
+        h.number(20.0);
+        assert!(matches!(h.doc.objects().next().unwrap().geometry, Geometry::Surface(_)));
+    }
+
+    fn exact_box(h: &mut Harness) -> tri_doc::ObjectId {
+        h.start("Box");
+        h.point(0.0, 0.0, 0.0);
+        h.point(20.0, 20.0, 0.0);
+        h.number(10.0);
+        h.doc.objects().last().unwrap().id
+    }
+
+    fn exact_of(h: &Harness, id: tri_doc::ObjectId) -> Brep {
+        match &h.doc.get(id).unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("not a polysurface: {}", other.type_name()),
+        }
+    }
+
+    fn solid_bounds(b: &Brep) -> ([f64; 3], [f64; 3]) {
+        let rec = Solid::from_exact(b).expect("a valid exact body").record().unwrap();
+        let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for v in &rec.vertices {
+            for i in 0..3 {
+                lo[i] = lo[i].min(v.point[i]);
+                hi[i] = hi[i].max(v.point[i]);
+            }
+        }
+        (lo, hi)
+    }
+
+    #[test]
+    fn move_keeps_the_exact_body_and_moves_it() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Move");
+        h.objects(vec![id]);
+        h.point(0.0, 0.0, 0.0);
+        h.point(100.0, 5.0, 0.0);
+        let b = exact_of(&h, id);
+        let (lo, hi) = solid_bounds(&b);
+        assert!((lo[0] - 100.0).abs() < 1e-9 && (lo[1] - 5.0).abs() < 1e-9 && (hi[0] - 120.0).abs() < 1e-9, "{lo:?} {hi:?}");
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn rotate_keeps_the_exact_body() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Rotate");
+        h.objects(vec![id]);
+        h.point(0.0, 0.0, 0.0);
+        h.number(90.0);
+        let (lo, hi) = solid_bounds(&exact_of(&h, id));
+        assert!((lo[0] + 20.0).abs() < 1e-9 && lo[1].abs() < 1e-9 && hi[0].abs() < 1e-9 && (hi[1] - 20.0).abs() < 1e-9, "{lo:?} {hi:?}");
+    }
+
+    #[test]
+    fn mirror_copy_keeps_a_positive_exact_solid() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Mirror");
+        h.objects(vec![id]);
+        h.option("YAxis", None);
+        assert_eq!(h.doc.len(), 2, "log: {:?}", h.log);
+        let copy = h.doc.objects().map(|o| o.id).find(|i| *i != id).unwrap();
+        let b = exact_of(&h, copy);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+        let (lo, hi) = solid_bounds(&b);
+        assert!((lo[0] + 20.0).abs() < 1e-9 && hi[0].abs() < 1e-9, "{lo:?} {hi:?}");
+    }
+
+    #[test]
+    fn boolean_after_a_move_is_still_exact() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Cylinder");
+        h.point(10.0, 10.0, -5.0);
+        h.number(4.0);
+        h.number(20.0);
+        let c = h.doc.objects().last().unwrap().id;
+        h.doc.clear_selection();
+        h.start("Move");
+        h.objects(vec![c]);
+        h.point(0.0, 0.0, 0.0);
+        h.point(3.0, 2.0, 0.0);
+        h.doc.clear_selection();
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![c]);
+        let r = only_brep(&h);
+        assert!(r.exact.is_some(), "the Boolean took the kernel path; log: {:?}", h.log);
+        let expect = 4000.0 - PI * 16.0 * 10.0;
+        assert!((volume(&r) - expect).abs() < 1e-3, "{} vs {expect}", volume(&r));
+    }
+
+    #[test]
+    fn exact_bodies_survive_undo_redo_and_save_load() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Cylinder");
+        h.point(10.0, 10.0, -5.0);
+        h.number(4.0);
+        h.number(20.0);
+        let c = h.doc.objects().last().unwrap().id;
+        h.doc.clear_selection();
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![c]);
+        let result_id = h.doc.objects().next().unwrap().id;
+        let expect = 4000.0 - PI * 16.0 * 10.0;
+        assert!((volume(&exact_of(&h, result_id)) - expect).abs() < 1e-3);
+        // undo brings the operands back with their exact bodies, redo the result with its own
+        assert!(h.doc.undo().is_some());
+        assert!(exact_of(&h, a).exact_valid().is_some() && exact_of(&h, c).exact_valid().is_some());
+        assert!(h.doc.redo().is_some());
+        assert!((volume(&exact_of(&h, result_id)) - expect).abs() < 1e-3);
+        // save and load keep it
+        let dir = std::env::temp_dir().join(format!("triceratops-exact-flow-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exact.tri");
+        tri_doc::io::save(&h.doc, &path).unwrap();
+        let (state, settings) = tri_doc::io::load(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let mut loaded = Harness::new();
+        loaded.doc.load_state(state, settings, None);
+        assert!((volume(&exact_of(&loaded, result_id)) - expect).abs() < 1e-3, "the exact body survived the file");
+    }
+
+    #[test]
+    fn a_loaded_exact_solid_still_takes_the_kernel_path_in_a_boolean() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Sphere");
+        h.point(10.0, 10.0, 5.0);
+        h.number(7.0);
+        let s = h.doc.objects().last().unwrap().id;
+        let dir = std::env::temp_dir().join(format!("triceratops-exact-flow2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exact2.tri");
+        tri_doc::io::save(&h.doc, &path).unwrap();
+        let (state, settings) = tri_doc::io::load(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let mut loaded = Harness::new();
+        loaded.doc.load_state(state, settings, None);
+        loaded.start("BooleanDifference");
+        loaded.objects(vec![a]);
+        loaded.objects(vec![s]);
+        let r = only_brep(&loaded);
+        assert!(r.exact.is_some(), "log: {:?}", loaded.log);
+        // the ball (r = 7, centre z = 5) pokes 2 mm out of the box (z 0..10) above and below:
+        // each cap has height 2 and volume pi h^2 (3r - h) / 3
+        let cap = PI * 4.0 * (21.0 - 2.0) / 3.0;
+        let inside = 4.0 / 3.0 * PI * 343.0 - 2.0 * cap;
+        assert!((volume(&r) - (4000.0 - inside)).abs() < 1e-2, "{}", volume(&r));
+    }
+
+    #[test]
+    fn a_cylinder_drawn_downwards_is_still_exact() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.point(0.0, 0.0, 0.0);
+        h.number(4.0);
+        h.number(-20.0); // below the base plane
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 16.0 * 20.0).abs() < 1e-2);
+        let c = b.bounding_box().center();
+        assert!((c - DVec3::new(0.0, 0.0, -10.0)).length() < 1e-6, "{c:?}");
+    }
+
+    #[test]
+    fn a_cone_drawn_downwards_is_still_exact() {
+        let mut h = Harness::new();
+        h.start("Cone");
+        h.point(0.0, 0.0, 0.0);
+        h.number(6.0);
+        h.number(-15.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 36.0 * 15.0 / 3.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn the_volume_readout_of_an_exact_solid_comes_from_the_kernel() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let g = h.doc.objects().next().unwrap().geometry.clone();
+        let (v, _) = Document::volume_of(&g).unwrap();
+        let exact = 4.0 / 3.0 * PI * 8000.0;
+        assert!((v - exact).abs() < exact * 1e-9, "a display mesh would be about 0.2 % off: {v} vs {exact}");
+    }
+
+    #[test]
+    fn booleansplit_tells_the_user_when_the_kernel_refuses() {
+        use std::f64::consts::PI;
+        let blob = |cx: f64| {
+            let pts: Vec<DVec3> = (0..8)
+                .map(|i| {
+                    let a = 2.0 * PI * i as f64 / 8.0;
+                    let r = 12.0 * (1.0 + 0.2 * (3.0 * a).cos());
+                    DVec3::new(cx + r * a.cos(), r * a.sin(), 15.0)
+                })
+                .collect();
+            tri_geom::NurbsCurve::periodic(3, pts).unwrap()
+        };
+        let plane = Plane { origin: DVec3::new(0.0, 0.0, 15.0), ..Plane::world_xy() };
+        let mut h = Harness::new();
+        let a = h.doc.add(Geometry::Brep(Solid::extrude_closed_curve(&blob(0.0), &plane, 15.0).unwrap().to_brep(0.05).unwrap()));
+        let b = h.doc.add(Geometry::Brep(Solid::extrude_closed_curve(&blob(0.001), &plane, 15.0).unwrap().to_brep(0.05).unwrap()));
+        h.start("BooleanSplit");
+        h.objects(vec![a]);
+        h.objects(vec![b]);
+        assert!(h.log.iter().any(|l| l.contains("refused") && l.contains("solid kernel")), "the log must say why nothing was split: {:?}", h.log);
+    }
+
+    #[test]
+    fn the_area_readout_of_an_exact_solid_comes_from_the_kernel() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let g = h.doc.objects().next().unwrap().geometry.clone();
+        let a = Document::area_of(&g).unwrap();
+        let exact = 4.0 * PI * 400.0;
+        assert!((a - exact).abs() < exact * 1e-6, "{a} vs {exact}");
+    }
+
+    #[test]
+    fn a_non_uniform_scale_drops_the_exact_body() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.transform_objects(&[id], &glam::DAffine3::from_scale(DVec3::new(1.0, 2.0, 1.0)));
+        assert!(exact_of(&h, id).exact.is_none());
+    }
+
+    #[test]
+    fn prism_of_a_closed_curve_is_exact_and_cuts_an_exact_sphere() {
+        let c = tri_geom::NurbsCurve::circle(&Plane::world_xy(), 6.0).unwrap();
+        let prism = super::misc4::prism_brep(&c, &Plane::world_xy(), 30.0).unwrap();
+        assert!((volume(&prism) - PI * 36.0 * 60.0).abs() < 1e-2);
+        let sphere = Solid::sphere(DVec3::ZERO, 20.0).unwrap().to_brep(0.05).unwrap();
+        let (gs, gp) = (Geometry::Brep(sphere), Geometry::Brep(prism));
+        let cut = super::misc4::boolean_geometry_checked(&gs, &gp, tri_geom::BooleanOp::Difference).unwrap();
+        let inter = super::misc4::boolean_geometry_checked(&gs, &gp, tri_geom::BooleanOp::Intersection).unwrap();
+        let (Geometry::Brep(cut), Geometry::Brep(inter)) = (cut, inter) else { panic!("polysurfaces expected") };
+        let total = volume(&cut) + volume(&inter);
+        assert!((total - 4.0 / 3.0 * PI * 8000.0).abs() < 1e-3, "V(S-P)+V(S^P) = {total}");
+    }
+}

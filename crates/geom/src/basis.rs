@@ -4,10 +4,23 @@
 /// `n` is the index of the last control point (count - 1), `p` the degree.
 pub fn find_span(n: usize, p: usize, u: f64, knots: &[f64]) -> usize {
     if u >= knots[n + 1] {
-        return n;
+        // the last span that has length: with a repeated knot at the end of an unclamped domain
+        // (after knot insertion) the span n is empty and evaluating on it divides by zero
+        let mut i = n;
+        while i > p && knots[i] >= knots[i + 1] {
+            i -= 1;
+        }
+        return i;
     }
     if u <= knots[p] {
-        return p;
+        let mut i = p;
+        // at the start of the domain, skip empty spans the same way
+        if u == knots[p] {
+            while i < n && knots[i + 1] <= u {
+                i += 1;
+            }
+        }
+        return i;
     }
     let mut low = p;
     let mut high = n + 1;
