@@ -7,6 +7,8 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+## 0.5.2 - 2026-11-27
+
 ### Fixed
 
 * 3MF, AMF and COLLADA files are read in the unit they declare (an inch part opened in a
