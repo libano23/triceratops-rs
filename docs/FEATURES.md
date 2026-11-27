@@ -405,6 +405,18 @@ stay what the legacy construction makes, so every other command behaves as befor
   and uniform scales.
 * Refusals inside the commands that call a Boolean as a step (Boss, Rib, Shell lids, holes,
   BooleanSplit, WireCut) are listed in the command's log when it ends.
+* The faces of a Boolean result are the kernel's NURBS faces with trims sampled at 0.001 mm
+  (the legacy engine's own tolerance). A solid like that can still be combined with a legacy one
+  (a modelled thread fused to a rod that came out of an exact Boolean): the legacy mesh Boolean
+  copes with the coincident surfaces only when the trims are that fine.
+* Exact bodies made in the current session are imported by the kernel without re-checking (well
+  under a millisecond); one read from a file is validated first (about a second for a body with
+  dozens of faces) and a damaged one is refused.
+* The exact body is saved in the document and survives undo and redo. The volume of such a solid
+  (Volume command, MCP `object_info`) and its surface area are the kernel's, kept through moves
+  and uniform scales.
+* Refusals inside the commands that call a Boolean as a step (Boss, Rib, Shell lids, holes,
+  BooleanSplit, WireCut) are listed in the command's log when it ends.
 * **Known limit:** a Boolean between an exact solid and a legacy one (no exact body) uses the
   legacy mesh Boolean on the kernel's faces. Coincident surfaces made by the two engines (a
   modelled thread fused to a rod that came out of an exact Boolean) can fail there with "Boolean

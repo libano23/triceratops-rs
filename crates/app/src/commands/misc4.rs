@@ -310,8 +310,11 @@ fn exact_boolean(a: &Geometry, b: &Geometry, op: BooleanOp) -> Option<Result<Geo
         BooleanOp::Difference => K::Difference,
         BooleanOp::Intersection => K::Intersection,
     };
-    let size = ba.bounding_box().union(&bb.bounding_box()).diagonal();
-    let chord = (size * 1e-3).max(1e-3);
+    // The result's trims are sampled as finely as the legacy Boolean works (its absolute
+    // tolerance): a solid that later meets a legacy one, a thread fused to a rod for instance,
+    // goes through the mesh Boolean, which fails on coincident surfaces when the kernel's trims
+    // are coarser than its own.
+    let chord = tri_geom::brep_boolean::DEFAULT_TOLERANCE;
     Some(
         sa.boolean(&sb, op)
             .and_then(|r| r.to_brep(chord))

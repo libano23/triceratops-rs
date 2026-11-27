@@ -735,10 +735,10 @@ mod acceptance_tests {
         assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
     }
 
-    /// KNOWN LIMIT of the experimental kernel-solidcore feature: the thread (legacy faces) fused to
-    /// a rod that came out of an exact Boolean (kernel faces, same surface but another mesh) goes
-    /// through the legacy mesh Boolean, which cannot cope with such coincident surfaces and says
-    /// "Boolean too complex". It must finish in bounded time and say so; it must not hang.
+    /// The thread (legacy faces) fused to a rod that came out of an exact Boolean (kernel faces):
+    /// that goes through the legacy mesh Boolean, which copes with the coincident surfaces only
+    /// when the kernel's trims are as fine as the legacy engine's own (1e-3 mm); at the display
+    /// tolerance it said "Boolean too complex".
     #[test]
     fn screw_thread_on_a_rod_made_by_an_exact_boolean_is_bounded() {
         let mut app = App::new();
@@ -756,8 +756,7 @@ mod acceptance_tests {
         }
         let ids: Vec<_> = app.doc.objects().map(|o| o.id).collect();
         let r = run(&mut app, &["BooleanUnion", &format!("#{},#{}", ids[0], ids[ids.len() - 1]), ""]);
-        let log = r["log"].to_string();
-        assert!(r["added"].as_array().map_or(0, |a| a.len()) == 1 || log.contains("failed"), "must finish or say why: {r}");
+        assert_eq!(r["added"].as_array().map_or(0, |a| a.len()), 1, "the thread and the exact rod make one solid: {r}");
         assert!(t.elapsed().as_secs() < 60, "took {:?}", t.elapsed());
     }
 

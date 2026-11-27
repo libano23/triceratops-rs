@@ -547,3 +547,21 @@ fn a_record_read_from_a_file_is_validated_and_a_corrupt_one_is_refused() {
     // the faces fingerprint still matches (only the record was damaged): the import must say no
     assert!(Solid::from_exact(&torn).is_none(), "a damaged record is refused");
 }
+
+#[test]
+fn legacy_fine_trims_stay_affordable_on_huge_and_curved_parts() {
+    use std::time::Instant;
+    // a 20 m part with a 5 mm hole, and a 20 m sphere cut by a 40 mm bore: trims at 1e-3 mm
+    let part = Solid::cuboid(DVec3::splat(-10000.0), DVec3::splat(10000.0)).unwrap();
+    let hole = Solid::cylinder(DVec3::new(0.0, 0.0, -11000.0), DVec3::Z, 2.5, 22000.0).unwrap();
+    let ball = Solid::sphere(DVec3::ZERO, 10000.0).unwrap();
+    let bore = Solid::cylinder(DVec3::new(0.0, 0.0, -11000.0), DVec3::Z, 20.0, 22000.0).unwrap();
+    for (name, r) in [("box-hole", part.boolean(&hole, BooleanOp::Difference).unwrap()), ("sphere-bore", ball.boolean(&bore, BooleanOp::Difference).unwrap())] {
+        let t = Instant::now();
+        let b = r.to_brep(1e-3).unwrap();
+        let pts: usize = b.faces.iter().flat_map(|f| f.loops.iter()).map(|l| l.len()).sum();
+        println!("{name}: {pts} trim points in {:?}", t.elapsed());
+        assert!(pts < 300_000, "{name}: {pts} trim points");
+        assert!(t.elapsed() < std::time::Duration::from_secs(5), "{name}: {:?}", t.elapsed());
+    }
+}
