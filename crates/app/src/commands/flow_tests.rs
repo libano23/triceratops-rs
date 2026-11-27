@@ -2228,6 +2228,69 @@ mod exact_primitives {
     }
 
     #[test]
+    fn exact_bodies_survive_undo_redo_and_save_load() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Cylinder");
+        h.point(10.0, 10.0, -5.0);
+        h.number(4.0);
+        h.number(20.0);
+        let c = h.doc.objects().last().unwrap().id;
+        h.doc.clear_selection();
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![c]);
+        let result_id = h.doc.objects().next().unwrap().id;
+        let expect = 4000.0 - PI * 16.0 * 10.0;
+        assert!((volume(&exact_of(&h, result_id)) - expect).abs() < 1e-3);
+        // undo brings the operands back with their exact bodies, redo the result with its own
+        assert!(h.doc.undo().is_some());
+        assert!(exact_of(&h, a).exact_valid().is_some() && exact_of(&h, c).exact_valid().is_some());
+        assert!(h.doc.redo().is_some());
+        assert!((volume(&exact_of(&h, result_id)) - expect).abs() < 1e-3);
+        // save and load keep it
+        let dir = std::env::temp_dir().join(format!("triceratops-exact-flow-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exact.tri");
+        tri_doc::io::save(&h.doc, &path).unwrap();
+        let (state, settings) = tri_doc::io::load(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let mut loaded = Harness::new();
+        loaded.doc.load_state(state, settings, None);
+        assert!((volume(&exact_of(&loaded, result_id)) - expect).abs() < 1e-3, "the exact body survived the file");
+    }
+
+    #[test]
+    fn a_loaded_exact_solid_still_takes_the_kernel_path_in_a_boolean() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Sphere");
+        h.point(10.0, 10.0, 5.0);
+        h.number(7.0);
+        let s = h.doc.objects().last().unwrap().id;
+        let dir = std::env::temp_dir().join(format!("triceratops-exact-flow2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exact2.tri");
+        tri_doc::io::save(&h.doc, &path).unwrap();
+        let (state, settings) = tri_doc::io::load(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        let mut loaded = Harness::new();
+        loaded.doc.load_state(state, settings, None);
+        loaded.start("BooleanDifference");
+        loaded.objects(vec![a]);
+        loaded.objects(vec![s]);
+        let r = only_brep(&loaded);
+        assert!(r.exact.is_some(), "log: {:?}", loaded.log);
+        // the ball (r = 7, centre z = 5) pokes 2 mm out of the box (z 0..10) above and below:
+        // each cap has height 2 and volume pi h^2 (3r - h) / 3
+        let cap = PI * 4.0 * (21.0 - 2.0) / 3.0;
+        let inside = 4.0 / 3.0 * PI * 343.0 - 2.0 * cap;
+        assert!((volume(&r) - (4000.0 - inside)).abs() < 1e-2, "{}", volume(&r));
+    }
+
+    #[test]
     fn a_non_uniform_scale_drops_the_exact_body() {
         let mut h = Harness::new();
         let id = exact_box(&mut h);

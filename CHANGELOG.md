@@ -7,6 +7,16 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+### New (experimental, off by default)
+
+* **Exact solids on the solidcore kernel.** Built with `--features kernel-solidcore`, the
+  Box, Cylinder, Cone, Sphere and Torus commands (and the prisms behind WireCut, holes, Boss and
+  Rib) carry an exact B-rep of the solid next to their faces. A Boolean between two such solids
+  runs on the kernel and gives exact results: sphere − two cylinders (+11 % off before) and
+  torus − a bore along its tube (+5.9 % off before) are now within 0.1 % of the true volume.
+  Move, Rotate, Mirror, Copy and arrays keep the exact body. A kernel refusal is reported with
+  its message and leaves both objects as they were. Everything else, and every file, works as before.
+
 ### Fixed
 
 * An AppImage kept in a folder Triceratops cannot write to is no longer left without an

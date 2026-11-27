@@ -1,6 +1,6 @@
 # Exact solids on the solidcore kernel — design
 
-Status: draft for approval, 2026-11-27. Evaluation and spike evidence below; nothing in the product is built yet.
+Status: approved 2026-11-27. Milestones M1 and M2 implemented on branch `solidcore-kernel` (plan `docs/superpowers/plans/2026-11-27-solidcore-kernel.md`); M3 not started. Deviation: primitives keep their legacy faces and get the exact body attached (see the plan ledger), and the exact body carries a `placement` so transforms need no kernel call.
 
 ## Why
 
