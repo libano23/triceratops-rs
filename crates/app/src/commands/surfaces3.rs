@@ -2,7 +2,7 @@
 
 use glam::{DAffine3, DQuat, DVec3};
 use tri_doc::{Document, Geometry, ObjectId};
-use super::mesh_bool;
+use super::{mesh_bool, Preview};
 use tri_geom::{curve_plane, mesh_ops, BooleanOp, Brep, Face, Mesh, NurbsCurve, NurbsSurface, Plane, Ray};
 
 use super::create::planar_cap;
@@ -789,26 +789,44 @@ pub fn fold_face() -> SeqCmd {
     })
 }
 
+/// The solid PushPull adds (`d` > 0) or removes (`d` < 0): the picked planar face extruded by `d`
+/// along its normal, and the plane's normal.
+fn push_pull_tool(faces: &[Face], p: DVec3, d: f64) -> Option<(Brep, DVec3)> {
+    let fi = face_under(faces, p);
+    let (plane, loops) = planar_loops(&faces[fi])?;
+    let mut poly = loops[0].clone();
+    poly.push(poly[0]);
+    let c = NurbsCurve::polyline(poly).ok()?;
+    let side = NurbsSurface::extrude(&c, plane.z_axis * d).ok()?;
+    let cap0 = planar_cap(&c)?;
+    let mut cap1 = cap0.clone();
+    cap1.transform(&DAffine3::from_translation(plane.z_axis * d));
+    let mut tool = Brep::new(vec![Face::untrimmed(side), cap0, cap1]);
+    tool.orient_outward();
+    tool.closed = true;
+    Some((tool, plane.z_axis))
+}
+
+/// The distance an answer means: a number as typed, a clicked point as its height above the face
+/// along the face's normal.
+fn push_pull_distance(ans: &Ans, face_point: DVec3, normal: DVec3) -> f64 {
+    match ans {
+        Ans::Number(n) => *n,
+        other => (other.point() - face_point).dot(normal),
+    }
+}
+
 pub fn push_pull() -> SeqCmd {
-    SeqCmd::new(vec![Ask::Pick("Select face to push or pull", ObjFilter::Surface), Ask::Number("Distance (negative pushes in)", 1.0)], |a, ctx| {
+    SeqCmd::new(vec![Ask::Pick("Select face to push or pull", ObjFilter::Surface), Ask::PointOrNumber("Distance (negative pushes in)", 1.0)], |a, ctx| {
         let Ans::Pick(id, p) = &a[0] else { return Step::Cancelled };
         let Some(faces) = faces_of(ctx.doc, *id) else { return Step::Cancelled };
         let fi = face_under(&faces, *p);
-        let d = a[1].number();
-        let Some((plane, loops)) = planar_loops(&faces[fi]) else {
+        let Some((plane, _)) = planar_loops(&faces[fi]) else {
             ctx.log("PushPull works on planar faces.");
             return Step::Cancelled;
         };
-        let mut poly = loops[0].clone();
-        poly.push(poly[0]);
-        let Ok(c) = NurbsCurve::polyline(poly) else { return Step::Cancelled };
-        let Ok(side) = NurbsSurface::extrude(&c, plane.z_axis * d) else { return Step::Cancelled };
-        let Some(cap0) = planar_cap(&c) else { return Step::Cancelled };
-        let mut cap1 = cap0.clone();
-        cap1.transform(&DAffine3::from_translation(plane.z_axis * d));
-        let mut tool = Brep::new(vec![Face::untrimmed(side), cap0, cap1]);
-        tool.orient_outward();
-        tool.closed = true;
+        let d = push_pull_distance(&a[1], *p, plane.z_axis);
+        let Some((tool, _)) = push_pull_tool(&faces, *p, d) else { return Step::Cancelled };
         let Some(base) = ctx.doc.get(*id).map(|o| o.geometry.clone()) else { return Step::Cancelled };
         let id = *id;
         ctx.try_work(
@@ -820,6 +838,20 @@ pub fn push_pull() -> SeqCmd {
                 Step::Done
             },
         )
+    })
+    .with_preview(|a, cursor, doc| {
+        let Some(Ans::Pick(id, p)) = a.first() else { return Vec::new() };
+        let Some(faces) = faces_of(doc, *id) else { return Vec::new() };
+        let Some((plane, _)) = planar_loops(&faces[face_under(&faces, *p)]) else { return Vec::new() };
+        let d = (cursor - *p).dot(plane.z_axis);
+        if d.abs() < 1e-9 {
+            return Vec::new();
+        }
+        match push_pull_tool(&faces, *p, d) {
+            // the ghost of what is added or removed, and the rubber band from the face to the cursor height
+            Some((tool, n)) => vec![Preview::Brep(tool), Preview::Line(*p, *p + n * d)],
+            None => Vec::new(),
+        }
     })
 }
 
@@ -840,6 +872,8 @@ pub struct WireCutCmd {
     delete_input: bool,
     depth: Vec<DVec3>,
     stage: WireStage,
+    /// The cutting direction as the last input left it (the preview has no context to ask).
+    dir_now: Option<DVec3>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -941,17 +975,35 @@ fn exact_wire_outline(c: &NurbsCurve, proj: &dyn Fn(DVec3) -> DVec3, big: f64, x
 /// WireCut of one object: the pieces on both sides of the cutting curve extruded along `dir`
 /// (fewer than two pieces when the curve does not cut it). `depth` holds 0, 1 or 2 points
 /// limiting the cut along the direction.
-pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec3], tol: f64) -> Vec<Geometry> {
+/// What a WireCut needs besides the objects: the cutting direction, the plane perpendicular to it
+/// through the centre of the objects, the wire flattened onto that plane as a closed outline (a
+/// polyline, and the wire itself when it can be joined exactly) and a length that is "far".
+#[derive(Clone)]
+struct WireSetup {
+    dir: DVec3,
+    centre: DVec3,
+    plane: Plane,
+    big: f64,
+    closed: NurbsCurve,
+    exact_outline: Option<NurbsCurve>,
+}
+
+impl WireSetup {
+    /// `p` projected on the plane perpendicular to the cutting direction.
+    fn proj(&self, p: DVec3) -> DVec3 {
+        p - self.dir * (p - self.centre).dot(self.dir)
+    }
+}
+
+fn wire_setup(bb_all: &tri_geom::BoundingBox, c: &NurbsCurve, dir: DVec3) -> Option<WireSetup> {
     let dir = dir.normalize_or(DVec3::Z);
-    let bb_all = g.bounding_box();
     let big = bb_all.union(&c.bounding_box()).diagonal().max(1.0) * 4.0;
     // the cutting curve projected on the plane perpendicular to the direction (an extrusion
     // along `dir` of the projection is the same wire surface)
     let centre = bb_all.center();
     let plane = Plane::from_normal(centre, dir);
     let proj = |p: DVec3| p - dir * (p - centre).dot(dir);
-    let base = c.transformed(&DAffine3::IDENTITY);
-    let flat_pts: Vec<DVec3> = base.span_samples(8).into_iter().map(proj).collect();
+    let flat_pts: Vec<DVec3> = c.span_samples(8).into_iter().map(proj).collect();
     // open curves are closed far away on one side (the side of the curve's own bulge)
     let closed = if c.is_closed() {
         let mut pts = flat_pts.clone();
@@ -976,23 +1028,79 @@ pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec
         poly.push(start_far + side * big);
         poly.push(start_far);
         NurbsCurve::polyline(poly).ok()
-    };
-    let Some(closed) = closed else { return Vec::new() };
+    }?;
     // The cutter of a solid is the wire itself extruded, not its 8-samples-per-span polyline:
     // the wall left by the cut is then one smooth face, as the curve is.
     let exact_outline = exact_wire_outline(c, &proj, big, plane.x_axis, plane.y_axis, dir);
-    // depth range along the direction (infinite when no points were picked)
-    let range: Option<(f64, f64)> = match depth.len() {
+    Some(WireSetup { dir, centre, plane, big, closed, exact_outline })
+}
+
+/// The cut's extent along the direction (`None`: infinite) from the depth points picked so far:
+/// two points bound it, one bounds it on one side.
+fn wire_depth_range(s: &WireSetup, depth: &[DVec3]) -> Option<(f64, f64)> {
+    match depth.len() {
         2 => {
-            let (a, b) = ((depth[0] - centre).dot(dir), (depth[1] - centre).dot(dir));
+            let (a, b) = ((depth[0] - s.centre).dot(s.dir), (depth[1] - s.centre).dot(s.dir));
             Some((a.min(b), a.max(b)))
         }
         1 => {
-            let a = (depth[0] - centre).dot(dir);
-            Some((a.min(-big), a.max(-big)))
+            let a = (depth[0] - s.centre).dot(s.dir);
+            Some((a.min(-s.big), a.max(-s.big)))
         }
         _ => None,
+    }
+}
+
+/// The ghost of a WireCut while its depth is being chosen: the wire flattened on the cutting plane,
+/// the cutter between the depth planes (clipped to the objects for an open side) and the depth
+/// planes themselves. `depth` holds the points picked, `cursor` is the point the next click gives.
+fn wire_cut_ghost(bb: &tri_geom::BoundingBox, c: &NurbsCurve, dir: DVec3, depth: &[DVec3], cursor: DVec3) -> Vec<Preview> {
+    let Some(setup) = wire_setup(bb, c, dir) else { return Vec::new() };
+    let mut with_cursor = depth.to_vec();
+    if with_cursor.len() < 2 {
+        with_cursor.push(cursor);
+    }
+    let along = |p: DVec3| (p - setup.centre).dot(setup.dir);
+    // the objects' extent along the direction, a little beyond, bounds what an open side shows
+    let corners = || (0..8).map(|i| DVec3::new(if i & 1 == 0 { bb.min.x } else { bb.max.x }, if i & 2 == 0 { bb.min.y } else { bb.max.y }, if i & 4 == 0 { bb.min.z } else { bb.max.z }));
+    let margin = 0.05 * bb.diagonal().max(1e-6);
+    let (lo_obj, hi_obj) = corners().map(along).fold((f64::MAX, f64::MIN), |(l, h), v| (l.min(v), h.max(v)));
+    let (lo_obj, hi_obj) = (lo_obj - margin, hi_obj + margin);
+    let (lo, hi) = match wire_depth_range(&setup, &with_cursor) {
+        Some((a, b)) => (a.max(lo_obj), b.min(hi_obj)),
+        None => (lo_obj, hi_obj),
     };
+    let mut out = Vec::new();
+    // the wire on the cutting plane
+    let mut flat = c.clone();
+    flat.control_points.iter_mut().for_each(|p| *p = setup.proj(*p));
+    out.push(Preview::Curve(flat));
+    if hi - lo > 1e-9 {
+        let mid = setup.centre + setup.dir * ((lo + hi) * 0.5);
+        let plane = Plane { origin: mid, ..setup.plane };
+        let shift = DAffine3::from_translation(mid - setup.centre);
+        let half = (hi - lo) * 0.5;
+        let tool = setup.exact_outline.as_ref().and_then(|o| super::misc4::prism_brep(&o.transformed(&shift), &plane, half)).or_else(|| super::misc4::prism_brep(&setup.closed.transformed(&shift), &plane, half));
+        if let Some(t) = tool {
+            out.push(Preview::Brep(t));
+        }
+    }
+    // the depth planes the points choose, as rectangles of the objects' size
+    let half_size = bb.diagonal().max(1e-6) * 0.6;
+    for p in &with_cursor {
+        let d = along(*p);
+        let centre = setup.centre + setup.dir * d;
+        let (u, v) = (setup.plane.x_axis * half_size, setup.plane.y_axis * half_size);
+        out.push(Preview::Polyline(vec![centre - u - v, centre + u - v, centre + u + v, centre - u + v, centre - u - v]));
+    }
+    out
+}
+
+pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec3], tol: f64) -> Vec<Geometry> {
+    let Some(setup) = wire_setup(&g.bounding_box(), c, dir) else { return Vec::new() };
+    let WireSetup { dir, centre, plane, big, closed, exact_outline, .. } = setup.clone();
+    let proj = |p: DVec3| setup.proj(p);
+    let range = wire_depth_range(&setup, depth);
     {
         let solid = g.is_solid() && matches!(g, Geometry::Brep(_) | Geometry::Surface(_));
         let mut results: Vec<Geometry> = Vec::new();
@@ -1088,6 +1196,7 @@ impl super::Command for WireCutCmd {
                     return Step::Cancelled;
                 }
                 self.stage = WireStage::Depth;
+                self.dir_now = Some(self.cut_direction(ctx));
                 self.depth_prompt().step()
             }
             (WireStage::Depth, Input::Point(p)) => {
@@ -1107,6 +1216,7 @@ impl super::Command for WireCutCmd {
                         self.stage = WireStage::CustomFrom;
                         return Prompt::point("Start of cut direction").step();
                     }
+                    self.dir_now = Some(self.cut_direction(ctx));
                     self.depth_prompt().step()
                 }
                 "KeepAll" => {
@@ -1129,6 +1239,7 @@ impl super::Command for WireCutCmd {
                 let from = self.custom_dir.unwrap_or(DVec3::ZERO);
                 self.custom_dir = Some((p - from).normalize_or(ctx.cplane.z_axis));
                 self.stage = WireStage::Depth;
+                self.dir_now = Some(self.cut_direction(ctx));
                 self.depth_prompt().step()
             }
             (WireStage::KeepPieces, Input::Objects(ids)) => {
@@ -1141,6 +1252,17 @@ impl super::Command for WireCutCmd {
             (_, Input::Cancel) => Step::Cancelled,
             _ => Step::Cancelled,
         }
+    }
+    /// While the depth is asked: the wire, the cutter between the depth planes and the planes,
+    /// with the cursor as the depth point the next click gives.
+    fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
+        let (WireStage::Depth, Some(p), Some(cid)) = (self.stage, cursor, self.curve) else { return Vec::new() };
+        let Some(c) = curve_of(doc, cid) else { return Vec::new() };
+        let bb = self.targets.iter().filter_map(|id| doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |b, o| b.union(&o.geometry.bounding_box()));
+        if bb.min.x > bb.max.x {
+            return Vec::new();
+        }
+        wire_cut_ghost(&bb, &c, self.dir_now.unwrap_or(DVec3::Z), &self.depth, p)
     }
 }
 

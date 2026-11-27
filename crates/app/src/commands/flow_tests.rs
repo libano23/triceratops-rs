@@ -2447,3 +2447,157 @@ fn wirecut_with_a_closed_free_form_wire_keeps_it_smooth() {
         assert_eq!(curved_faces(&o.geometry), 1, "a smooth round wall: {} faces", match &o.geometry { Geometry::Brep(b) => b.faces.len(), _ => 0 });
     }
 }
+
+// ---- interactive previews (the Serpentine3D rule: a distance is answered with the mouse and the
+// result follows the cursor as a ghost) ----
+
+fn preview_boxes(h: &Harness, cursor: DVec3) -> Vec<tri_geom::BoundingBox> {
+    h.runner
+        .preview(Some(cursor), &h.doc)
+        .into_iter()
+        .filter_map(|p| match p {
+            Preview::Brep(b) => Some(b.bounding_box()),
+            Preview::Surface(s) => Some(s.bounding_box()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn pushpull_ghosts_the_volume_it_will_add_and_takes_the_mouse_as_the_distance() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("PushPull");
+    h.ctx(|r, c| r.feed(Input::Pick(bid, DVec3::new(10.0, 5.0, 5.0)), c));
+    // the ghost is the slab between the top face and the cursor's height
+    let boxes = preview_boxes(&h, DVec3::new(10.0, 5.0, 9.0));
+    assert_eq!(boxes.len(), 1, "one ghost solid, got {}", boxes.len());
+    let bb = &boxes[0];
+    assert!((bb.min.z - 5.0).abs() < 1e-6 && (bb.max.z - 9.0).abs() < 1e-6, "slab z {}..{}", bb.min.z, bb.max.z);
+    // and a clicked point answers the distance
+    h.point(10.0, 5.0, 9.0);
+    let v = h.doc.objects().next().map(|o| Document::volume_of(&o.geometry).unwrap().0).unwrap();
+    assert!((v - 20.0 * 10.0 * 9.0).abs() < 2.0, "the box grew by 4 mm: {v}");
+}
+
+#[test]
+fn pushpull_ghosts_a_cut_when_the_cursor_goes_inside() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("PushPull");
+    h.ctx(|r, c| r.feed(Input::Pick(bid, DVec3::new(10.0, 5.0, 5.0)), c));
+    let boxes = preview_boxes(&h, DVec3::new(10.0, 5.0, 2.0));
+    assert_eq!(boxes.len(), 1);
+    assert!((boxes[0].min.z - 2.0).abs() < 1e-6 && (boxes[0].max.z - 5.0).abs() < 1e-6, "pushed-in slab {}..{}", boxes[0].min.z, boxes[0].max.z);
+}
+
+fn wirecut_ready_at_depth(h: &mut Harness) -> tri_doc::ObjectId {
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.start("Line");
+    h.point(7.0, -5.0, 0.0);
+    h.point(7.0, 15.0, 0.0);
+    let lid = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("WireCut");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(7.0, 0.0, 0.0)), c));
+    h.objects(vec![bid]);
+    bid
+}
+
+#[test]
+fn wirecut_shows_nothing_before_the_depth_question() {
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    h.start("WireCut");
+    assert!(h.runner.preview(Some(DVec3::new(3.0, 3.0, 3.0)), &h.doc).is_empty(), "no ghost while picking the curve");
+}
+
+#[test]
+fn wirecut_ghosts_the_cutter_and_the_depth_plane_while_choosing_the_first_depth() {
+    let mut h = Harness::new();
+    wirecut_ready_at_depth(&mut h);
+    let ghost = h.runner.preview(Some(DVec3::new(10.0, 5.0, 3.0)), &h.doc);
+    assert!(ghost.iter().any(|p| matches!(p, Preview::Curve(_))), "the wire flattened on the cutting plane");
+    let cutters: Vec<_> = ghost.iter().filter_map(|p| if let Preview::Brep(b) = p { Some(b.bounding_box()) } else { None }).collect();
+    assert_eq!(cutters.len(), 1, "one cutter");
+    // one depth point bounds the cut on one side: from the cursor's height down through the object
+    assert!((cutters[0].max.z - 3.0).abs() < 1e-6, "cutter top {}", cutters[0].max.z);
+    assert!(cutters[0].min.z < 0.0, "it runs down through the box: {}", cutters[0].min.z);
+    let planes = ghost.iter().filter(|p| matches!(p, Preview::Polyline(_))).count();
+    assert_eq!(planes, 1, "one depth plane at the cursor");
+}
+
+#[test]
+fn wirecut_ghosts_the_slab_between_two_depth_points() {
+    let mut h = Harness::new();
+    wirecut_ready_at_depth(&mut h);
+    h.point(0.0, 0.0, 1.0);
+    let ghost = h.runner.preview(Some(DVec3::new(10.0, 5.0, 4.0)), &h.doc);
+    let cutters: Vec<_> = ghost.iter().filter_map(|p| if let Preview::Brep(b) = p { Some(b.bounding_box()) } else { None }).collect();
+    assert_eq!(cutters.len(), 1);
+    assert!((cutters[0].min.z - 1.0).abs() < 1e-6 && (cutters[0].max.z - 4.0).abs() < 1e-6, "slab z {}..{}", cutters[0].min.z, cutters[0].max.z);
+    assert_eq!(ghost.iter().filter(|p| matches!(p, Preview::Polyline(_))).count(), 2, "both depth planes");
+}
+
+#[test]
+fn wirecut_ghost_follows_a_curved_wire_smoothly() {
+    // the ghost cutter must be the wire itself (one smooth wall), not facets
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.start("InterpCrv");
+    for p in [(-2.0, 2.0, 0.0), (5.0, 7.0, 0.0), (12.0, 3.0, 0.0), (22.0, 8.0, 0.0)] {
+        h.point(p.0, p.1, p.2);
+    }
+    h.enter();
+    let lid = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("WireCut");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(5.0, 7.0, 0.0)), c));
+    h.objects(vec![bid]);
+    let ghost = h.runner.preview(Some(DVec3::new(10.0, 5.0, 3.0)), &h.doc);
+    let cutter = ghost.iter().find_map(|p| if let Preview::Brep(b) = p { Some(b.clone()) } else { None }).expect("a cutter ghost");
+    assert!(cutter.faces.iter().any(|f| f.surface.degree_u > 1 || f.surface.degree_v > 1), "a curved wall, not only flat facets");
+    assert!(cutter.faces.len() < 10, "{} faces", cutter.faces.len());
+}
+
+#[test]
+fn pipe_ghosts_the_pipe_at_the_cursors_distance_and_a_click_answers_the_radius() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(0.0, 0.0, 20.0);
+    let lid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Pipe");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(0.0, 0.0, 10.0)), c));
+    let boxes = preview_boxes(&h, DVec3::new(3.0, 0.0, 10.0));
+    assert_eq!(boxes.len(), 1, "one ghost pipe");
+    assert!((boxes[0].max.x - 3.0).abs() < 0.05 && (boxes[0].min.x + 3.0).abs() < 0.05, "ghost radius: x {}..{}", boxes[0].min.x, boxes[0].max.x);
+    assert!(boxes[0].max.z > 19.9 && boxes[0].min.z < 0.1, "it runs along the whole curve");
+    h.point(3.0, 0.0, 10.0);
+    let pipe = h.doc.objects().find(|o| o.id != lid).expect("the pipe");
+    let v = Document::volume_of(&pipe.geometry).unwrap().0;
+    let want = std::f64::consts::PI * 9.0 * 20.0;
+    assert!((v - want).abs() < want * 0.02, "pipe volume {v} vs {want}");
+}

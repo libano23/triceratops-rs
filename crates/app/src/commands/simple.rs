@@ -84,6 +84,9 @@ impl Ans {
 
 type Finish = Box<dyn Fn(&[Ans], &mut CmdCtx) -> Step>;
 type Continuation = Box<dyn Fn(Input, &mut CmdCtx) -> Step>;
+/// What the pending question would make if the cursor were its answer: the answers so far, the
+/// cursor and the document in, the ghost out.
+type Previewer = Box<dyn Fn(&[Ans], DVec3, &Document) -> Vec<Preview>>;
 
 /// Sequential command: asks the questions in order and calls `finish` with the answers.
 pub struct SeqCmd {
@@ -95,11 +98,19 @@ pub struct SeqCmd {
     /// Continuation used when `finish` returns `Step::Next`: every later input goes here.
     then: Option<Continuation>,
     in_then: bool,
+    previewer: Option<Previewer>,
 }
 
 impl SeqCmd {
     pub fn new(asks: Vec<Ask>, finish: impl Fn(&[Ans], &mut CmdCtx) -> Step + 'static) -> Self {
-        Self { asks, answers: Vec::new(), finish: Box::new(finish), clear_selection_after_objects: true, then: None, in_then: false }
+        Self { asks, answers: Vec::new(), finish: Box::new(finish), clear_selection_after_objects: true, then: None, in_then: false, previewer: None }
+    }
+    /// Show a ghost of the result while a question is pending: `f` gets the answers so far and
+    /// the cursor, as the answer the next click would give. A distance asked in model space
+    /// should always have one (and accept a point as its answer).
+    pub fn with_preview(mut self, f: impl Fn(&[Ans], DVec3, &Document) -> Vec<Preview> + 'static) -> Self {
+        self.previewer = Some(Box::new(f));
+        self
     }
     /// Handle inputs after `finish` returned a prompt (multi-stage commands).
     pub fn then(mut self, f: impl Fn(Input, &mut CmdCtx) -> Step + 'static) -> Self {
@@ -164,7 +175,15 @@ impl Command for SeqCmd {
         self.answers.push(ans);
         self.next(ctx)
     }
-    fn preview(&self, cursor: Option<DVec3>, _doc: &Document) -> Vec<Preview> {
+    fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
+        if let (Some(f), Some(c)) = (&self.previewer, cursor) {
+            if !self.in_then && self.answers.len() < self.asks.len() {
+                let ghost = f(&self.answers, c, doc);
+                if !ghost.is_empty() {
+                    return ghost;
+                }
+            }
+        }
         match (self.answers.last(), cursor) {
             (Some(a), Some(c)) if matches!(a, Ans::Point(_)) && matches!(self.asks.get(self.answers.len()), Some(Ask::Point(_)) | Some(Ask::PointOrNumber(..))) => vec![Preview::Line(a.point(), c)],
             _ => vec![],

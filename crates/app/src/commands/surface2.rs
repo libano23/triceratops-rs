@@ -345,50 +345,83 @@ pub struct PipeCmd {
     cap: bool,
 }
 
+/// The pipe of radius `r` around `rail`, capped flat at both ends when `cap` and the rail is open
+/// (a solid polysurface), otherwise an open surface.
+fn pipe_geometry(rail: &NurbsCurve, r: f64, cap: bool) -> Option<Geometry> {
+    let (t0, _) = rail.domain();
+    let plane = Plane::from_normal(rail.start_point(), rail.tangent_at(t0));
+    let circle = NurbsCurve::circle(&plane, r.abs()).ok()?;
+    let sections = sweep_sections(&circle, rail, 32, true);
+    let side = NurbsSurface::loft(&sections, 3).ok()?;
+    if cap && !rail.is_closed() {
+        if let (Some(a), Some(b)) = (sections.first().and_then(planar_cap), sections.last().and_then(planar_cap)) {
+            let mut brep = Brep::new(vec![Face::untrimmed(side), a, b]);
+            brep.orient_outward();
+            brep.closed = true;
+            return Some(Geometry::Brep(brep));
+        }
+    }
+    Some(Geometry::Surface(side))
+}
+
+/// The radius a point answers: its distance from the rail.
+fn pipe_radius_at(rail: &NurbsCurve, p: DVec3) -> f64 {
+    (rail.point_at(rail.closest_parameter(p)) - p).length()
+}
+
 impl Command for PipeCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
         self.cap = ctx.mem_bool("Pipe.Cap", true);
         Prompt::pick("Select curve to create pipe around", ObjFilter::Curve).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        let radius_prompt = |ctx: &CmdCtx, cap: bool, all: bool| {
+            let p = Prompt::point_or_number("Radius").default_num(ctx.mem_num("Pipe.Radius", 1.0));
+            if all { p.opts([optv("Cap", if cap { "Flat" } else { "None" }), opt("Thick"), opt("ShapeBlending")]) } else { p.opts([optv("Cap", if cap { "Flat" } else { "None" })]) }
+        };
         match input {
             Input::Pick(id, _) => {
                 self.rail = Some(id);
-                Prompt::number("Radius").default_num(ctx.mem_num("Pipe.Radius", 1.0)).opts([optv("Cap", if self.cap { "Flat" } else { "None" }), opt("Thick"), opt("ShapeBlending")]).step()
+                radius_prompt(ctx, self.cap, true).step()
             }
             Input::Option(o) if o == "Cap" => {
                 self.cap = !self.cap;
                 ctx.mem_set("Pipe.Cap", yesno(self.cap));
-                Prompt::number("Radius").default_num(ctx.mem_num("Pipe.Radius", 1.0)).opts([optv("Cap", if self.cap { "Flat" } else { "None" })]).step()
+                radius_prompt(ctx, self.cap, false).step()
             }
-            Input::Option(_) => Prompt::number("Radius").default_num(ctx.mem_num("Pipe.Radius", 1.0)).step(),
-            Input::Number(r) => {
+            Input::Option(_) => Prompt::point_or_number("Radius").default_num(ctx.mem_num("Pipe.Radius", 1.0)).step(),
+            Input::Number(_) | Input::Point(_) | Input::Empty => {
                 let Some(rail) = self.rail.and_then(|r| curve_of(ctx.doc, r)) else { return Step::Cancelled };
-                ctx.mem_set("Pipe.Radius", fmt_num(r));
-                let (t0, _) = rail.domain();
-                let plane = Plane::from_normal(rail.start_point(), rail.tangent_at(t0));
-                let Ok(circle) = NurbsCurve::circle(&plane, r.abs()) else { return Step::Cancelled };
-                let sections = sweep_sections(&circle, &rail, 32, true);
-                let Ok(side) = NurbsSurface::loft(&sections, 3) else { return Step::Cancelled };
-                let g = if self.cap && !rail.is_closed() {
-                    let first = sections.first().and_then(planar_cap);
-                    let last = sections.last().and_then(planar_cap);
-                    match (first, last) {
-                        (Some(a), Some(b)) => {
-                            let mut brep = Brep::new(vec![Face::untrimmed(side), a, b]);
-                            brep.orient_outward();
-                            brep.closed = true;
-                            Geometry::Brep(brep)
-                        }
-                        _ => Geometry::Surface(side),
-                    }
-                } else {
-                    Geometry::Surface(side)
+                let r = match input {
+                    Input::Number(r) => r,
+                    Input::Point(p) => pipe_radius_at(&rail, p),
+                    _ => ctx.mem_num("Pipe.Radius", 1.0),
                 };
+                if r.abs() < 1e-9 {
+                    return Step::Cancelled;
+                }
+                ctx.mem_set("Pipe.Radius", fmt_num(r));
+                let Some(g) = pipe_geometry(&rail, r, self.cap) else { return Step::Cancelled };
                 add_selected(ctx, "Pipe", vec![g])
             }
             _ => Step::Cancelled,
         }
+    }
+    /// The pipe the cursor's distance from the curve would make, and the radius as a rubber band.
+    fn preview(&self, cursor: Option<DVec3>, doc: &Document) -> Vec<Preview> {
+        let (Some(p), Some(rail)) = (cursor, self.rail.and_then(|r| curve_of(doc, r))) else { return Vec::new() };
+        let r = pipe_radius_at(&rail, p);
+        if r < 1e-9 {
+            return Vec::new();
+        }
+        let foot = rail.point_at(rail.closest_parameter(p));
+        let mut out = vec![Preview::Line(foot, p)];
+        match pipe_geometry(&rail, r, self.cap) {
+            Some(Geometry::Surface(s)) => out.push(Preview::Surface(s)),
+            Some(Geometry::Brep(b)) => out.push(Preview::Brep(b)),
+            _ => {}
+        }
+        out
     }
 }
 
