@@ -5,6 +5,19 @@ becomes its release notes and is what the program shows when it offers an update
 before tagging a release, rename "Unreleased" to the version and date (see
 [docs/RELEASING.md](docs/RELEASING.md)).
 
+## Unreleased
+
+### New
+
+* **Exact solids.** Box, Cylinder, Cone, Sphere and Torus (and the prisms behind WireCut, holes,
+  Boss and Rib) now carry an exact B-rep from the solidcore kernel. A Boolean between two such
+  solids runs on the kernel: sphere − two cylinders (+11 % off before) and torus − a bore along
+  its tube (+5.9 % off before) are within 0.1 % of the true volume, and tangent or coincident
+  surfaces no longer break it. Volume and area readouts of such solids come from the kernel. Move,
+  Rotate, Mirror, Copy and arrays keep the exact body; a kernel refusal is reported with its
+  message and leaves both objects as they were. Sphere and Torus now create a solid polysurface
+  instead of a closed surface. The program is about 40 MB larger.
+
 ## 0.4.1 - 2026-11-27
 
 ### Fixed
