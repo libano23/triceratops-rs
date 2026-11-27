@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use glam::DAffine3;
 use serde::{Deserialize, Serialize};
 
 use crate::brep::Face;
@@ -15,7 +16,29 @@ use crate::brep::Face;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExactBody {
     pub record: Arc<solidcore_record::brep::Brep>,
+    /// The solid is `record` moved by this map: a rigid move or a uniform scale of the faces
+    /// composes onto it instead of rebuilding the record.
+    #[serde(default = "identity")]
+    pub placement: DAffine3,
     pub faces_fingerprint: u64,
+}
+
+fn identity() -> DAffine3 {
+    DAffine3::IDENTITY
+}
+
+/// Whether `xf` keeps the shape of a solid: a rotation, mirror and translation, scaled
+/// uniformly. Anything else (non-uniform scale, shear, a flattening) makes a different kind of
+/// surface, which the kernel record does not follow.
+pub fn is_similarity(xf: &DAffine3) -> bool {
+    let (a, b, c) = (xf.matrix3.x_axis, xf.matrix3.y_axis, xf.matrix3.z_axis);
+    let (la, lb, lc) = (a.length(), b.length(), c.length());
+    let s = la.max(lb).max(lc);
+    if !(s.is_finite() && s > 0.0) {
+        return false;
+    }
+    let close = |x: f64, y: f64| (x - y).abs() <= 1e-9 * s;
+    close(la, lb) && close(lb, lc) && la > 1e-12 && a.dot(b).abs() <= 1e-9 * s * s && b.dot(c).abs() <= 1e-9 * s * s && a.dot(c).abs() <= 1e-9 * s * s
 }
 
 /// FNV-1a, 64 bit. Stored in documents, so it is fixed here and does not depend on the

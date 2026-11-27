@@ -35,6 +35,9 @@ impl Solid {
     pub fn from_exact(brep: &Brep) -> Option<Solid> {
         let exact = brep.exact_valid()?;
         let (body, _order) = solidcore_ops::Body::from_record(&exact.record, false).ok()?;
+        if exact.placement != glam::DAffine3::IDENTITY {
+            body.transform(&crate::convert::matrix(&exact.placement)).ok()?;
+        }
         Some(Solid::new(body))
     }
 }

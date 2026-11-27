@@ -2131,6 +2131,110 @@ mod exact_primitives {
         assert!(matches!(h.doc.objects().next().unwrap().geometry, Geometry::Surface(_)));
     }
 
+    fn exact_box(h: &mut Harness) -> tri_doc::ObjectId {
+        h.start("Box");
+        h.point(0.0, 0.0, 0.0);
+        h.point(20.0, 20.0, 0.0);
+        h.number(10.0);
+        h.doc.objects().last().unwrap().id
+    }
+
+    fn exact_of(h: &Harness, id: tri_doc::ObjectId) -> Brep {
+        match &h.doc.get(id).unwrap().geometry {
+            Geometry::Brep(b) => b.clone(),
+            other => panic!("not a polysurface: {}", other.type_name()),
+        }
+    }
+
+    fn solid_bounds(b: &Brep) -> ([f64; 3], [f64; 3]) {
+        let rec = Solid::from_exact(b).expect("a valid exact body").record().unwrap();
+        let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for v in &rec.vertices {
+            for i in 0..3 {
+                lo[i] = lo[i].min(v.point[i]);
+                hi[i] = hi[i].max(v.point[i]);
+            }
+        }
+        (lo, hi)
+    }
+
+    #[test]
+    fn move_keeps_the_exact_body_and_moves_it() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Move");
+        h.objects(vec![id]);
+        h.point(0.0, 0.0, 0.0);
+        h.point(100.0, 5.0, 0.0);
+        let b = exact_of(&h, id);
+        let (lo, hi) = solid_bounds(&b);
+        assert!((lo[0] - 100.0).abs() < 1e-9 && (lo[1] - 5.0).abs() < 1e-9 && (hi[0] - 120.0).abs() < 1e-9, "{lo:?} {hi:?}");
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn rotate_keeps_the_exact_body() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Rotate");
+        h.objects(vec![id]);
+        h.point(0.0, 0.0, 0.0);
+        h.number(90.0);
+        let (lo, hi) = solid_bounds(&exact_of(&h, id));
+        assert!((lo[0] + 20.0).abs() < 1e-9 && lo[1].abs() < 1e-9 && hi[0].abs() < 1e-9 && (hi[1] - 20.0).abs() < 1e-9, "{lo:?} {hi:?}");
+    }
+
+    #[test]
+    fn mirror_copy_keeps_a_positive_exact_solid() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Mirror");
+        h.objects(vec![id]);
+        h.option("YAxis", None);
+        assert_eq!(h.doc.len(), 2, "log: {:?}", h.log);
+        let copy = h.doc.objects().map(|o| o.id).find(|i| *i != id).unwrap();
+        let b = exact_of(&h, copy);
+        assert!((volume(&b) - 4000.0).abs() < 1e-3);
+        let (lo, hi) = solid_bounds(&b);
+        assert!((lo[0] + 20.0).abs() < 1e-9 && hi[0].abs() < 1e-9, "{lo:?} {hi:?}");
+    }
+
+    #[test]
+    fn boolean_after_a_move_is_still_exact() {
+        let mut h = Harness::new();
+        let a = exact_box(&mut h);
+        h.doc.clear_selection();
+        h.start("Cylinder");
+        h.point(10.0, 10.0, -5.0);
+        h.number(4.0);
+        h.number(20.0);
+        let c = h.doc.objects().last().unwrap().id;
+        h.doc.clear_selection();
+        h.start("Move");
+        h.objects(vec![c]);
+        h.point(0.0, 0.0, 0.0);
+        h.point(3.0, 2.0, 0.0);
+        h.doc.clear_selection();
+        h.start("BooleanDifference");
+        h.objects(vec![a]);
+        h.objects(vec![c]);
+        let r = only_brep(&h);
+        assert!(r.exact.is_some(), "the Boolean took the kernel path; log: {:?}", h.log);
+        let expect = 4000.0 - PI * 16.0 * 10.0;
+        assert!((volume(&r) - expect).abs() < 1e-3, "{} vs {expect}", volume(&r));
+    }
+
+    #[test]
+    fn a_non_uniform_scale_drops_the_exact_body() {
+        let mut h = Harness::new();
+        let id = exact_box(&mut h);
+        h.doc.transform_objects(&[id], &glam::DAffine3::from_scale(DVec3::new(1.0, 2.0, 1.0)));
+        assert!(exact_of(&h, id).exact.is_none());
+    }
+
     #[test]
     fn prism_of_a_closed_curve_is_exact_and_cuts_an_exact_sphere() {
         let c = tri_geom::NurbsCurve::circle(&Plane::world_xy(), 6.0).unwrap();

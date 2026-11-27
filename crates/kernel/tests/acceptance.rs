@@ -433,3 +433,59 @@ fn near_coincident_free_form_walls_are_refused_with_a_message() {
     assert!(!e.to_string().is_empty());
 }
 
+
+// ---- placement follows rigid moves of the faces ----
+
+fn bounds(s: &Solid) -> ([f64; 3], [f64; 3]) {
+    let rec = s.record().unwrap();
+    let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+    for v in &rec.vertices {
+        for i in 0..3 {
+            lo[i] = lo[i].min(v.point[i]);
+            hi[i] = hi[i].max(v.point[i]);
+        }
+    }
+    (lo, hi)
+}
+
+fn near(a: [f64; 3], b: [f64; 3]) -> bool {
+    a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9)
+}
+
+#[test]
+fn from_exact_follows_a_moved_brep() {
+    let mut b = Solid::cuboid(DVec3::ZERO, DVec3::new(20.0, 30.0, 40.0)).unwrap().to_brep(0.05).unwrap();
+    b.transform(&DAffine3::from_rotation_translation(DQuat::from_rotation_z(PI / 2.0), DVec3::new(100.0, 0.0, 0.0)));
+    let s = Solid::from_exact(&b).expect("the exact body follows a rigid move");
+    assert_vol(&s, 24000.0, 1e-6);
+    let (lo, hi) = bounds(&s);
+    assert!(near(lo, [70.0, 0.0, 0.0]) && near(hi, [100.0, 20.0, 40.0]), "{lo:?} {hi:?}");
+}
+
+#[test]
+fn from_exact_follows_a_mirrored_brep_with_a_positive_volume() {
+    let mut b = Solid::cuboid(DVec3::new(10.0, 0.0, 0.0), DVec3::new(30.0, 30.0, 40.0)).unwrap().to_brep(0.05).unwrap();
+    b.transform(&DAffine3::from_mat3(glam::DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0))));
+    let s = Solid::from_exact(&b).expect("the exact body follows a mirror");
+    assert_vol(&s, 24000.0, 1e-6);
+    let (lo, hi) = bounds(&s);
+    assert!(near(lo, [-30.0, 0.0, 0.0]) && near(hi, [-10.0, 30.0, 40.0]), "{lo:?} {hi:?}");
+}
+
+#[test]
+fn from_exact_follows_a_uniform_scale() {
+    let mut b = Solid::sphere(DVec3::new(1.0, 2.0, 3.0), 4.0).unwrap().to_brep(0.05).unwrap();
+    b.transform(&DAffine3::from_scale(DVec3::splat(2.0)));
+    assert_vol(&Solid::from_exact(&b).unwrap(), 4.0 / 3.0 * PI * 512.0, 1e-3);
+}
+
+#[test]
+fn a_moved_exact_solid_still_does_exact_booleans() {
+    let mut a = Solid::cuboid(DVec3::splat(-20.0), DVec3::splat(20.0)).unwrap().to_brep(0.05).unwrap();
+    let mut ball = Solid::sphere(DVec3::ZERO, 20.0).unwrap().to_brep(0.05).unwrap();
+    let xf = DAffine3::from_rotation_translation(DQuat::from_rotation_x(0.3), DVec3::new(100.0, 50.0, -20.0));
+    a.transform(&xf);
+    ball.transform(&xf);
+    let (sa, sb) = (Solid::from_exact(&a).unwrap(), Solid::from_exact(&ball).unwrap());
+    assert_vol(&sa.boolean(&sb, BooleanOp::Difference).unwrap(), 64000.0 - 4.0 / 3.0 * PI * 8000.0, 1e-3);
+}

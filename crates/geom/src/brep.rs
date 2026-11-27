@@ -716,7 +716,7 @@ impl Brep {
 
     /// Attach `record` as the exact body of these faces as they are now.
     pub fn attach_exact(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>) {
-        self.exact = Some(ExactBody { record, faces_fingerprint: self.fingerprint() });
+        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, faces_fingerprint: self.fingerprint() });
     }
 
     pub fn from_surfaces(surfaces: Vec<NurbsSurface>) -> Self {
@@ -829,10 +829,16 @@ impl Brep {
     }
 
     pub fn transform(&mut self, xf: &DAffine3) {
-        self.exact = None;
+        // the exact body follows a similarity, and only while it still matched the faces
+        let mut exact = self.exact_valid().cloned().filter(|_| crate::exact::is_similarity(xf));
         for f in self.faces.iter_mut() {
             f.transform(xf);
         }
+        if let Some(e) = exact.as_mut() {
+            e.placement = *xf * e.placement;
+            e.faces_fingerprint = self.fingerprint();
+        }
+        self.exact = exact;
     }
 
     pub fn flip(&mut self) {
@@ -1048,11 +1054,51 @@ mod tests {
     }
 
     #[test]
-    fn transform_drops_the_exact_body() {
+    fn rigid_transform_keeps_the_exact_body_and_composes_the_placement() {
         let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
         b.attach_exact(dummy_record());
+        let a = DAffine3::from_rotation_translation(glam::DQuat::from_rotation_z(0.7), DVec3::new(1.0, 2.0, 3.0));
+        let c = DAffine3::from_translation(DVec3::new(-5.0, 0.0, 1.0));
+        b.transform(&a);
+        b.transform(&c);
+        let e = b.exact_valid().expect("a rigid move keeps the exact body valid");
+        let want = c * a;
+        assert!(e.placement.matrix3.abs_diff_eq(want.matrix3, 1e-12) && e.placement.translation.abs_diff_eq(want.translation, 1e-12), "{:?}", e.placement);
+    }
+
+    #[test]
+    fn uniform_scale_and_mirror_keep_the_exact_body() {
+        for xf in [
+            DAffine3::from_scale(DVec3::splat(2.5)),
+            DAffine3::from_mat3(glam::DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0))),
+        ] {
+            let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+            b.attach_exact(dummy_record());
+            b.transform(&xf);
+            assert!(b.exact_valid().is_some(), "{xf:?}");
+        }
+    }
+
+    #[test]
+    fn non_uniform_scale_and_shear_drop_the_exact_body() {
+        for xf in [
+            DAffine3::from_scale(DVec3::new(1.0, 2.0, 1.0)),
+            DAffine3::from_mat3(glam::DMat3::from_cols(DVec3::X, DVec3::new(0.5, 1.0, 0.0), DVec3::Z)),
+        ] {
+            let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+            b.attach_exact(dummy_record());
+            b.transform(&xf);
+            assert!(b.exact.is_none(), "{xf:?}");
+        }
+    }
+
+    #[test]
+    fn transforming_a_stale_exact_body_does_not_revive_it() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact(dummy_record());
+        b.faces[0].surface.control_points[0].x += 0.5; // an in-place edit
         b.transform(&DAffine3::from_translation(DVec3::X));
-        assert!(b.exact.is_none());
+        assert!(b.exact_valid().is_none());
     }
 
     #[test]
