@@ -603,3 +603,27 @@ fn gltf_round_trips_in_the_units_of_the_document_and_reads_metres_from_other_pro
     let bb = metres.objects().next().unwrap().geometry.bounding_box();
     assert!((bb.max - DVec3::new(0.1, 0.06, 0.04)).length() < 1e-6, "{:?}", bb.max);
 }
+
+#[test]
+fn mesh_importers_read_the_unit_the_file_declares() {
+    // a 1 inch cube written by a document in inches comes back as 25.4 in a millimetre document
+    for (name, export, import) in [
+        ("u.3mf", mesh_formats::export_3mf as fn(&Document, &std::path::Path, bool) -> anyhow::Result<usize>, mesh_formats::import_3mf as fn(&mut Document, &std::path::Path) -> anyhow::Result<usize>),
+        ("u.amf", mesh_formats::export_amf, mesh_formats::import_amf),
+        ("u.dae", mesh_formats::export_dae, mesh_formats::import_dae),
+    ] {
+        let mut d = Document::new();
+        d.settings.units = "Inches".into();
+        d.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::ZERO, DVec3::ONE)));
+        let p = tmp(name);
+        export(&d, &p, false).unwrap();
+        let mut mm = Document::new();
+        import(&mut mm, &p).unwrap();
+        let bb = mm.objects().next().unwrap().geometry.bounding_box();
+        assert!((bb.max.x - 25.4).abs() < 1e-6, "{name}: {:?}", bb.max);
+        let mut back = Document::new();
+        back.settings.units = "Inches".into();
+        import(&mut back, &p).unwrap();
+        assert!((back.objects().next().unwrap().geometry.bounding_box().max.x - 1.0).abs() < 1e-6, "{name} back in inches");
+    }
+}

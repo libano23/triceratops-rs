@@ -19,6 +19,7 @@ macro_rules! ghost_by_trial {
     };
 }
 
+pub mod axis;
 pub mod create;
 pub mod previews;
 mod preview_rules;

@@ -200,7 +200,7 @@ fn move_copy_rotate_mirror() {
 
     h.start("Mirror");
     h.objects(vec![id]);
-    assert_eq!(h.prompt(), "Start of mirror plane ( 3Point  Copy=Yes  XAxis  YAxis  ZAxis  Object )");
+    assert_eq!(h.prompt(), "Start of mirror plane ( 3Point  Copy=Yes  XAxis  YAxis  ZAxis  Normal  Object )");
     h.option("YAxis", None);
     assert_eq!(h.doc.len(), 4);
 }
@@ -1797,6 +1797,10 @@ fn wirecut_open_surface_and_direction_options() {
     h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(7.0, 0.0, 0.0)), c));
     h.objects(vec![bid]);
     h.option("Direction", None);
+    for choice in ["WorldX", "TwoPoints", "CurveTangent", "SurfaceNormal"] {
+        assert!(h.prompt().contains(choice), "the direction list offers {choice}: {}", h.prompt());
+    }
+    h.option("View", None);
     assert!(h.prompt().contains("Direction=View"), "{}", h.prompt());
     // depth limited to z 1..4: the cut only goes partway, so the solid stays one piece
     h.point(0.0, 0.0, 1.0);
@@ -1850,6 +1854,7 @@ fn array_polar_axis_step_angle_and_z_offset() {
     h.start("ArrayPolar");
     h.objects(vec![pid]);
     h.option("Axis", None);
+    h.option("TwoPoints", None);
     h.point(0.0, 0.0, 0.0);
     h.point(1.0, 0.0, 0.0);
     h.number(3.0);
@@ -2878,4 +2883,294 @@ fn offset_multiple_ghosts_the_offset_curve_on_the_cursors_side() {
     let curves: Vec<_> = up.iter().filter_map(|p| if let Preview::Curve(c) = p { Some(c.bounding_box()) } else { None }).collect();
     assert_eq!(curves.len(), 1, "one ghost offset curve");
     assert!(curves[0].max.y > 0.5 || curves[0].min.y < -0.5, "it is off the line: {:?}", curves[0]);
+}
+
+/// A box 20 x 10 x 5 and a vertical line at x = 7 in the plane y = 5: only a cut along Y separates it.
+fn wirecut_box_with_vertical_wire(h: &mut Harness) -> (tri_doc::ObjectId, tri_doc::ObjectId) {
+    // a guide line along Y, far from the box, for the direction taken from a curve
+    h.start("Line");
+    h.point(30.0, 0.0, 20.0);
+    h.point(30.0, 10.0, 20.0);
+    // and a surface from it (extruded along Z: the plane x = 30, normal X)
+    let guide = h.doc.objects().last().unwrap().id;
+    h.start("ExtrudeCrv");
+    h.objects(vec![guide]);
+    h.option("Solid", None);
+    h.number(5.0);
+    h.doc.clear_selection();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Brep(_))).unwrap().id;
+    h.start("Line");
+    h.point(7.0, 5.0, -5.0);
+    h.point(7.0, 5.0, 10.0);
+    let lid = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("WireCut");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(7.0, 5.0, 0.0)), c));
+    h.objects(vec![bid]);
+    (bid, lid)
+}
+
+fn volumes_of_pieces(h: &Harness, wire: tri_doc::ObjectId) -> Vec<f64> {
+    let mut v: Vec<f64> = h.doc.objects().filter(|o| o.id != wire && matches!(o.geometry, Geometry::Brep(_))).filter_map(|o| Document::volume_of(&o.geometry).map(|v| v.0)).collect();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v
+}
+
+#[test]
+fn wirecut_direction_can_be_a_world_axis() {
+    let mut h = Harness::new();
+    let (_, lid) = wirecut_box_with_vertical_wire(&mut h);
+    h.option("Direction", None);
+    h.option("WorldY", None);
+    assert!(h.prompt().contains("Direction=WorldY"), "{}", h.prompt());
+    h.enter();
+    let v = volumes_of_pieces(&h, lid);
+    assert_eq!(v.len(), 2, "cut along world Y: {v:?}");
+    assert!((v[0] - 350.0).abs() < 1.0 && (v[1] - 650.0).abs() < 1.0, "{v:?}");
+}
+
+#[test]
+fn wirecut_direction_can_be_two_points() {
+    let mut h = Harness::new();
+    let (_, lid) = wirecut_box_with_vertical_wire(&mut h);
+    h.option("Direction", None);
+    h.option("TwoPoints", None);
+    h.point(0.0, 0.0, 0.0);
+    h.point(0.0, 3.0, 0.0);
+    h.enter();
+    let v = volumes_of_pieces(&h, lid);
+    assert_eq!(v.len(), 2, "cut along the two points: {v:?}");
+}
+
+#[test]
+fn wirecut_direction_can_be_the_tangent_of_a_curve() {
+    let mut h = Harness::new();
+    let (_, lid) = wirecut_box_with_vertical_wire(&mut h);
+    let guide = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Curve(_)) && o.geometry.bounding_box().min.x > 29.0).unwrap().id;
+    h.option("Direction", None);
+    h.option("CurveTangent", None);
+    h.ctx(|r, c| r.feed(Input::Pick(guide, DVec3::new(30.0, 5.0, 20.0)), c));
+    assert!(h.prompt().contains("Direction=CurveTangent"), "{}", h.prompt());
+    h.enter();
+    let v = volumes_of_pieces(&h, lid);
+    assert_eq!(v.len(), 2, "cut along the curve's tangent (Y): {v:?}");
+}
+
+#[test]
+fn wirecut_direction_can_be_the_normal_of_a_surface() {
+    let mut h = Harness::new();
+    let (bid, lid) = wirecut_box_with_vertical_wire(&mut h);
+    let plane = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).expect("the surface").id;
+    let _ = bid;
+    h.option("Direction", None);
+    h.option("SurfaceNormal", None);
+    h.ctx(|r, c| r.feed(Input::Pick(plane, DVec3::new(30.0, 5.0, 22.0)), c));
+    assert!(h.prompt().contains("Direction=SurfaceNormal"), "{}", h.prompt());
+    h.enter();
+    let v = volumes_of_pieces(&h, lid);
+    assert_eq!(v.len(), 2, "cut along the surface normal (X): {v:?}");
+    assert!((v[0] - 500.0).abs() < 1.0, "halves at y = 5: {v:?}");
+}
+
+#[test]
+fn extrudecrv_direction_can_be_a_world_axis() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(4.0, 0.0, 0.0);
+    let line = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeCrv");
+    h.objects(vec![line]);
+    h.option("Solid", None);
+    h.option("Direction", None);
+    assert!(h.prompt().contains("TwoPoints") && h.prompt().contains("CurveTangent"), "{}", h.prompt());
+    h.option("WorldY", None);
+    h.number(3.0);
+    let bb = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).expect("surface").geometry.bounding_box();
+    assert!((bb.max.y - 3.0).abs() < 1e-6 && bb.max.z.abs() < 1e-6 && (bb.max.x - 4.0).abs() < 1e-6, "{bb:?}");
+}
+
+#[test]
+fn extrudesrf_direction_can_be_two_points() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(4.0, 0.0, 0.0);
+    let line = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeCrv");
+    h.objects(vec![line]);
+    h.option("Solid", None);
+    h.number(2.0);
+    let srf = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeSrf");
+    h.objects(vec![srf]);
+    h.option("Solid", None);
+    h.option("Direction", None);
+    h.option("TwoPoints", None);
+    h.point(0.0, 0.0, 0.0);
+    h.point(0.0, 1.0, 1.0);
+    h.number(3.0);
+    let top = h.doc.objects().filter(|o| matches!(o.geometry, Geometry::Brep(_))).last().expect("the extrusion").geometry.bounding_box();
+    assert!((top.max.y - 3.0 * 0.5f64.sqrt()).abs() < 1e-6, "slanted by the two points: {top:?}");
+}
+
+#[test]
+fn project_direction_can_be_a_world_axis() {
+    let mut h = Harness::new();
+    // a wall in the plane y = 0 and a line in front of it
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 0.0, 0.0);
+    let base = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeCrv");
+    h.objects(vec![base]);
+    h.option("Solid", None);
+    h.number(10.0);
+    let wall = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).unwrap().id;
+    h.start("Line");
+    h.point(5.0, 10.0, 3.0);
+    h.point(15.0, 10.0, 3.0);
+    let line = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Project");
+    h.objects(vec![line]);
+    h.option("Direction", None);
+    h.option("WorldY", None);
+    assert!(h.prompt().contains("Direction=WorldY"), "{}", h.prompt());
+    h.objects(vec![wall]);
+    let projected = h.doc.objects().filter(|o| matches!(o.geometry, Geometry::Curve(_)) && o.id != base && o.id != line).last().expect("the projected curve");
+    let bb = projected.geometry.bounding_box();
+    assert!(bb.max.y.abs() < 1e-3 && (bb.max.z - 3.0).abs() < 1e-3 && (bb.max.x - 15.0).abs() < 1e-3, "{bb:?}");
+}
+
+#[test]
+fn fin_direction_can_be_a_world_axis() {
+    let mut h = Harness::new();
+    // a wall in the plane y = 0 (normal Y) and a line on it
+    h.start("Line");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 0.0, 0.0);
+    let base = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ExtrudeCrv");
+    h.objects(vec![base]);
+    h.option("Solid", None);
+    h.number(10.0);
+    let wall = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).unwrap().id;
+    h.start("Line");
+    h.point(5.0, 0.0, 3.0);
+    h.point(15.0, 0.0, 3.0);
+    let line = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Fin");
+    h.objects(vec![line]);
+    h.ctx(|r, c| r.feed(Input::Pick(wall, DVec3::new(10.0, 0.0, 5.0)), c));
+    h.option("Direction", None);
+    h.option("WorldZ", None);
+    assert!(h.prompt().contains("Direction=WorldZ"), "{}", h.prompt());
+    h.number(4.0);
+    let fin = h.doc.objects().filter(|o| matches!(o.geometry, Geometry::Surface(_)) && o.id != wall).last().expect("the fin");
+    let bb = fin.geometry.bounding_box();
+    assert!(bb.max.y.abs() < 1e-3 && (bb.max.z - 7.0).abs() < 1e-3, "the fin rises along Z, not along the surface normal: {bb:?}");
+}
+
+#[test]
+fn mirror_plane_normal_can_be_any_direction_of_the_list() {
+    let mut h = Harness::new();
+    h.start("Point");
+    h.point(5.0, 1.0, 2.0);
+    let id = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Mirror");
+    h.objects(vec![id]);
+    h.option("Normal", None);
+    h.option("WorldX", None);
+    assert!(h.prompt().starts_with("Point on mirror plane"), "{}", h.prompt());
+    h.point(2.0, 0.0, 0.0);
+    // the plane x = 2 turns x = 5 into x = -1; the original stays (Copy=Yes)
+    let pts: Vec<DVec3> = h.doc.objects().filter_map(|o| if let Geometry::Point(p) = o.geometry { Some(p) } else { None }).collect();
+    assert_eq!(pts.len(), 2, "{pts:?}");
+    assert!(pts.iter().any(|p| (*p - DVec3::new(-1.0, 1.0, 2.0)).length() < 1e-9), "{pts:?}");
+}
+
+#[test]
+fn array_polar_axis_can_be_a_world_axis_then_the_centre_is_asked() {
+    let mut h = Harness::new();
+    h.start("Point");
+    h.point(0.0, 1.0, 0.0);
+    let pid = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("ArrayPolar");
+    h.objects(vec![pid]);
+    h.option("Axis", None);
+    h.option("WorldX", None);
+    assert!(h.prompt().starts_with("Center of polar array"), "{}", h.prompt());
+    h.point(0.0, 0.0, 0.0);
+    h.number(2.0);
+    h.number(180.0);
+    h.enter();
+    let pts: Vec<DVec3> = h.doc.objects().filter_map(|o| if let Geometry::Point(p) = o.geometry { Some(p) } else { None }).collect();
+    // half a turn about the world X axis takes (0,1,0) to (0,-1,0)
+    assert!(pts.iter().any(|p| (*p - DVec3::new(0.0, -1.0, 0.0)).length() < 1e-9), "{pts:?}");
+}
+
+#[test]
+fn distribute_direction_can_be_a_world_axis() {
+    let mut h = Harness::new();
+    let mut ids = Vec::new();
+    for p in [(0.0, 0.0, 0.0), (3.0, 1.0, 0.0), (0.0, 10.0, 0.0)] {
+        h.start("Point");
+        h.point(p.0, p.1, p.2);
+        ids.push(h.doc.objects().last().unwrap().id);
+        h.doc.clear_selection();
+    }
+    h.start("Distribute");
+    h.option("Direction", None);
+    h.option("WorldY", None);
+    assert!(h.prompt().contains("Direction=WorldY"), "{}", h.prompt());
+    h.objects(ids.clone());
+    let mid = match h.doc.get(ids[1]).unwrap().geometry { Geometry::Point(p) => p, _ => unreachable!() };
+    assert!((mid - DVec3::new(3.0, 5.0, 0.0)).length() < 1e-9, "spread along Y only: {mid:?}");
+}
+
+#[test]
+fn revolve_axis_can_be_a_world_axis_through_a_point() {
+    let mut h = Harness::new();
+    h.start("Line");
+    h.point(5.0, 0.0, 0.0);
+    h.point(5.0, 0.0, 4.0);
+    let line = h.doc.objects().next().unwrap().id;
+    h.doc.clear_selection();
+    h.start("Revolve");
+    h.objects(vec![line]);
+    assert!(h.prompt().contains("Axis"), "{}", h.prompt());
+    h.option("Axis", None);
+    h.option("WorldZ", None);
+    assert!(h.prompt().starts_with("Point on revolve axis"), "{}", h.prompt());
+    h.point(0.0, 0.0, 0.0);
+    h.option("FullCircle", None);
+    let bb = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Surface(_))).expect("the revolved surface").geometry.bounding_box();
+    assert!((bb.max.x - 5.0).abs() < 1e-6 && (bb.min.x + 5.0).abs() < 1e-6 && (bb.max.z - 4.0).abs() < 1e-6, "a cylinder around Z: {bb:?}");
+}
+
+#[test]
+fn helix_axis_can_be_a_world_axis_through_a_point() {
+    let mut h = Harness::new();
+    h.start("Helix");
+    h.option("Axis", None);
+    h.option("WorldX", None);
+    assert!(h.prompt().starts_with("Point on the axis"), "{}", h.prompt());
+    h.point(1.0, 2.0, 3.0);
+    assert!(h.prompt().starts_with("Radius"), "the axis is set, the radius is asked: {}", h.prompt());
+    h.number(2.0);
+    let bb = h.doc.objects().find(|o| matches!(o.geometry, Geometry::Curve(_))).expect("the helix").geometry.bounding_box();
+    assert!(bb.max.x > bb.min.x + 0.5 && (bb.max.y - bb.min.y - 4.0).abs() < 0.1, "a helix around an axis parallel to X: {bb:?}");
 }

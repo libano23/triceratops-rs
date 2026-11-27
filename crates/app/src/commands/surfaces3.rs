@@ -866,8 +866,10 @@ pub fn push_pull() -> SeqCmd {
 pub struct WireCutCmd {
     curve: Option<ObjectId>,
     targets: Vec<ObjectId>,
-    direction: Direction,
+    /// The direction as the choice list names it, and the vector when it came from points or a pick.
+    direction: String,
     custom_dir: Option<DVec3>,
+    axis: super::axis::AxisAsk,
     keep_all: bool,
     delete_input: bool,
     depth: Vec<DVec3>,
@@ -877,36 +879,25 @@ pub struct WireCutCmd {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
-enum Direction {
-    #[default]
-    CPlaneNormal,
-    View,
-    Custom,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum WireStage {
     #[default]
     Curve,
     Objects,
     Depth,
-    CustomFrom,
-    CustomTo(u8),
     KeepPieces,
 }
 
 impl WireCutCmd {
     fn depth_prompt(&self) -> Prompt {
-        let dir = match self.direction { Direction::CPlaneNormal => "CPlaneNormal", Direction::View => "View", Direction::Custom => "Custom" };
+        let dir = if self.direction.is_empty() { "CPlaneNormal" } else { self.direction.as_str() };
         let msg = if self.depth.is_empty() { "Cut depth point. Press Enter for an infinite cut" } else { "Second cut depth point. Press Enter for an infinite cut" };
         Prompt::point(msg).opts([optv("Direction", dir), optv("KeepAll", yesno(self.keep_all)), optv("DeleteInput", yesno(self.delete_input))])
     }
 
     fn cut_direction(&self, ctx: &CmdCtx) -> DVec3 {
-        match self.direction {
-            Direction::CPlaneNormal => ctx.cplane.z_axis,
-            Direction::View => ctx.view_dir.normalize_or(ctx.cplane.z_axis),
-            Direction::Custom => self.custom_dir.unwrap_or(ctx.cplane.z_axis).normalize_or(ctx.cplane.z_axis),
+        match self.custom_dir {
+            Some(d) => d,
+            None => super::axis::named(&self.direction, ctx).unwrap_or(ctx.cplane.z_axis),
         }
     }
 
@@ -1179,10 +1170,25 @@ fn plane_section_curve(face: &Face, plane: &Plane, tol: f64) -> Option<NurbsCurv
 impl super::Command for WireCutCmd {
     fn start(&mut self, ctx: &mut CmdCtx) -> Step {
         self.keep_all = ctx.mem_bool("WireCut.KeepAll", true);
-        self.direction = match ctx.memory.get("WireCut.Direction").map(|s| s.as_str()) { Some("View") => Direction::View, Some("Custom") => Direction::Custom, _ => Direction::CPlaneNormal };
+        self.direction = ctx.memory.get("WireCut.Direction").filter(|d| super::axis::named(d, ctx).is_some()).cloned().unwrap_or_else(|| "CPlaneNormal".into());
         Prompt::pick("Select cutting curve", ObjFilter::Curve).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.direction = self.axis.last_name().to_string();
+                    self.custom_dir = (!super::axis::CHOICES[..7].contains(&self.direction.as_str())).then_some(d);
+                    if self.custom_dir.is_none() {
+                        ctx.mem_set("WireCut.Direction", &self.direction);
+                    }
+                    self.dir_now = Some(d);
+                    self.depth_prompt().step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match (self.stage, input) {
             (WireStage::Curve, Input::Pick(id, _)) => {
                 self.curve = Some(id);
@@ -1209,16 +1215,7 @@ impl super::Command for WireCutCmd {
             }
             (WireStage::Depth, Input::Empty) => self.run(ctx),
             (WireStage::Depth, Input::Option(o)) => match o.as_str() {
-                "Direction" => {
-                    self.direction = match self.direction { Direction::CPlaneNormal => Direction::View, Direction::View => Direction::Custom, Direction::Custom => Direction::CPlaneNormal };
-                    ctx.mem_set("WireCut.Direction", match self.direction { Direction::CPlaneNormal => "CPlaneNormal", Direction::View => "View", Direction::Custom => "Custom" });
-                    if self.direction == Direction::Custom {
-                        self.stage = WireStage::CustomFrom;
-                        return Prompt::point("Start of cut direction").step();
-                    }
-                    self.dir_now = Some(self.cut_direction(ctx));
-                    self.depth_prompt().step()
-                }
+                "Direction" => self.axis.begin().step(),
                 "KeepAll" => {
                     self.keep_all = !self.keep_all;
                     ctx.mem_set("WireCut.KeepAll", yesno(self.keep_all));
@@ -1230,18 +1227,6 @@ impl super::Command for WireCutCmd {
                 }
                 _ => self.depth_prompt().step(),
             },
-            (WireStage::CustomFrom, Input::Point(p)) => {
-                self.custom_dir = Some(p);
-                self.stage = WireStage::CustomTo(0);
-                Prompt::point("End of cut direction").step()
-            }
-            (WireStage::CustomTo(_), Input::Point(p)) => {
-                let from = self.custom_dir.unwrap_or(DVec3::ZERO);
-                self.custom_dir = Some((p - from).normalize_or(ctx.cplane.z_axis));
-                self.stage = WireStage::Depth;
-                self.dir_now = Some(self.cut_direction(ctx));
-                self.depth_prompt().step()
-            }
             (WireStage::KeepPieces, Input::Objects(ids)) => {
                 for id in ids {
                     ctx.doc.remove(id);

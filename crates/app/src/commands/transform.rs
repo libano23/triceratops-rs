@@ -151,6 +151,7 @@ pub struct ArrayPolarCmd {
     /// Sub-prompt state: 1 = axis start, 2 = axis end, 3 = step angle, 4 = z offset, 5 = accept.
     asking: u8,
     axis_start: Option<DVec3>,
+    axis: super::axis::AxisAsk,
     base_hint: Option<DVec3>,
 }
 
@@ -212,6 +213,22 @@ impl Command for ArrayPolarCmd {
         Prompt::objects("Select objects to array", ObjFilter::Any, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    // two points give an axis through them: its start is the centre
+                    let origin = self.axis.anchor().unwrap_or(self.plane.origin);
+                    self.plane = Plane::from_normal(origin, d);
+                    if let Some(a) = self.axis.anchor() {
+                        self.center = Some(a);
+                        return Prompt::number("Number of items").default_num(ctx.mem_num("ArrayPolar.Count", 4.0)).step();
+                    }
+                    Prompt::point("Center of polar array").opts([opt("Axis")]).step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match (self.center, self.count, self.asking, input) {
             (_, _, _, Input::Objects(ids)) => {
                 let bb = ids.iter().filter_map(|id| ctx.doc.get(*id)).fold(tri_geom::BoundingBox::EMPTY, |b, o| b.union(&o.geometry.bounding_box()));
@@ -219,23 +236,7 @@ impl Command for ArrayPolarCmd {
                 self.ids = ids;
                 Prompt::point("Center of polar array").opts([opt("Axis")]).step()
             }
-            (None, _, 0, Input::Option(o)) if o == "Axis" => {
-                self.asking = 1;
-                Prompt::point("Start of axis").step()
-            }
-            (_, _, 1, Input::Point(p)) => {
-                self.axis_start = Some(p);
-                self.asking = 2;
-                Prompt::point("End of axis").step()
-            }
-            (_, _, 2, Input::Point(p)) => {
-                let a = self.axis_start.unwrap_or(p);
-                let n = (p - a).normalize_or(self.plane.z_axis);
-                self.plane = Plane::from_normal(a, n);
-                self.center = Some(a);
-                self.asking = 0;
-                Prompt::number("Number of items").default_num(ctx.mem_num("ArrayPolar.Count", 4.0)).step()
-            }
+            (None, _, 0, Input::Option(o)) if o == "Axis" => self.axis.begin().step(),
             (None, _, 0, Input::Point(p)) => {
                 self.center = Some(p);
                 Prompt::number("Number of items").default_num(ctx.mem_num("ArrayPolar.Count", 4.0)).step()

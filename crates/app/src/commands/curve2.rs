@@ -52,11 +52,14 @@ pub struct HelixCmd {
     pts: Vec<DVec3>,
     turns: f64,
     radius1: Option<f64>,
+    /// An axis direction chosen from the list, waiting for a point it passes through.
+    axis_dir: Option<DVec3>,
+    axis_ask: super::axis::AxisAsk,
 }
 
 impl HelixCmd {
     pub fn new(spiral: bool) -> Self {
-        Self { spiral, pts: Vec::new(), turns: 10.0, radius1: None }
+        Self { spiral, pts: Vec::new(), turns: 10.0, radius1: None, axis_dir: None, axis_ask: Default::default() }
     }
     fn build(&self, r2: f64) -> Option<NurbsCurve> {
         if self.pts.len() < 2 {
@@ -68,7 +71,7 @@ impl HelixCmd {
         helix_curve(self.pts[0], self.pts[1], self.radius1.unwrap_or(r2), r2, self.turns, None)
     }
     fn prompt(&self) -> Prompt {
-        let opts = [optv("Turns", fmt_num(self.turns)), optv("Pitch", fmt_num(0.0)), optv("Mode", "Turns"), opt("Flat"), opt("ReverseTwist")];
+        let opts = [optv("Turns", fmt_num(self.turns)), optv("Pitch", fmt_num(0.0)), optv("Mode", "Turns"), opt("Flat"), opt("ReverseTwist"), opt("Axis")];
         match (self.pts.len(), self.radius1) {
             (0, _) => Prompt::point("Start of axis").opts(opts),
             (1, _) => Prompt::point("End of axis").opts(opts),
@@ -84,7 +87,29 @@ impl Command for HelixCmd {
         self.prompt().step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis_ask.active() {
+            return match self.axis_ask.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => match self.axis_ask.anchor() {
+                    Some(a) => {
+                        self.pts = vec![a, a + d];
+                        self.prompt().step()
+                    }
+                    None => {
+                        self.axis_dir = Some(d);
+                        Prompt::point("Point on the axis").step()
+                    }
+                },
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
+            Input::Option(o) if o == "Axis" && self.pts.is_empty() => self.axis_ask.begin().step(),
+            Input::Point(p) if self.axis_dir.is_some() && self.pts.is_empty() => {
+                let d = self.axis_dir.take().unwrap_or(DVec3::Z);
+                self.pts = vec![p, p + d];
+                self.prompt().step()
+            }
             Input::Option(o) if o == "Turns" => Prompt::number("Number of turns").default_num(self.turns).step(),
             Input::Option(_) => self.prompt().step(),
             Input::Number(n) if self.pts.len() < 2 => {
@@ -493,6 +518,17 @@ impl Command for CurveThroughPtCmd {
 #[derive(Default)]
 pub struct ProjectCmd {
     curves: Vec<ObjectId>,
+    /// The projection direction and the name it is shown with; the normal of the CPlane when unset.
+    direction: Option<DVec3>,
+    direction_name: String,
+    axis: super::axis::AxisAsk,
+}
+
+impl ProjectCmd {
+    fn targets_prompt(&self) -> Prompt {
+        let name = if self.direction_name.is_empty() { "CPlaneNormal" } else { self.direction_name.as_str() };
+        Prompt::objects("Select surfaces, polysurfaces or meshes to project onto", ObjFilter::Any, 1).opts([optv("Direction", name), optv("DeleteInput", "No")])
+    }
 }
 
 impl Command for ProjectCmd {
@@ -500,14 +536,26 @@ impl Command for ProjectCmd {
         Prompt::objects("Select curves and points to project", ObjFilter::Any, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.direction = Some(d);
+                    self.direction_name = self.axis.last_name().to_string();
+                    self.targets_prompt().step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
             Input::Objects(ids) if self.curves.is_empty() => {
                 self.curves = ids;
                 ctx.doc.clear_selection();
-                Prompt::objects("Select surfaces, polysurfaces or meshes to project onto", ObjFilter::Any, 1).opts([optv("Direction", "CPlane"), optv("DeleteInput", "No")]).step()
+                self.targets_prompt().step()
             }
+            Input::Option(o) if o == "Direction" && !self.curves.is_empty() => self.axis.begin().step(),
             Input::Objects(targets) => {
-                let dir = ctx.cplane.z_axis;
+                let dir = self.direction.unwrap_or(ctx.cplane.z_axis);
                 let meshes: Vec<tri_geom::Mesh> = targets
                     .iter()
                     .filter_map(|id| ctx.doc.get(*id))

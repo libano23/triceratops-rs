@@ -2197,11 +2197,12 @@ pub struct ExtrudeCmd {
     base_point: Option<DVec3>,
     asking: Option<&'static str>,
     cplane: Plane,
+    axis: super::axis::AxisAsk,
 }
 
 impl Default for ExtrudeCmd {
     fn default() -> Self {
-        Self { curves: Vec::new(), both_sides: false, solid: true, delete_input: false, direction: None, dir_pts: Vec::new(), base_point: None, asking: None, cplane: Plane::world_xy() }
+        Self { curves: Vec::new(), both_sides: false, solid: true, delete_input: false, direction: None, dir_pts: Vec::new(), base_point: None, asking: None, cplane: Plane::world_xy(), axis: Default::default() }
     }
 }
 
@@ -2303,6 +2304,16 @@ impl Command for ExtrudeCmd {
         Prompt::objects("Select curves to extrude", ObjFilter::Curve, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.direction = Some(d);
+                    self.prompt(ctx).step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
             Input::Objects(ids) => {
                 self.curves = ids;
@@ -2322,11 +2333,7 @@ impl Command for ExtrudeCmd {
                     self.delete_input = !self.delete_input;
                     self.prompt(ctx).step()
                 }
-                "Direction" => {
-                    self.asking = Some("Direction");
-                    self.dir_pts.clear();
-                    Prompt::point("Base point of direction").step()
-                }
+                "Direction" => self.axis.begin().step(),
                 "SetBasePoint" => {
                     self.asking = Some("SetBasePoint");
                     Prompt::point("Base point").step()
@@ -2336,19 +2343,6 @@ impl Command for ExtrudeCmd {
                     self.prompt(ctx).step()
                 }
             },
-            Input::Point(p) if self.asking == Some("Direction") => {
-                self.dir_pts.push(p);
-                if self.dir_pts.len() == 1 {
-                    Prompt::point("Second point of direction").step()
-                } else {
-                    let d = self.dir_pts[1] - self.dir_pts[0];
-                    if d.length() > 1e-9 {
-                        self.direction = Some(d.normalize());
-                    }
-                    self.asking = None;
-                    self.prompt(ctx).step()
-                }
-            }
             Input::Point(p) if self.asking == Some("SetBasePoint") => {
                 self.base_point = Some(p);
                 self.asking = None;
@@ -2390,6 +2384,9 @@ pub struct RevolveCmd {
     start_angle: Option<f64>,
     deformable: bool,
     delete_input: bool,
+    /// An axis direction chosen from the list, waiting for a point it passes through.
+    axis_dir: Option<DVec3>,
+    axis_ask: super::axis::AxisAsk,
 }
 
 impl RevolveCmd {
@@ -2458,10 +2455,35 @@ impl Command for RevolveCmd {
         Prompt::objects("Select curves to revolve", ObjFilter::Curve, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis_ask.active() {
+            return match self.axis_ask.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => match self.axis_ask.anchor() {
+                    // two points are the axis itself
+                    Some(a) => {
+                        self.axis_start = Some(a);
+                        self.axis_end = Some(a + d);
+                        self.angle_prompt().step()
+                    }
+                    None => {
+                        self.axis_dir = Some(d);
+                        Prompt::point("Point on revolve axis").step()
+                    }
+                },
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
             Input::Objects(ids) => {
                 self.curves = ids;
-                Prompt::point("Start of revolve axis").step()
+                Prompt::point("Start of revolve axis").opts([opt("Axis")]).step()
+            }
+            Input::Option(o) if o == "Axis" && self.axis_start.is_none() => self.axis_ask.begin().step(),
+            Input::Point(p) if self.axis_dir.is_some() && self.axis_start.is_none() => {
+                let d = self.axis_dir.unwrap_or(DVec3::Z);
+                self.axis_start = Some(p);
+                self.axis_end = Some(p + d);
+                self.angle_prompt().step()
             }
             Input::Point(p) if self.axis_start.is_none() => {
                 self.axis_start = Some(p);
