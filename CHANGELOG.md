@@ -7,6 +7,17 @@ before tagging a release, rename "Unreleased" to the version and date (see
 
 ## Unreleased
 
+### Added
+
+* **One direction list for every command that asks for an axis.** WireCut, ExtrudeCrv, ExtrudeSrf,
+  Project, Fin, Mirror (`Normal`), ArrayPolar, Revolve, Helix (`Axis`) and Distribute now offer the
+  same choices: `CPlaneNormal`, `View`, `WorldX`, `WorldY`, `WorldZ`, `CPlaneX`, `CPlaneY`,
+  `TwoPoints`, `CurveTangent` (pick a curve: its tangent at the picked point) and `SurfaceNormal`
+  (pick a surface or solid: its normal there). Before, each command had its own short list, and
+  WireCut could only cycle between three.
+* Project and ExtrudeSrf had a `Direction` option that did nothing (Project always projected along
+  the construction plane normal, ExtrudeSrf said "not implemented"); now they follow it.
+
 ## 0.5.1 - 2026-11-27
 
 ### Fixed

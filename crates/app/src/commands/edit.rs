@@ -496,6 +496,9 @@ pub struct MirrorCmd {
     copy: bool,
     three_point: Vec<DVec3>,
     use_three: bool,
+    /// The normal of the mirror plane chosen with `Normal`, while its point is asked.
+    normal: Option<DVec3>,
+    axis: super::axis::AxisAsk,
 }
 
 pub fn mirror_xf(a: DVec3, n: DVec3) -> Option<DAffine3> {
@@ -526,7 +529,8 @@ impl MirrorCmd {
             };
         }
         match self.start {
-            None => Prompt::point("Start of mirror plane").opts([opt("3Point"), copy, opt("XAxis"), opt("YAxis"), opt("ZAxis"), opt("Object")]),
+            None if self.normal.is_some() => Prompt::point("Point on mirror plane").opts([copy]),
+            None => Prompt::point("Start of mirror plane").opts([opt("3Point"), copy, opt("XAxis"), opt("YAxis"), opt("ZAxis"), opt("Normal"), opt("Object")]),
             Some(_) => Prompt::point("End of mirror plane").opts([copy]),
         }
     }
@@ -551,12 +555,27 @@ impl Command for MirrorCmd {
         Prompt::objects("Select objects to mirror", ObjFilter::Any, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.normal = Some(d);
+                    self.prompt().step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
             Input::Objects(ids) => {
                 self.ids = ids;
                 self.prompt().step()
             }
+            Input::Point(p) if self.normal.is_some() => {
+                let xf = mirror_xf(p, self.normal.unwrap_or(DVec3::Z));
+                self.apply(ctx, xf)
+            }
             Input::Option(o) => match o.as_str() {
+                "Normal" => self.axis.begin().step(),
                 "Copy" => {
                     self.copy = !self.copy;
                     ctx.mem_set("Mirror.Copy", yesno(self.copy));
@@ -608,6 +627,9 @@ impl Command for MirrorCmd {
                 }
                 _ => vec![],
             };
+        }
+        if let Some(n) = self.normal {
+            return mirror_xf(c, n).map(|xf| preview_transformed(doc, &self.ids, &xf)).unwrap_or_default();
         }
         match self.start {
             Some(a) => {

@@ -143,6 +143,9 @@ pub struct ExtrudeSrfCmd {
     both_sides: bool,
     solid: bool,
     delete_input: bool,
+    /// The extrusion direction when not the normal of each face.
+    direction: Option<DVec3>,
+    axis: super::axis::AxisAsk,
 }
 
 impl ExtrudeSrfCmd {
@@ -158,7 +161,7 @@ impl ExtrudeSrfCmd {
         for id in &self.ids {
             let Some(faces) = faces_of(doc, *id) else { continue };
             for f in faces {
-                let n = face_normal(&f);
+                let n = self.direction.unwrap_or_else(|| face_normal(&f));
                 let (start, len) = if self.both_sides { (-h, 2.0 * h) } else { (0.0, h) };
                 let mut base = f.clone();
                 base.transform(&DAffine3::from_translation(n * start));
@@ -190,11 +193,22 @@ impl Command for ExtrudeSrfCmd {
         Prompt::objects("Select surfaces to extrude", ObjFilter::Surface, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.direction = Some(d);
+                    self.prompt(ctx).step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
             Input::Objects(ids) => {
                 self.ids = ids;
                 self.prompt(ctx).step()
             }
+            Input::Option(o) if o == "Direction" => self.axis.begin().step(),
             Input::Option(o) => {
                 match o.as_str() {
                     "BothSides" => self.both_sides = !self.both_sides,
@@ -233,7 +247,7 @@ impl Command for ExtrudeSrfCmd {
         let Some(c) = cursor else { return vec![] };
         let Some(first) = self.ids.first().and_then(|id| faces_of(doc, *id)).and_then(|f| f.into_iter().next()) else { return vec![] };
         let (p, n) = first.sample();
-        let h = (c - p).dot(n);
+        let h = (c - p).dot(self.direction.unwrap_or(n));
         self.build(doc, h).into_iter().map(Preview::Brep).collect()
     }
 }

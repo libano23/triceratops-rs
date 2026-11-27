@@ -1091,7 +1091,7 @@ pub fn create_command(name: &str) -> Option<Box<dyn Command>> {
         "ExtractMeshPart" => Box::new(ExtractMeshPartCmd),
         "ExtractConnectedMeshFaces" => Box::new(ExtractMeshPartCmd),
         "Maelstrom" => Box::new(MaelstromWrap(MaelstromCmd::default())),
-        "Distribute" => Box::new(DistributeCmd),
+        "Distribute" => Box::new(DistributeCmd::default()),
         "ChangeToCurrentLayer" => Box::new(LayerUtilCmd("ChangeToCurrentLayer")),
         "MatchLayer" => Box::new(LayerUtilCmd("MatchLayer")),
         "DupLayer" => Box::new(LayerUtilCmd("DupLayer")),

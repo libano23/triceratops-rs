@@ -95,6 +95,17 @@ impl Command for PullCmd {
 pub struct FinCmd {
     curves: Vec<ObjectId>,
     surface: Option<ObjectId>,
+    /// The fin direction when not the surface normal, and the name it is shown with.
+    direction: Option<DVec3>,
+    direction_name: String,
+    axis: super::axis::AxisAsk,
+}
+
+impl FinCmd {
+    fn distance_prompt(&self, ctx: &CmdCtx) -> Prompt {
+        let name = if self.direction_name.is_empty() { "Normal" } else { self.direction_name.as_str() };
+        Prompt::point_or_number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).opts([optv("Direction", name), optv("BothSides", "No")])
+    }
 }
 
 impl Command for FinCmd {
@@ -102,7 +113,19 @@ impl Command for FinCmd {
         Prompt::objects("Select curves on surface", ObjFilter::Curve, 1).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.direction = Some(d);
+                    self.direction_name = self.axis.last_name().to_string();
+                    self.distance_prompt(ctx).step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match (self.surface, input) {
+            (Some(_), Input::Option(o)) if o == "Direction" => self.axis.begin().step(),
             (_, Input::Objects(ids)) => {
                 self.curves = ids;
                 ctx.doc.clear_selection();
@@ -110,7 +133,7 @@ impl Command for FinCmd {
             }
             (None, Input::Pick(id, _)) => {
                 self.surface = Some(id);
-                Prompt::point_or_number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).opts([optv("Direction", "Normal"), optv("BothSides", "No")]).step()
+                self.distance_prompt(ctx).step()
             }
             (Some(sid), Input::Number(d)) => {
                 ctx.mem_set("Fin.Distance", fmt_num(d));
@@ -120,7 +143,7 @@ impl Command for FinCmd {
                     let Some(c) = curve_of(ctx.doc, *cid) else { continue };
                     let tol = c.bounding_box().diagonal().max(1e-6) * 1e-3;
                     let base = c.tessellate_adaptive(tol);
-                    let offset: Vec<DVec3> = base.iter().map(|p| { let (q, n) = pull_point(&faces, *p); q + n * d }).collect();
+                    let offset: Vec<DVec3> = base.iter().map(|p| { let (q, n) = pull_point(&faces, *p); q + self.direction.unwrap_or(n) * d }).collect();
                     let (Ok(a), Ok(b)) = (NurbsCurve::polyline(base), NurbsCurve::polyline(offset)) else { continue };
                     if let Ok(s) = NurbsSurface::loft(&[a, b], 1) {
                         out.push(Geometry::Surface(s));
@@ -128,7 +151,7 @@ impl Command for FinCmd {
                 }
                 add_all(ctx, "Fin", out)
             }
-            (_, Input::Option(_)) => Prompt::point_or_number("Distance").default_num(ctx.mem_num("Fin.Distance", 1.0)).step(),
+            (_, Input::Option(_)) => self.distance_prompt(ctx).step(),
             _ => Step::Cancelled,
         }
     }
@@ -480,23 +503,56 @@ impl Command for MaelstromWrap {
     }
 }
 
-pub struct DistributeCmd;
+#[derive(Default)]
+pub struct DistributeCmd {
+    /// A direction given by points or a pick (not remembered between runs).
+    custom: Option<DVec3>,
+    name: String,
+    axis: super::axis::AxisAsk,
+}
+
+impl DistributeCmd {
+    fn name(&self, ctx: &CmdCtx) -> String {
+        if !self.name.is_empty() {
+            return self.name.clone();
+        }
+        // the first versions remembered X, Y and Z of the construction plane
+        match ctx.memory.get("Distribute.Dir").map(|s| s.as_str()) {
+            Some("Y") => "CPlaneY".into(),
+            Some("Z") => "CPlaneNormal".into(),
+            Some(n) if super::axis::named(n, ctx).is_some() => n.into(),
+            _ => "CPlaneX".into(),
+        }
+    }
+
+    fn prompt(&self, ctx: &CmdCtx) -> Prompt {
+        Prompt::objects("Select objects to distribute", ObjFilter::Any, 3).opts([optv("Direction", self.name(ctx)), optv("Mode", "Centers")])
+    }
+}
 
 impl Command for DistributeCmd {
-    fn start(&mut self, _ctx: &mut CmdCtx) -> Step {
-        Prompt::objects("Select objects to distribute", ObjFilter::Any, 3).opts([optv("Direction", "X"), optv("Mode", "Centers")]).step()
+    fn start(&mut self, ctx: &mut CmdCtx) -> Step {
+        self.prompt(ctx).step()
     }
     fn input(&mut self, input: Input, ctx: &mut CmdCtx) -> Step {
+        if self.axis.active() {
+            return match self.axis.input(input, ctx) {
+                super::axis::Asked::Prompt(p) => p.step(),
+                super::axis::Asked::Chosen(d) => {
+                    self.name = self.axis.last_name().to_string();
+                    self.custom = (!super::axis::CHOICES[..7].contains(&self.name.as_str())).then_some(d);
+                    if self.custom.is_none() {
+                        ctx.mem_set("Distribute.Dir", &self.name);
+                    }
+                    self.prompt(ctx).step()
+                }
+                super::axis::Asked::Cancelled => super::axis::abandoned(ctx),
+            };
+        }
         match input {
-            Input::Option(o) if o == "Direction" => {
-                let cur = ctx.memory.get("Distribute.Dir").cloned().unwrap_or_else(|| "X".into());
-                let next = match cur.as_str() { "X" => "Y", "Y" => "Z", _ => "X" };
-                ctx.mem_set("Distribute.Dir", next);
-                Prompt::objects("Select objects to distribute", ObjFilter::Any, 3).opts([optv("Direction", next)]).step()
-            }
-            Input::Option(_) => self.start(ctx),
+            Input::Option(o) if o == "Direction" => self.axis.begin().step(),
             Input::Objects(ids) => {
-                let dir = match ctx.memory.get("Distribute.Dir").map(|s| s.as_str()) { Some("Y") => ctx.cplane.y_axis, Some("Z") => ctx.cplane.z_axis, _ => ctx.cplane.x_axis };
+                let dir = self.custom.or_else(|| super::axis::named(&self.name(ctx), ctx)).unwrap_or(ctx.cplane.x_axis);
                 let mut items: Vec<(ObjectId, f64)> = ids.iter().filter_map(|id| ctx.doc.get(*id).map(|o| (*id, ctx.doc.object_bbox(o).center().dot(dir)))).collect();
                 if items.len() < 3 {
                     return Step::Cancelled;
@@ -511,6 +567,7 @@ impl Command for DistributeCmd {
                 }
                 Step::Done
             }
+            Input::Option(_) => self.start(ctx),
             _ => Step::Cancelled,
         }
     }
