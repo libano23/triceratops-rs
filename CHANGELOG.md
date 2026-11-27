@@ -5,6 +5,21 @@ becomes its release notes and is what the program shows when it offers an update
 before tagging a release, rename "Unreleased" to the version and date (see
 [docs/RELEASING.md](docs/RELEASING.md)).
 
+## Unreleased
+
+### Fixed
+
+* **WireCut leaves a smooth cut.** The cutter used to be the curve sampled into flat facets,
+  so every cut on a solid ended in a wall of tiny planes (a mesh look). It is now the curve itself
+  extruded, so the wall is one smooth face.
+
+### New
+
+* **Interactive previews.** WireCut shows the flattened wire, the cutter and the depth planes
+  while you choose the cut depth. PushPull shows the volume it adds or removes and Pipe the pipe
+  at the cursor's distance from the curve; in both a click answers the distance (a typed number
+  still works).
+
 ## 0.4.1 - 2026-11-27
 
 ### Fixed

@@ -428,3 +428,19 @@ stay what the legacy construction makes, so every other command behaves as befor
   free-form identity cases within 1e-5 % (and a near-coincident free-form pair that is refused) (see `crates/kernel/tests/acceptance.rs`).
 * Cost: compiling solidcore adds about 4.5 minutes of wall time (≈30 CPU minutes) to a clean
   release build on 16 cores.
+
+## Interactive previews
+
+The rule (taken from Serpentine3D): a command that asks for a distance in model space accepts a
+point as the answer, shows what the click would make as a ghost that follows the cursor, and
+never leaves the screen dead after its first pick. A typed number is always accepted too.
+
+* Done: ExtrudeCrv, Revolve, ExtrudeSrf, ExtrudeCrvToPoint and the edge rounds (earlier);
+  **WireCut** (flattened wire, cutter and depth planes, and the cut itself is the curve extruded),
+  **PushPull** and **Pipe**.
+* `SeqCmd::with_preview` gives a declarative command a ghost: the closure gets the answers so
+  far and the cursor.
+* Still asking for a distance without a ghost or a point answer: ExtrudeCrvTapered, Boss/Rib,
+  OffsetCrvOnSrf, FilletCorners, ChamferSrf, Heightfield, Truncated pyramid, Paraboloid, mesh
+  Bevel/Inset/ExtrudeSubD/OffsetSubD/MultiPipe/Slide, Cage and about thirty more of the same kind
+  (`grep "Ask::Number" crates/app/src/commands`).
