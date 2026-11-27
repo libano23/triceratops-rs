@@ -202,7 +202,7 @@ mod tests {
         match &mut oe.pcurve {
             Curve2::Spline { knots, .. } | Curve2::RationalSpline { knots, .. } => knots.iter_mut().for_each(|k| *k *= 2.0),
         }
-        let e = faces_of(&r, 0.05).err().expect("a pcurve that does not follow its edge's interval must be refused");
+        let e = faces_of(&r, 0.05).expect_err("a pcurve that does not follow its edge's interval must be refused");
         assert!(e.to_string().contains("pcurve"), "{e}");
     }
 }

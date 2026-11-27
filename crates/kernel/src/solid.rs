@@ -61,6 +61,15 @@ pub struct Solid {
     pub(crate) body: Body,
 }
 
+impl fmt::Debug for Solid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.body.counts() {
+            Ok([faces, edges, vertices]) => write!(f, "Solid({faces} faces, {edges} edges, {vertices} vertices)"),
+            Err(_) => write!(f, "Solid"),
+        }
+    }
+}
+
 impl Solid {
     pub(crate) fn new(body: Body) -> Self {
         Self { body }
@@ -184,7 +193,7 @@ fn with_job_cancel<R>(f: impl FnOnce() -> R) -> R {
                 Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
             }
         });
-        let r = solidcore_ops::cancel::within(&token, f);
+        let r = solidcore_ops::cancel::within(token, f);
         drop(alive);
         r
     })

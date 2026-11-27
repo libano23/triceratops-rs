@@ -5,24 +5,22 @@ becomes its release notes and is what the program shows when it offers an update
 before tagging a release, rename "Unreleased" to the version and date (see
 [docs/RELEASING.md](docs/RELEASING.md)).
 
-## Unreleased
-
-### New (experimental, off by default)
-
-* **Exact solids on the solidcore kernel.** Built with `--features kernel-solidcore`, the
-  Box, Cylinder, Cone, Sphere and Torus commands (and the prisms behind WireCut, holes, Boss and
-  Rib) carry an exact B-rep of the solid next to their faces. A Boolean between two such solids
-  runs on the kernel and gives exact results: sphere − two cylinders (+11 % off before) and
-  torus − a bore along its tube (+5.9 % off before) are now within 0.1 % of the true volume.
-  Volume and area readouts of such solids come from the kernel. Move, Rotate, Mirror, Copy and arrays keep
-  the exact body. A kernel refusal in a Boolean command is reported with its message and leaves
-  both objects as they were. Everything else, and every file, works as before.
+## 0.4.1 - 2026-11-27
 
 ### Fixed
 
 * An AppImage kept in a folder Triceratops cannot write to is no longer left without an
   update: the new version is downloaded to Downloads for you to put in its place.
 * Help › About shows the real version.
+* A curve with a repeated knot at the end of its domain (what knot insertion leaves on a
+  closed spline) no longer evaluates to garbage.
+
+### Under the hood
+
+* Groundwork for **exact solids** on a real B-rep kernel (solidcore): Booleans between solids
+  made by Box, Cylinder, Cone, Sphere and Torus would give exact results where the mesh-based
+  Boolean is off by up to 11 % in volume. It is switched off in this build and does not change
+  anything you use today; the design and the numbers are in `docs/FEATURES.md`.
 
 ## 0.4.0 - 2026-11-26
 

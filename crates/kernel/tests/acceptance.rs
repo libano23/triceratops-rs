@@ -159,7 +159,7 @@ fn boolean_does_not_consume_its_operands() {
 fn disjoint_intersection_is_refused_as_empty() {
     let a = Solid::cuboid(DVec3::ZERO, DVec3::splat(1.0)).unwrap();
     let b = Solid::cuboid(DVec3::splat(5.0), DVec3::splat(6.0)).unwrap();
-    let e = a.boolean(&b, BooleanOp::Intersection).err().expect("empty result is an error");
+    let e = a.boolean(&b, BooleanOp::Intersection).expect_err("empty result is an error");
     assert_eq!(e.to_string(), "the result is empty");
 }
 
@@ -244,7 +244,7 @@ fn extrude_curve_off_the_plane_is_refused() {
         DVec3::new(0.0, 0.0, 0.0),
     ])
     .unwrap();
-    let e = Solid::extrude_closed_curve(&c, &Plane::world_xy(), 1.0).err().expect("non-planar curve is refused");
+    let e = Solid::extrude_closed_curve(&c, &Plane::world_xy(), 1.0).expect_err("non-planar curve is refused");
     assert!(e.to_string().contains("planar"), "{e}");
 }
 
@@ -411,7 +411,7 @@ fn a_cancelled_job_stops_a_boolean_and_leaves_the_operands() {
     let token = tri_geom::job::Token::new();
     token.cancel();
     let _guard = tri_geom::job::install(token);
-    let e = a.boolean(&b, BooleanOp::Difference).err().expect("cancelled");
+    let e = a.boolean(&b, BooleanOp::Difference).expect_err("cancelled");
     assert_eq!(e, tri_kernel::KernelError::Cancelled);
     assert_vol(&a, 32000.0, 1e-3);
     assert_vol(&b, PI * 64.0 * 20.0, 1e-3);
@@ -429,7 +429,7 @@ fn a_job_that_is_not_cancelled_lets_the_boolean_finish() {
 fn near_coincident_free_form_walls_are_refused_with_a_message() {
     let a = Solid::extrude_closed_curve(&blob(0.0, 0.0, 15.0, 12.0, 0.2, 0.0), &plane_at(15.0), 15.0).unwrap();
     let b = Solid::extrude_closed_curve(&blob(0.001, 0.0, 15.0, 12.0, 0.2, 0.0), &plane_at(15.0), 15.0).unwrap();
-    let e = a.boolean(&b, BooleanOp::Difference).err().expect("the kernel refuses this pair");
+    let e = a.boolean(&b, BooleanOp::Difference).expect_err("the kernel refuses this pair");
     assert!(!e.to_string().is_empty());
 }
 
