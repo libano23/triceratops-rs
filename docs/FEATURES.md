@@ -454,3 +454,18 @@ How the ghosts are made:
   simply not previewed.
 * Also hand-made: ExtrudeCrv, Revolve, ExtrudeSrf, ExtrudeCrvToPoint, edge rounds, **WireCut**
   (flattened wire, cutter, depth planes) and **Pipe**.
+
+## Export quality
+
+* **STEP.** Solids that carry an exact body are written by the kernel (analytic surfaces, shared
+  edges). Anything else goes through the Triceratops writer: flat faces as `PLANE`, other faces
+  as B-spline surfaces bounded by their trim loops (as polylines). A model that mixes exact solids
+  with curves or other objects uses the Triceratops writer for the whole file.
+* **Mesh formats** share one tessellation (`formats::export_mesh_of`): adaptive, chord 1/20000 of
+  the object's size, and the kernel's crack-free mesh for exact solids. Legacy solids are
+  almost watertight (a few open edges where the faces were meshed apart).
+* **Units:** STEP and VDA-FS in millimetres, IGES/3MF/AMF/COLLADA declare the document unit, glTF
+  in metres. Not yet: STL, OBJ, PLY and the other unitless formats write the document's numbers;
+  the 3MF, AMF and COLLADA importers still ignore the unit the file declares.
+* **Known limits:** 3DM and IGES write trim loops as polylines; STEP import of a file written by
+  the kernel (periodic faces) is still weak, use another CAD kernel or the 3DM format to read it back.

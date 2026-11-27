@@ -169,9 +169,60 @@ pub struct NamedMesh {
     pub color: [u8; 4],
 }
 
+/// Millimetres in one unit of the document (`settings.units`): STEP and VDA-FS are written in
+/// millimetres, so a document in inches or metres is scaled by this.
+pub fn mm_per_unit(units: &str) -> f64 {
+    match units.to_ascii_lowercase().as_str() {
+        "centimeters" => 10.0,
+        "meters" => 1000.0,
+        "inches" => 25.4,
+        "feet" => 304.8,
+        _ => 1.0,
+    }
+}
+
+/// The unit of the document as a mesh format names it: (3MF/AMF unit attribute, COLLADA name and
+/// metres per unit).
+pub fn unit_names(units: &str) -> (&'static str, &'static str, f64) {
+    match units.to_ascii_lowercase().as_str() {
+        "centimeters" => ("centimeter", "centimeter", 0.01),
+        "meters" => ("meter", "meter", 1.0),
+        "inches" => ("inch", "inch", 0.0254),
+        "feet" => ("foot", "foot", 0.3048),
+        _ => ("millimeter", "millimeter", 0.001),
+    }
+}
+
 /// Whether an object takes part in an export.
 pub fn exported(doc: &Document, o: &crate::Object, only_selected: bool) -> bool {
     doc.is_visible(o) && (!only_selected || doc.is_selected(o.id))
+}
+
+/// How fine the meshes written to mesh files are: turning angle and chord follow the size of the
+/// object (the chord is 1/20000 of its box diagonal), so a circle is round and a flat face is two
+/// triangles, not a grid.
+pub fn export_density(diagonal: f64) -> tri_geom::display_mesh::MeshDensity {
+    tri_geom::display_mesh::MeshDensity { max_angle: 4f64.to_radians(), chord: (diagonal * 5e-5).max(1e-6), max_per_span: 256 }
+}
+
+/// The triangle mesh of a surface, polysurface or mesh for a mesh file. A solid with a valid exact
+/// body is meshed by the kernel (no cracks between faces); anything else by the adaptive display
+/// tessellation at [`export_density`].
+pub fn export_mesh_of(g: &Geometry) -> Option<Mesh> {
+    match g {
+        Geometry::Mesh(m) => Some(m.clone()),
+        Geometry::Surface(s) => Some(s.display_mesh(&export_density(s.bounding_box().diagonal().max(1e-9)))),
+        Geometry::Brep(b) => {
+            #[cfg(feature = "kernel-solidcore")]
+            if b.closed {
+                if let Some(m) = tri_kernel::export_mesh(b) {
+                    return Some(m);
+                }
+            }
+            Some(b.display_mesh(&export_density(b.bounding_box().diagonal().max(1e-9))))
+        }
+        _ => None,
+    }
 }
 
 /// Triangle meshes of the exported objects (surfaces and polysurfaces are tessellated).
@@ -181,12 +232,7 @@ pub fn collect_meshes(doc: &Document, only_selected: bool) -> Vec<NamedMesh> {
         if !exported(doc, o, only_selected) {
             continue;
         }
-        let mesh = match &o.geometry {
-            Geometry::Mesh(m) => m.clone(),
-            Geometry::Surface(s) => s.tessellate(16, 16),
-            Geometry::Brep(b) => b.tessellate(16, 16),
-            _ => continue,
-        };
+        let Some(mesh) = export_mesh_of(&o.geometry) else { continue };
         if mesh.triangle_count() == 0 {
             continue;
         }

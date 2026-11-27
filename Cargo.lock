@@ -2692,7 +2692,7 @@ dependencies = [
 
 [[package]]
 name = "on3dm"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "cc",
  "cmake",
@@ -3823,6 +3823,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "solidcore-step"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-ops",
+ "solidcore-record",
+]
+
+[[package]]
 name = "solidcore-tess"
 version = "0.1.0"
 source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
@@ -4195,7 +4206,7 @@ dependencies = [
 
 [[package]]
 name = "tri-doc"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "cadcraft-color",
@@ -4213,11 +4224,12 @@ dependencies = [
  "solidcore-record",
  "thiserror 2.0.21",
  "tri-geom",
+ "tri-kernel",
 ]
 
 [[package]]
 name = "tri-geom"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "delaunator",
  "earcutr",
@@ -4230,19 +4242,20 @@ dependencies = [
 
 [[package]]
 name = "tri-kernel"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "glam",
  "serde_json",
  "solidcore-ops",
  "solidcore-record",
+ "solidcore-step",
  "solidcore-tess",
  "tri-geom",
 ]
 
 [[package]]
 name = "triceratops"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

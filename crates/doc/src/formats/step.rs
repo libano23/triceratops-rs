@@ -584,8 +584,11 @@ impl Reader {
         for (_, pts) in &loops3 {
             let mut uv: Vec<DVec2> = Vec::with_capacity(pts.len());
             let (mut u, mut v) = srf.closest_uv(pts[0]);
+            // a flat patch (degree 1 x 1): the projection of every point is global and exact; the
+            // local search from the previous point lost corners after a long straight edge
+            let flat = srf.degree_u == 1 && srf.degree_v == 1;
             for p in pts {
-                let r = srf.closest_uv_from(*p, u, v);
+                let r = if flat { srf.closest_uv(*p) } else { srf.closest_uv_from(*p, u, v) };
                 u = r.0;
                 v = r.1;
                 let q = DVec2::new(u, v);
@@ -607,13 +610,36 @@ impl Reader {
             l.iter().all(|p| (p.x - du.0).abs() < eps_u || (p.x - du.1).abs() < eps_u || (p.y - dv.0).abs() < eps_v || (p.y - dv.1).abs() < eps_v)
         };
         // a loop that jumps across the seam of a periodic surface cannot be represented: drop it
-        let jumps = |l: &Vec<DVec2>| l.windows(2).any(|w| (w[0].x - w[1].x).abs() > (du.1 - du.0) * 0.5 || (w[0].y - w[1].y).abs() > (dv.1 - dv.0) * 0.5);
+        // (only on a periodic surface, as before for cylinders, cones, spheres and tori: a long
+        // straight edge of a flat or freeform face crosses half the domain without any seam, and
+        // dropping its loop made the face whole again, larger than it is)
+        let seam_tol = diag * 1e-6;
+        let periodic_u = (srf.point_at(du.0, (dv.0 + dv.1) * 0.5) - srf.point_at(du.1, (dv.0 + dv.1) * 0.5)).length() < seam_tol;
+        let periodic_v = (srf.point_at((du.0 + du.1) * 0.5, dv.0) - srf.point_at((du.0 + du.1) * 0.5, dv.1)).length() < seam_tol;
+        let periodic = periodic_u || periodic_v;
+        let jumps = |l: &Vec<DVec2>| periodic && l.windows(2).any(|w| (w[0].x - w[1].x).abs() > (du.1 - du.0) * 0.5 || (w[0].y - w[1].y).abs() > (dv.1 - dv.0) * 0.5);
         loops_uv.retain(|l| !on_border(l) && !jumps(l));
+        // face loops are written without the closing repeat of the first point (the planar
+        // triangulation drops half a flat face when it is there)
+        for l in loops_uv.iter_mut() {
+            if l.len() > 3 && (l[0] - l[l.len() - 1]).length() < 1e-9 {
+                l.pop();
+            }
+        }
         // outer loop first
         if loops_uv.len() > 1 {
             let area = |l: &Vec<DVec2>| l.windows(2).map(|w| w[0].x * w[1].y - w[1].x * w[0].y).sum::<f64>().abs();
             let (imax, _) = loops_uv.iter().enumerate().max_by(|a, b| area(a.1).partial_cmp(&area(b.1)).unwrap()).unwrap();
             loops_uv.swap(0, imax);
+        }
+        // the outer loop runs counter-clockwise in (u, v) and holes clockwise, whatever order the
+        // file's edges were in (the triangulation of a flat face depends on it)
+        let signed_area = |l: &Vec<DVec2>| l.iter().enumerate().map(|(i, p)| { let q = l[(i + 1) % l.len()]; p.x * q.y - q.x * p.y }).sum::<f64>() * 0.5;
+        for (i, l) in loops_uv.iter_mut().enumerate() {
+            let a = signed_area(l);
+            if (i == 0 && a < 0.0) || (i > 0 && a > 0.0) {
+                l.reverse();
+            }
         }
         let mut f = Face { surface: srf, loops: loops_uv };
         let sense = a.get(3).is_none_or(|s| s.flag());
@@ -777,7 +803,21 @@ pub fn import(doc: &mut Document, path: &Path) -> Result<usize> {
         }
         let e = r.get(*id).unwrap();
         let name = e.args.first().and_then(|a| if let Arg::Str(s) = a { Some(s.clone()) } else { None }).filter(|s| !s.is_empty());
-        let geom = if faces.len() == 1 && !faces[0].is_trimmed() { Geometry::Surface(faces.remove(0).surface) } else { Geometry::Brep(Brep::new(faces)) };
+        // a solid the file declares (MANIFOLD_SOLID_BREP, ...) is closed whatever the faces' edge
+        // samples say: flat faces were coming in as an open polysurface
+        let declared_solid = e.has("MANIFOLD_SOLID_BREP") || e.has("BREP_WITH_VOIDS") || e.has("FACETED_BREP");
+        let geom = if faces.len() == 1 && !faces[0].is_trimmed() {
+            Geometry::Surface(faces.remove(0).surface)
+        } else {
+            let mut b = Brep::new(faces);
+            if declared_solid {
+                b.closed = true;
+                // faces whose same_sense flag or plane axis disagree with the others would give a
+                // wrong signed volume: make every normal point out
+                b.orient_outward();
+            }
+            Geometry::Brep(b)
+        };
         doc.add_with(geom, Attributes { layer, name, ..Default::default() });
         count += 1;
     }
@@ -852,6 +892,8 @@ fn collect_refs(a: &Arg, out: &mut Vec<usize>) {
 struct Writer {
     lines: Vec<String>,
     next: usize,
+    /// Millimetres in one unit of the document: the file is in millimetres.
+    scale: f64,
 }
 
 impl Writer {
@@ -862,6 +904,7 @@ impl Writer {
         id
     }
     fn point(&mut self, p: DVec3) -> usize {
+        let p = p * self.scale;
         self.add(format!("CARTESIAN_POINT('',({},{},{}))", fnum(p.x), fnum(p.y), fnum(p.z)))
     }
     fn direction(&mut self, d: DVec3) -> usize {
@@ -918,8 +961,19 @@ impl Writer {
         let lp = self.add(format!("EDGE_LOOP('',(#{oe}))"));
         Some(self.add(format!("{}('',#{lp},.T.)", if outer { "FACE_OUTER_BOUND" } else { "FACE_BOUND" })))
     }
+    /// The surface of a face: a PLANE when the patch is flat (importers then know it is a plane),
+    /// otherwise the B-spline surface.
+    fn face_surface(&mut self, s: &NurbsSurface) -> usize {
+        match flat_plane(s) {
+            Some(pl) => {
+                let a = self.placement(&pl);
+                self.add(format!("PLANE('',#{a})"))
+            }
+            None => self.surface(s),
+        }
+    }
     fn face(&mut self, f: &Face) -> usize {
-        let sid = self.surface(&f.surface);
+        let sid = self.face_surface(&f.surface);
         let tol = f.surface.bounding_box().diagonal().max(1e-6) * 5e-4;
         let mut bounds = Vec::new();
         if f.is_trimmed() {
@@ -930,11 +984,14 @@ impl Writer {
                 }
             }
         } else {
-            let mut pts = Vec::new();
-            for (k, c) in f.surface.boundary_curves().iter().enumerate() {
-                let mut p = c.tessellate_adaptive(tol);
-                // boundary_curves order: v=v0 (u→), u=u1 (v→), v=v1, u=u0: orient as a loop
-                if k == 2 || k == 3 {
+            // boundary_curves() is [u = u0, u = u1, v = v0, v = v1], each running along the other
+            // parameter upwards. The loop (u, v) = (u0, v0) -> (u1, v0) -> (u1, v1) -> (u0, v1) -> back
+            // is: v = v0 forwards, u = u1 forwards, v = v1 backwards, u = u0 backwards.
+            let curves = f.surface.boundary_curves();
+            let mut pts: Vec<DVec3> = Vec::new();
+            for (idx, reversed) in [(2usize, false), (1, false), (3, true), (0, true)] {
+                let mut p = curves[idx].tessellate_adaptive(tol);
+                if reversed {
                     p.reverse();
                 }
                 if pts.is_empty() { pts.extend(p) } else { pts.extend(p.into_iter().skip(1)) }
@@ -945,6 +1002,28 @@ impl Writer {
         }
         self.add(format!("ADVANCED_FACE('',({}),#{sid},.T.)", bounds.join(",")))
     }
+}
+
+/// The plane a patch lies in, with the surface's own normal (∂S/∂u × ∂S/∂v at its middle), or
+/// `None` when the control net is not flat.
+fn flat_plane(s: &NurbsSurface) -> Option<Plane> {
+    let size = s.bounding_box().diagonal().max(1e-9);
+    let tol = size * 1e-9;
+    let o = s.control_points[0];
+    // the control point farthest from the first, then the one farthest from their line, fix the plane
+    let b = s.control_points.iter().copied().max_by(|p, q| (*p - o).length().total_cmp(&(*q - o).length()))?;
+    let dir = (b - o).try_normalize()?;
+    let c = s.control_points.iter().copied().max_by(|p, q| (*p - o).cross(dir).length().total_cmp(&(*q - o).cross(dir).length()))?;
+    let n = dir.cross(c - o).try_normalize()?;
+    if s.control_points.iter().any(|p| (*p - o).dot(n).abs() > tol.max(size * 1e-9)) {
+        return None;
+    }
+    let (u0, u1) = s.domain_u();
+    let (v0, v1) = s.domain_v();
+    let (um, vm) = ((u0 + u1) * 0.5, (v0 + v1) * 0.5);
+    let natural = s.normal_at(um, vm);
+    let n = if natural.dot(n) < 0.0 { -n } else { n };
+    Some(Plane::from_normal(s.point_at(um, vm), n))
 }
 
 fn fnum(v: f64) -> String {
@@ -967,8 +1046,39 @@ fn knot_mults(knots: &[f64]) -> (Vec<String>, Vec<String>) {
     (mults.iter().map(|m| m.to_string()).collect(), vals.iter().map(|v| fnum(*v)).collect())
 }
 
+/// With exact solids (feature `kernel-solidcore`): when everything to export is a solid that still
+/// carries its exact body, the kernel writes the file itself (analytic surfaces, real edges). Any
+/// other mix goes through the writer below.
+#[cfg(feature = "kernel-solidcore")]
+fn export_exact(doc: &Document, path: &Path, only_selected: bool) -> Option<Result<usize>> {
+    let mut named: Vec<(String, &tri_geom::Brep)> = Vec::new();
+    for o in doc.objects() {
+        if !exported(doc, o, only_selected) {
+            continue;
+        }
+        match &o.geometry {
+            Geometry::Brep(b) if b.closed && b.exact_valid().is_some() => named.push((o.attributes.name.clone().unwrap_or_default(), b)),
+            Geometry::Instance { .. } => continue,
+            _ => return None,
+        }
+    }
+    if named.is_empty() {
+        return None;
+    }
+    let file = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let text = match tri_kernel::step_text(&named, super::mm_per_unit(&doc.settings.units), &file, concat!("Triceratops ", env!("CARGO_PKG_VERSION")))? {
+        Ok(t) => t,
+        Err(_) => return None, // the faces are still written as they are
+    };
+    Some(write_text(path, &text).map(|_| named.len()))
+}
+
 pub fn export(doc: &Document, path: &Path, only_selected: bool) -> Result<usize> {
-    let mut w = Writer { lines: Vec::new(), next: 1 };
+    #[cfg(feature = "kernel-solidcore")]
+    if let Some(done) = export_exact(doc, path, only_selected) {
+        return done;
+    }
+    let mut w = Writer { lines: Vec::new(), next: 1, scale: super::mm_per_unit(&doc.settings.units) };
     let mut items: Vec<String> = Vec::new();
     let mut count = 0;
     let mut names: HashMap<usize, String> = HashMap::new();

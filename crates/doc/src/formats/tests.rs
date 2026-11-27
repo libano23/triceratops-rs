@@ -293,3 +293,313 @@ fn svg_smooth_curves_reflect_matching_control_point() {
     let e = DVec3::new(20.0, 0.0, 0.0) * 0.125 + DVec3::new(25.0, -10.0, 0.0) * 0.375 + DVec3::new(35.0, 10.0, 0.0) * 0.375 + DVec3::new(40.0, 0.0, 0.0) * 0.125;
     assert!((m - e).length() < 1e-9, "S after C midpoint {m:?}");
 }
+
+
+#[cfg(feature = "kernel-solidcore")]
+mod exact_step {
+    use super::*;
+    use tri_kernel::{BooleanOp, Solid};
+
+    fn sphere_minus_cylinder() -> Brep {
+        let s = Solid::sphere(DVec3::ZERO, 20.0).unwrap();
+        let c = Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap();
+        s.boolean(&c, BooleanOp::Difference).unwrap().to_brep(1e-3).unwrap()
+    }
+
+    fn count(text: &str, what: &str) -> usize {
+        text.matches(what).count()
+    }
+
+    #[test]
+    fn an_exact_solid_is_exported_with_its_analytic_surfaces_and_few_edges() {
+        let mut d = Document::new();
+        d.add(Geometry::Brep(sphere_minus_cylinder()));
+        let p = tmp("exact.step");
+        assert_eq!(export(&d, &p, false).unwrap(), 1);
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains("SPHERICAL_SURFACE"), "the sphere is a sphere, not a B-spline patch");
+        assert!(text.contains("CYLINDRICAL_SURFACE"), "the bore is a cylinder");
+        assert_eq!(count(&text, "B_SPLINE_SURFACE"), 0, "no freeform surface for an analytic solid");
+        assert!(count(&text, "EDGE_CURVE(") <= 12, "edges are real edges shared by two faces, not one polyline per face: {}", count(&text, "EDGE_CURVE("));
+        // the sphere-cylinder intersection is a freeform curve: its poles are the only points
+        assert!(count(&text, "CARTESIAN_POINT") < 1500, "no tessellation points: {}", count(&text, "CARTESIAN_POINT"));
+    }
+
+    /// Written by the kernel and read back by a different CAD kernel (solidcraft's, 2026-11-27):
+    /// 2 faces and 26183.2139 mm3, the volume of this solid. Here: the file is a valid exchange
+    /// structure with one solid and the units of the document.
+    #[test]
+    fn the_exact_step_is_a_valid_file_with_one_solid_in_millimetres() {
+        let mut d = Document::new();
+        d.add(Geometry::Brep(sphere_minus_cylinder()));
+        let p = tmp("exact_valid.step");
+        export(&d, &p, false).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.starts_with("ISO-10303-21;") && text.trim_end().ends_with("END-ISO-10303-21;"));
+        assert_eq!(count(&text, "MANIFOLD_SOLID_BREP"), 1);
+        assert_eq!(count(&text, "CLOSED_SHELL"), 1);
+        assert!(text.contains(".MILLI.") && text.contains(".METRE."), "millimetres");
+        assert!(text.contains("Triceratops"), "the program is named in the header");
+    }
+
+    #[test]
+    fn a_moved_exact_solid_is_exported_where_it_is() {
+        let mut b = sphere_minus_cylinder();
+        b.transform(&glam::DAffine3::from_translation(DVec3::new(1000.0, 0.0, 0.0)));
+        let mut d = Document::new();
+        d.add(Geometry::Brep(b));
+        let p = tmp("exact_moved.step");
+        export(&d, &p, false).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        // the sphere's centre is a CARTESIAN_POINT at x = 1000
+        assert!(text.contains("(1000.0,0.0,0.0)"), "the placement is applied to what is written");
+    }
+
+    #[test]
+    fn a_stale_exact_body_exports_the_faces_as_before() {
+        let mut b = sphere_minus_cylinder();
+        b.faces[0].surface.control_points[0].x += 0.01;
+        let mut d = Document::new();
+        d.add(Geometry::Brep(b));
+        let p = tmp("stale.step");
+        export(&d, &p, false).unwrap();
+        assert!(std::fs::read_to_string(&p).unwrap().contains("B_SPLINE_SURFACE"), "the edited faces are written as they are");
+    }
+
+    #[test]
+    fn a_mixed_model_keeps_working() {
+        let mut d = Document::new();
+        d.add(Geometry::Brep(sphere_minus_cylinder()));
+        d.add(Geometry::Curve(NurbsCurve::circle(&Plane::world_xy(), 7.0).unwrap()));
+        let p = tmp("mixed.step");
+        assert_eq!(export(&d, &p, false).unwrap(), 2);
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains("SPHERICAL_SURFACE") && text.contains("CIRCLE") || text.contains("B_SPLINE_CURVE"), "solid and curve are both in the file");
+    }
+}
+
+
+// ---- mesh export quality (STL, OBJ, 3MF, ... all use collect_meshes) ----
+
+fn max_sag_on_sphere(mesh: &tri_geom::Mesh, center: DVec3, r: f64) -> f64 {
+    let mut worst: f64 = 0.0;
+    for t in 0..mesh.triangle_count() {
+        let (a, b, c) = mesh.triangle(t);
+        for (p, q) in [(a, b), (b, c), (c, a)] {
+            worst = worst.max(((p + q) * 0.5 - center).length() - r).max(r - ((p + q) * 0.5 - center).length());
+        }
+    }
+    worst
+}
+
+#[test]
+fn a_curved_solid_is_exported_within_a_chord_tolerance_of_its_size() {
+    let mut d = Document::new();
+    d.add(Geometry::Surface(NurbsSurface::sphere(DVec3::ZERO, 20.0).unwrap()));
+    let meshes = collect_meshes(&d, false);
+    let sag = max_sag_on_sphere(&meshes[0].mesh, DVec3::ZERO, 20.0);
+    // 5e-4 of the diameter at the worst; the fixed 16 x 16 grid was off by about 0.1 mm here
+    assert!(sag <= 40.0 * 5e-4, "a triangle edge strays {sag} mm from the sphere");
+}
+
+#[test]
+fn a_flat_solid_is_not_filled_with_grid_triangles() {
+    let mut d = Document::new();
+    d.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 10.0, 6.0, 4.0).unwrap()));
+    let meshes = collect_meshes(&d, false);
+    assert!(meshes[0].mesh.triangle_count() <= 24, "a box needs 12 triangles, not {}", meshes[0].mesh.triangle_count());
+}
+
+#[test]
+fn obj_and_stl_use_the_same_fineness() {
+    let mut d = Document::new();
+    d.add(Geometry::Surface(NurbsSurface::sphere(DVec3::ZERO, 20.0).unwrap()));
+    let want = collect_meshes(&d, false)[0].mesh.triangle_count();
+    let p = tmp("fine.obj");
+    crate::io::export_obj(&d, &p, false).unwrap();
+    let faces = std::fs::read_to_string(&p).unwrap().lines().filter(|l| l.starts_with("f ")).count();
+    assert_eq!(faces, want, "OBJ used its own coarser tessellation");
+}
+
+#[cfg(feature = "kernel-solidcore")]
+#[test]
+fn an_exact_solid_is_exported_as_a_watertight_mesh() {
+    use tri_kernel::{BooleanOp, Solid};
+    let s = Solid::sphere(DVec3::ZERO, 20.0).unwrap();
+    let c = Solid::cylinder(DVec3::new(5.0, -30.0, 3.0), DVec3::Y, 8.0, 60.0).unwrap();
+    let b = s.boolean(&c, BooleanOp::Difference).unwrap().to_brep(1e-3).unwrap();
+    let mut d = Document::new();
+    d.add(Geometry::Brep(b));
+    let m = &collect_meshes(&d, false)[0].mesh;
+    // every undirected edge, by the positions of its ends, is used by exactly two triangles
+    let key = |p: DVec3| ((p.x * 1e6).round() as i64, (p.y * 1e6).round() as i64, (p.z * 1e6).round() as i64);
+    let mut edges: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
+    for t in 0..m.triangle_count() {
+        let (a, b, c) = m.triangle(t);
+        for (p, q) in [(a, b), (b, c), (c, a)] {
+            let (k1, k2) = (key(p), key(q));
+            *edges.entry(if k1 < k2 { (k1, k2) } else { (k2, k1) }).or_default() += 1;
+        }
+    }
+    let bad = edges.values().filter(|n| **n != 2).count();
+    assert_eq!(bad, 0, "{bad} of {} edges are open or non-manifold", edges.len());
+}
+
+
+#[test]
+fn vda_keeps_the_trim_boundaries_of_a_trimmed_face_as_curves() {
+    let mut d = Document::new();
+    // a cap trimmed by a circle: a surface plus one boundary loop
+    let circle = NurbsCurve::circle(&Plane::world_xy(), 4.0).unwrap();
+    let cap = tri_geom::Face::from_planar_curves(std::slice::from_ref(&circle), 1e-3).unwrap();
+    assert!(cap.is_trimmed());
+    d.add(Geometry::Brep(Brep::new(vec![cap])));
+    let p = tmp("trimmed.vda");
+    export_vda_for_test(&d, &p);
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert!(text.contains("SURF"), "the face's surface");
+    assert!(text.matches("CURVE").count() >= 1, "the trim loop must be written, or the face is a whole patch again:\n{text}");
+}
+
+fn export_vda_for_test(d: &Document, p: &std::path::Path) {
+    vda::export(d, p, false).unwrap();
+}
+
+#[test]
+fn flat_faces_of_a_legacy_solid_are_written_as_planes_in_step() {
+    let mut d = Document::new();
+    d.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 10.0, 6.0, 4.0).unwrap()));
+    let p = tmp("planes.step");
+    step::export(&d, &p, false).unwrap();
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert_eq!(text.matches("PLANE('',").count(), 6, "six PLANE faces");
+    assert_eq!(text.matches("B_SPLINE_SURFACE").count(), 0, "no freeform patch for a flat face");
+    // and Triceratops reads its own file back as the same box
+    let mut back = Document::new();
+    let n = import(&mut back, &p).unwrap();
+    assert_eq!(n, 1);
+    let g = back.objects().next().expect("the box").geometry.clone();
+    let v = Document::volume_of(&g).unwrap().0;
+    assert!((v - 240.0).abs() < 1.0, "volume {v}");
+}
+
+
+
+
+#[test]
+fn dxf_carries_the_faces_of_a_solid_and_not_only_its_edges() {
+    let mut d = Document::new();
+    d.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 10.0, 6.0, 4.0).unwrap()));
+    let p = tmp("solid.dxf");
+    crate::dxf::export(&d, &p, false).unwrap();
+    let text = String::from_utf8_lossy(&std::fs::read(&p).unwrap()).to_string();
+    let faces = text.matches("3DFACE").count();
+    assert_eq!(faces, 12, "a box is 12 triangles, written as 3D faces");
+    assert!(text.contains("LINE") || text.contains("POLYLINE") || text.contains("SPLINE"), "the edges are still there");
+}
+
+// ---- units: STEP and VDA are in millimetres, IGES declares its unit ----
+
+fn inch_cube_doc() -> Document {
+    let mut d = Document::new();
+    d.settings.units = "Inches".into();
+    d.add(Geometry::Brep(Brep::cuboid(&Plane::world_xy(), 1.0, 1.0, 1.0).unwrap()));
+    d
+}
+
+fn max_coordinate(text: &str) -> f64 {
+    text.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == 'E')).filter_map(|t| t.parse::<f64>().ok()).fold(0.0, f64::max)
+}
+
+#[test]
+fn step_is_written_in_millimetres_whatever_the_document_unit() {
+    let p = tmp("inch.step");
+    step::export(&inch_cube_doc(), &p, false).unwrap();
+    let text = std::fs::read_to_string(&p).unwrap();
+    // the coordinates inside CARTESIAN_POINT('',(x,y,z)), not the entity numbers
+    let cps: String = text.lines().filter_map(|l| l.split("CARTESIAN_POINT('',(").nth(1)).map(|r| r.split("))").next().unwrap_or("").replace(',', " ")).collect::<Vec<_>>().join(" ");
+    assert!((max_coordinate(&cps) - 25.4).abs() < 1e-9, "a 1 inch cube is 25.4 mm in the file: {}", max_coordinate(&cps));
+}
+
+#[test]
+fn iges_declares_the_unit_of_the_document() {
+    let p = tmp("inch.igs");
+    iges::export(&inch_cube_doc(), &p, false).unwrap();
+    let g = std::fs::read_to_string(&p).unwrap().lines().filter(|l| l.contains("G ")).collect::<Vec<_>>().join("");
+    assert!(g.contains(",1,2HIN,"), "inches: unit flag 1, name IN: {g}");
+    let mut mm = inch_cube_doc();
+    mm.settings.units = "Millimeters".into();
+    iges::export(&mm, &p, false).unwrap();
+    assert!(std::fs::read_to_string(&p).unwrap().contains(",2,2HMM,"));
+}
+
+#[test]
+fn vda_is_scaled_to_millimetres() {
+    let p = tmp("inch.vda");
+    vda::export(&inch_cube_doc(), &p, false).unwrap();
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert!(max_coordinate(&text) > 20.0, "a 1 inch cube spans 25.4 mm in the file: {}", max_coordinate(&text));
+}
+
+#[cfg(feature = "kernel-solidcore")]
+#[test]
+fn an_exact_solid_is_exported_in_millimetres_too() {
+    let mut d = Document::new();
+    d.settings.units = "Inches".into();
+    d.add(Geometry::Brep(tri_kernel::Solid::sphere(DVec3::new(1.0, 0.0, 0.0), 1.0).unwrap().to_brep(1e-3).unwrap()));
+    let p = tmp("inch_exact.step");
+    step::export(&d, &p, false).unwrap();
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert!(text.contains("SPHERICAL_SURFACE('',#") && text.contains(",25.4)"), "the sphere's radius is 25.4 mm");
+    assert!(text.contains("(25.4,0.0,0.0)"), "its centre is at 25.4 mm");
+}
+
+/// The text of a file that may be a zip of XML parts (3MF, AMF): all parts joined.
+fn text_of(p: &std::path::Path) -> String {
+    let bytes = std::fs::read(p).unwrap();
+    match zip_read(&bytes) {
+        Ok(entries) if !entries.is_empty() => entries.iter().map(|(_, b)| String::from_utf8_lossy(b).to_string()).collect::<Vec<_>>().join("\n"),
+        _ => String::from_utf8_lossy(&bytes).to_string(),
+    }
+}
+
+#[test]
+fn mesh_formats_declare_the_documents_unit() {
+    let d = inch_cube_doc();
+    let p = tmp("inch.3mf");
+    mesh_formats::export_3mf(&d, &p, false).unwrap();
+    assert!(text_of(&p).contains("unit=\"inch\""), "3MF in inches");
+    let p = tmp("inch.amf");
+    mesh_formats::export_amf(&d, &p, false).unwrap();
+    assert!(text_of(&p).contains("unit=\"inch\""), "AMF in inches");
+    let p = tmp("inch.dae");
+    mesh_formats::export_dae(&d, &p, false).unwrap();
+    assert!(text_of(&p).contains("<unit name=\"inch\" meter=\"0.0254\"/>"), "COLLADA in inches");
+}
+
+#[test]
+fn gltf_is_written_in_metres() {
+    let p = tmp("inch.gltf");
+    mesh_formats::export_gltf(&inch_cube_doc(), &p, false).unwrap();
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert!(text.contains("0.0254"), "a 1 inch cube spans 0.0254 m in a glTF file: {}", &text[..text.len().min(300)]);
+}
+
+#[test]
+fn gltf_round_trips_in_the_units_of_the_document_and_reads_metres_from_other_programs() {
+    // Triceratops writes metres and reads them back into its own unit
+    let mut d = Document::new();
+    d.add(Geometry::Mesh(tri_geom::Mesh::cuboid(DVec3::ZERO, DVec3::new(100.0, 60.0, 40.0))));
+    let p = tmp("rt.gltf");
+    mesh_formats::export_gltf(&d, &p, false).unwrap();
+    let mut back = Document::new();
+    mesh_formats::import_gltf(&mut back, &p).unwrap();
+    let bb = back.objects().next().unwrap().geometry.bounding_box();
+    assert!((bb.max - DVec3::new(100.0, 60.0, 40.0)).length() < 1e-3, "back in millimetres: {:?}", bb.max);
+    // the same file opened in a document in metres is a 0.1 m part
+    let mut metres = Document::new();
+    metres.settings.units = "Meters".into();
+    mesh_formats::import_gltf(&mut metres, &p).unwrap();
+    let bb = metres.objects().next().unwrap().geometry.bounding_box();
+    assert!((bb.max - DVec3::new(0.1, 0.06, 0.04)).length() < 1e-6, "{:?}", bb.max);
+}

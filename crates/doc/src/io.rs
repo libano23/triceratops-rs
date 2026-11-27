@@ -103,12 +103,10 @@ pub fn export_obj(doc: &Document, path: &Path, only_selected: bool) -> Result<us
                 }
             }
             Geometry::Surface(_) | Geometry::Brep(_) | Geometry::Mesh(_) => {
-                let mesh = match &o.geometry {
-                    Geometry::Surface(s) => s.tessellate(8, 8),
-                    Geometry::Brep(b) => b.tessellate(8, 8),
-                    Geometry::Mesh(m) => m.clone(),
-                    _ => unreachable!(),
-                };
+                let Some(mut mesh) = crate::formats::export_mesh_of(&o.geometry) else { continue };
+                if mesh.normals.len() != mesh.vertices.len() {
+                    mesh.compute_normals();
+                }
                 write_mesh(&mut out, &name, &mesh, &mut v_base)?;
             }
         }

@@ -4,11 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Exact solids (docs/superpowers/specs/2026-11-27-solidcore-kernel-design.md): STEP export from the kernel body.
+kernel-solidcore = ["dep:tri-kernel", "tri-kernel/solidcore"]
+
 [dependencies]
 flate2 = "1"
 roxmltree = "0.21"
 crc32fast = "1"
 tri-geom = { path = "../geom" }
+tri-kernel = { path = "../kernel", optional = true }
 on3dm = { path = "../on3dm" }
 glam.workspace = true
 serde.workspace = true
