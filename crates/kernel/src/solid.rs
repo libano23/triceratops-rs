@@ -45,6 +45,15 @@ pub(crate) fn refused(msg: &str) -> KernelError {
     KernelError::Refused(msg.to_string())
 }
 
+/// Which Boolean.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BooleanOp {
+    Union,
+    /// The first less the second.
+    Difference,
+    Intersection,
+}
+
 /// A solid held by the kernel.
 pub struct Solid {
     pub(crate) body: Body,
@@ -90,6 +99,21 @@ impl Solid {
         let s = Solid::new(body);
         s.body.transform(&convert::matrix(&xf))?;
         Ok(s)
+    }
+
+    /// `self` op `other` as a new solid; neither operand is changed. An empty result is an error
+    /// (`"the result is empty"`).
+    pub fn boolean(&self, other: &Solid, op: BooleanOp) -> Result<Solid, KernelError> {
+        let op = match op {
+            BooleanOp::Union => solidcore_ops::boolean::BooleanOp::Union,
+            BooleanOp::Difference => solidcore_ops::boolean::BooleanOp::Subtract,
+            BooleanOp::Intersection => solidcore_ops::boolean::BooleanOp::Intersect,
+        };
+        let (a, b) = (self.body.copy()?, other.body.copy()?);
+        match solidcore_ops::boolean::boolean(a, b, op)? {
+            Some(body) => Ok(Solid::new(body)),
+            None => Err(refused("the result is empty")),
+        }
     }
 
     /// Enclosed volume.

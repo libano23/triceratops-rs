@@ -9,4 +9,4 @@ mod convert;
 mod solid;
 
 #[cfg(feature = "solidcore")]
-pub use solid::{KernelError, Solid};
+pub use solid::{BooleanOp, KernelError, Solid};
