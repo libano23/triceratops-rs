@@ -3783,6 +3783,72 @@ dependencies = [
 ]
 
 [[package]]
+name = "solidcore"
+version = "1.0.1"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "serde",
+ "spade",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "solidcore-convert"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "solidcore",
+ "solidcore-record",
+]
+
+[[package]]
+name = "solidcore-ops"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "serde",
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-record",
+]
+
+[[package]]
+name = "solidcore-record"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "solidcore-tess"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=85298b6c435a64def982c944ccee213d94feeb97#85298b6c435a64def982c944ccee213d94feeb97"
+dependencies = [
+ "rayon",
+ "serde",
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-record",
+ "spade",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "spade"
+version = "2.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9699399fd9349b00b184f5635b074f9ec93afffef30c853f8c875b32c0f8c7fa"
+dependencies = [
+ "hashbrown 0.16.1",
+ "num-traits",
+ "robust",
+ "smallvec",
+]
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4157,6 +4223,17 @@ dependencies = [
  "glam",
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "tri-kernel"
+version = "0.4.0"
+dependencies = [
+ "glam",
+ "solidcore-ops",
+ "solidcore-record",
+ "solidcore-tess",
+ "tri-geom",
 ]
 
 [[package]]
