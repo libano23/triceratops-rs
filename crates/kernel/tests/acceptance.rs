@@ -178,3 +178,130 @@ fn huge_part_scale() {
     let s = a.boolean(&ball, BooleanOp::Difference).unwrap();
     assert_vol(&s, 8.0e12 - 4.0 / 3.0 * PI * 1.25e11, 1e-3);
 }
+
+// ---- Planar curve extrusion and free-form identities ----
+
+use tri_geom::{NurbsCurve, Plane};
+
+fn rectangle(w: f64, h: f64) -> NurbsCurve {
+    NurbsCurve::polyline(vec![
+        DVec3::new(0.0, 0.0, 0.0),
+        DVec3::new(w, 0.0, 0.0),
+        DVec3::new(w, h, 0.0),
+        DVec3::new(0.0, h, 0.0),
+        DVec3::new(0.0, 0.0, 0.0),
+    ])
+    .unwrap()
+}
+
+/// A closed smooth blob in the plane z = `z`: `r (1 + k cos(3a + ph))`, 8 control points.
+fn blob(cx: f64, cy: f64, z: f64, r: f64, k: f64, ph: f64) -> NurbsCurve {
+    let pts: Vec<DVec3> = (0..8)
+        .map(|i| {
+            let a = 2.0 * PI * i as f64 / 8.0;
+            let rr = r * (1.0 + k * (3.0 * a + ph).cos());
+            DVec3::new(cx + rr * a.cos(), cy + rr * a.sin(), z)
+        })
+        .collect();
+    NurbsCurve::periodic(3, pts).unwrap()
+}
+
+fn plane_at(z: f64) -> Plane {
+    Plane { origin: DVec3::new(0.0, 0.0, z), x_axis: DVec3::X, y_axis: DVec3::Y, z_axis: DVec3::Z }
+}
+
+#[test]
+fn extrude_rectangle_volume() {
+    let s = Solid::extrude_closed_curve(&rectangle(10.0, 6.0), &Plane::world_xy(), 2.0).unwrap();
+    assert_vol(&s, 10.0 * 6.0 * 4.0, 1e-3);
+}
+
+#[test]
+fn extrude_circle_is_an_analytic_cylinder() {
+    let c = NurbsCurve::circle(&Plane::world_xy(), 5.0).unwrap();
+    let s = Solid::extrude_closed_curve(&c, &Plane::world_xy(), 3.0).unwrap();
+    assert_vol(&s, PI * 25.0 * 6.0, 1e-3);
+    let rec = s.record().unwrap();
+    let kinds: Vec<String> = rec.faces.iter().map(|f| format!("{:?}", f.surface).split(' ').next().unwrap().to_string()).collect();
+    println!("circle prism faces: {kinds:?}");
+    assert_eq!(kinds.iter().filter(|k| k.as_str() == "Cylinder").count(), 1, "one analytic wall: {kinds:?}");
+}
+
+#[test]
+fn extrude_clockwise_curve_gives_the_same_solid() {
+    let mut r = rectangle(10.0, 6.0);
+    r.reverse();
+    assert_vol(&Solid::extrude_closed_curve(&r, &Plane::world_xy(), 2.0).unwrap(), 240.0, 1e-3);
+}
+
+#[test]
+fn extrude_curve_off_the_plane_is_refused() {
+    let c = NurbsCurve::polyline(vec![
+        DVec3::new(0.0, 0.0, 0.0),
+        DVec3::new(4.0, 0.0, 0.0),
+        DVec3::new(4.0, 4.0, 1.0),
+        DVec3::new(0.0, 4.0, 0.0),
+        DVec3::new(0.0, 0.0, 0.0),
+    ])
+    .unwrap();
+    let e = Solid::extrude_closed_curve(&c, &Plane::world_xy(), 1.0).err().expect("non-planar curve is refused");
+    assert!(e.to_string().contains("planar"), "{e}");
+}
+
+#[test]
+fn extrude_open_curve_is_refused() {
+    let c = NurbsCurve::line(DVec3::ZERO, DVec3::X).unwrap();
+    assert!(Solid::extrude_closed_curve(&c, &Plane::world_xy(), 1.0).is_err());
+}
+
+fn free_form() -> Solid {
+    Solid::extrude_closed_curve(&blob(0.0, 0.0, 15.0, 12.0, 0.2, 0.0), &plane_at(15.0), 15.0).unwrap()
+}
+
+fn check_identities(tool: Solid) {
+    let l = free_form();
+    let (vl, vt) = (l.volume().unwrap(), tool.volume().unwrap());
+    let vi = l.boolean(&tool, BooleanOp::Intersection).unwrap().volume().unwrap();
+    let vd = l.boolean(&tool, BooleanOp::Difference).unwrap().volume().unwrap();
+    let vu = l.boolean(&tool, BooleanOp::Union).unwrap().volume().unwrap();
+    assert!((vd + vi - vl).abs() < 1e-6, "(L-T)+(L^T)-L = {}", vd + vi - vl);
+    assert!((vu - (vl + vt - vi)).abs() < 1e-6, "L+T-(L^T)-(LuT) = {}", vl + vt - vi - vu);
+    assert!(vi > 0.0 && vd > 0.0, "the tool must overlap and not swallow L: {vi} {vd}");
+}
+
+#[test]
+fn free_form_identities_with_an_oblique_cylinder() {
+    check_identities(Solid::cylinder(DVec3::new(-20.0, -6.0, 8.0), DVec3::new(1.0, 0.25, 0.15), 4.0, 60.0).unwrap());
+}
+
+#[test]
+fn free_form_identities_with_a_straddling_sphere() {
+    check_identities(Solid::sphere(DVec3::new(10.0, 3.0, 15.0), 9.0).unwrap());
+}
+
+#[test]
+fn free_form_identities_with_a_second_free_form() {
+    let t = Solid::extrude_closed_curve(&blob(7.0, 4.0, 18.0, 10.0, 0.25, 1.0), &plane_at(18.0), 12.0).unwrap();
+    check_identities(t);
+}
+
+#[test]
+fn extrude_ellipse_volume() {
+    let e = NurbsCurve::ellipse(&Plane::world_xy(), 6.0, 3.0).unwrap();
+    assert_vol(&Solid::extrude_closed_curve(&e, &Plane::world_xy(), 2.0).unwrap(), PI * 6.0 * 3.0 * 4.0, 1e-3);
+}
+
+#[test]
+fn extrude_clamped_interpolated_spline() {
+    // a closed curve through 7 points (first = last): a clamped cubic, unlike the periodic blob
+    let pts: Vec<DVec3> = (0..=6)
+        .map(|i| {
+            let a = 2.0 * PI * (i % 6) as f64 / 6.0;
+            DVec3::new(10.0 * a.cos(), 10.0 * a.sin(), 0.0)
+        })
+        .collect();
+    let c = NurbsCurve::interpolate(&pts, 3).unwrap();
+    let v = Solid::extrude_closed_curve(&c, &Plane::world_xy(), 1.0).unwrap().volume().unwrap();
+    // a circle of radius 10 through those points: area close to pi r^2 (spline bulge < 1 %)
+    assert!((v / 2.0 - PI * 100.0).abs() / (PI * 100.0) < 0.01, "area {}", v / 2.0);
+}

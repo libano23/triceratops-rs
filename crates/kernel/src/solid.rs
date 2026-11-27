@@ -101,6 +101,21 @@ impl Solid {
         Ok(s)
     }
 
+    /// The prism of a closed planar curve, `half` on each side of `plane` (the contract of
+    /// `prism_brep`). The curve must be closed and lie in the plane.
+    pub fn extrude_closed_curve(curve: &tri_geom::NurbsCurve, plane: &tri_geom::Plane, half: f64) -> Result<Solid, KernelError> {
+        if !(half > 0.0 && half.is_finite()) {
+            return Err(refused("the extrusion needs a positive length"));
+        }
+        let region = convert::region2(curve, plane)?;
+        if let Some((center, radius)) = convert::full_circle(curve) {
+            // a circle profile is an analytic cylinder, like the Cylinder command's
+            return Self::cylinder(center - plane.z_axis * half, plane.z_axis, radius, 2.0 * half);
+        }
+        let body = solidcore_ops::prism::extrude_planar_regions(&convert::record_plane(plane), &[region], -half, half)?;
+        Ok(Solid::new(body))
+    }
+
     /// `self` op `other` as a new solid; neither operand is changed. An empty result is an error
     /// (`"the result is empty"`).
     pub fn boolean(&self, other: &Solid, op: BooleanOp) -> Result<Solid, KernelError> {
