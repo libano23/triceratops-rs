@@ -259,6 +259,27 @@ mod tests {
     }
 
     #[test]
+    fn volume_of_prefers_the_exact_volume_and_ignores_a_stale_one() {
+        let rec = std::sync::Arc::new(solidcore_record::brep::Brep {
+            version: 4,
+            tolerance: 1e-6,
+            regions: Vec::new(),
+            shells: Vec::new(),
+            faces: Vec::new(),
+            edges: Vec::new(),
+            vertices: Vec::new(),
+        });
+        let mut b = tri_geom::Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_with_volume(rec, Some(24.5));
+        let (v, c) = Document::volume_of(&Geometry::Brep(b.clone())).unwrap();
+        assert!((v - 24.5).abs() < 1e-12, "{v}");
+        assert!((c - DVec3::new(1.0, 1.5, 2.0)).length() < 1e-6, "the centroid still comes from the mesh: {c:?}");
+        b.faces[0].surface.control_points[0].x += 0.1; // stale now: the mesh volume is used again
+        let (v2, _) = Document::volume_of(&Geometry::Brep(b)).unwrap();
+        assert!((v2 - 24.5).abs() > 0.01 && (v2 - 24.0).abs() < 0.5, "{v2}");
+    }
+
+    #[test]
     fn exact_body_survives_save_and_load_and_old_files_still_open() {
         let mut brep = tri_geom::Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
         brep.attach_exact(std::sync::Arc::new(solidcore_record::brep::Brep {

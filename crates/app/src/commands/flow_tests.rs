@@ -2291,6 +2291,42 @@ mod exact_primitives {
     }
 
     #[test]
+    fn a_cylinder_drawn_downwards_is_still_exact() {
+        let mut h = Harness::new();
+        h.start("Cylinder");
+        h.point(0.0, 0.0, 0.0);
+        h.number(4.0);
+        h.number(-20.0); // below the base plane
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 16.0 * 20.0).abs() < 1e-2);
+        let c = b.bounding_box().center();
+        assert!((c - DVec3::new(0.0, 0.0, -10.0)).length() < 1e-6, "{c:?}");
+    }
+
+    #[test]
+    fn a_cone_drawn_downwards_is_still_exact() {
+        let mut h = Harness::new();
+        h.start("Cone");
+        h.point(0.0, 0.0, 0.0);
+        h.number(6.0);
+        h.number(-15.0);
+        let b = only_brep(&h);
+        assert!((volume(&b) - PI * 36.0 * 15.0 / 3.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn the_volume_readout_of_an_exact_solid_comes_from_the_kernel() {
+        let mut h = Harness::new();
+        h.start("Sphere");
+        h.point(0.0, 0.0, 0.0);
+        h.number(20.0);
+        let g = h.doc.objects().next().unwrap().geometry.clone();
+        let (v, _) = Document::volume_of(&g).unwrap();
+        let exact = 4.0 / 3.0 * PI * 8000.0;
+        assert!((v - exact).abs() < exact * 1e-9, "a display mesh would be about 0.2 % off: {v} vs {exact}");
+    }
+
+    #[test]
     fn a_non_uniform_scale_drops_the_exact_body() {
         let mut h = Harness::new();
         let id = exact_box(&mut h);

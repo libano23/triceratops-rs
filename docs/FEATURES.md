@@ -397,10 +397,12 @@ stay what the legacy construction makes, so every other command behaves as befor
 * A kernel refusal (for instance two free-form faces within 0.001 mm of each other) is shown with
   the kernel's message and **never** falls back to the mesh Boolean: both objects stay as they
   were. Esc cancels a running kernel Boolean.
-* The exact body is saved in the document and survives undo and redo.
+* The exact body is saved in the document and survives undo and redo. The volume of such a solid
+  (Volume command, MCP `object_info`) is the kernel's, kept through moves and uniform scales;
+  area is still measured on the display mesh.
 * With the feature on, `Sphere` and `Torus` make a solid polysurface (one face) instead of a
   closed surface.
 * Measured on the pinned kernel revision: 12 analytic, tangent and coincident cases and 3
-  free-form identity cases within 1e-5 % (see `crates/kernel/tests/acceptance.rs`).
+  free-form identity cases within 1e-5 % (and a near-coincident free-form pair that is refused) (see `crates/kernel/tests/acceptance.rs`).
 * Cost: compiling solidcore adds about 4.5 minutes of wall time (≈30 CPU minutes) to a clean
   release build on 16 cores.

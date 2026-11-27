@@ -27,7 +27,7 @@ impl Solid {
         if !b.closed {
             return Err(refused("the kernel body is not a closed solid"));
         }
-        b.attach_exact(Arc::new(record));
+        b.attach_exact_with_volume(Arc::new(record), self.volume().ok());
         Ok(b)
     }
 
@@ -82,7 +82,7 @@ fn face_of(r: &Record, i: usize, chord: f64, counts: &mut HashMap<u32, usize>) -
                 Some(n) => *n,
                 None => {
                     let curve = e.nurbs.as_ref().unwrap_or(&e.curve);
-                    let pts = curve_points(curve, e.interval, MeshTolerance::chord(chord)).map_err(|x| refused(&x.to_string()))?;
+                    let pts = curve_points(curve, e.interval, MeshTolerance::display(chord)).map_err(|x| refused(&x.to_string()))?;
                     let n = pts.len().saturating_sub(1).max(1);
                     counts.insert(oe.edge, n);
                     n

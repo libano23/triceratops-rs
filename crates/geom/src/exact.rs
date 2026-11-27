@@ -20,6 +20,10 @@ pub struct ExactBody {
     /// composes onto it instead of rebuilding the record.
     #[serde(default = "identity")]
     pub placement: DAffine3,
+    /// The kernel's volume of the solid (mm³), kept through similarities. Volume readouts use it
+    /// instead of the display mesh.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
     pub faces_fingerprint: u64,
 }
 

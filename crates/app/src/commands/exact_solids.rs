@@ -18,9 +18,11 @@ mod on {
 
     /// `b` with the record of `solid` attached, if the kernel made one and says it is closed.
     fn with(mut b: Brep, solid: Result<Solid, KernelError>) -> Brep {
-        if let Ok(rec) = solid.and_then(|s| s.record()) {
-            b.closed = true;
-            b.attach_exact(Arc::new(rec));
+        if let Ok(s) = solid {
+            if let Ok(rec) = s.record() {
+                b.closed = true;
+                b.attach_exact_with_volume(Arc::new(rec), s.volume().ok());
+            }
         }
         b
     }
@@ -31,11 +33,22 @@ mod on {
         with(b, Solid::cuboid(lo, hi).and_then(|s| s.transformed(&xf)))
     }
 
+    /// The kernel wants a positive height: a negative one runs the other way along the axis.
+    fn upright(axis: DVec3, h: f64) -> (DVec3, f64) {
+        if h < 0.0 {
+            (-axis, -h)
+        } else {
+            (axis, h)
+        }
+    }
+
     pub fn cylinder(b: Brep, base: DVec3, axis: DVec3, r: f64, h: f64) -> Brep {
+        let (axis, h) = upright(axis, h);
         with(b, Solid::cylinder(base, axis, r, h))
     }
 
     pub fn cone(b: Brep, base: DVec3, axis: DVec3, r: f64, h: f64) -> Brep {
+        let (axis, h) = upright(axis, h);
         with(b, Solid::cone(base, axis, r, 0.0, h))
     }
 

@@ -716,7 +716,12 @@ impl Brep {
 
     /// Attach `record` as the exact body of these faces as they are now.
     pub fn attach_exact(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>) {
-        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, faces_fingerprint: self.fingerprint() });
+        self.attach_exact_with_volume(record, None);
+    }
+
+    /// [`Brep::attach_exact`] with the kernel's volume of the solid.
+    pub fn attach_exact_with_volume(&mut self, record: std::sync::Arc<solidcore_record::brep::Brep>, volume: Option<f64>) {
+        self.exact = Some(ExactBody { record, placement: glam::DAffine3::IDENTITY, volume, faces_fingerprint: self.fingerprint() });
     }
 
     pub fn from_surfaces(surfaces: Vec<NurbsSurface>) -> Self {
@@ -836,6 +841,7 @@ impl Brep {
         }
         if let Some(e) = exact.as_mut() {
             e.placement = *xf * e.placement;
+            e.volume = e.volume.map(|v| v * xf.matrix3.determinant().abs());
             e.faces_fingerprint = self.fingerprint();
         }
         self.exact = exact;
@@ -1099,6 +1105,18 @@ mod tests {
         b.faces[0].surface.control_points[0].x += 0.5; // an in-place edit
         b.transform(&DAffine3::from_translation(DVec3::X));
         assert!(b.exact_valid().is_none());
+    }
+
+    #[test]
+    fn exact_volume_follows_similarities() {
+        let mut b = Brep::cuboid(&Plane::world_xy(), 2.0, 3.0, 4.0).unwrap();
+        b.attach_exact_with_volume(dummy_record(), Some(100.0));
+        b.transform(&DAffine3::from_translation(DVec3::X));
+        assert_eq!(b.exact_valid().unwrap().volume, Some(100.0));
+        b.transform(&DAffine3::from_mat3(glam::DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0))));
+        assert_eq!(b.exact_valid().unwrap().volume, Some(100.0), "a mirror keeps the volume positive");
+        b.transform(&DAffine3::from_scale(DVec3::splat(2.0)));
+        assert!((b.exact_valid().unwrap().volume.unwrap() - 800.0).abs() < 1e-9);
     }
 
     #[test]

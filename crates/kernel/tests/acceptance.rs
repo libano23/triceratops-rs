@@ -489,3 +489,17 @@ fn a_moved_exact_solid_still_does_exact_booleans() {
     let (sa, sb) = (Solid::from_exact(&a).unwrap(), Solid::from_exact(&ball).unwrap());
     assert_vol(&sa.boolean(&sb, BooleanOp::Difference).unwrap(), 64000.0 - 4.0 / 3.0 * PI * 8000.0, 1e-3);
 }
+
+// ---- final review: trims keep their shape at any scale ----
+
+#[test]
+fn a_small_hole_in_a_huge_part_keeps_a_round_trim() {
+    let part = Solid::cuboid(DVec3::splat(-10000.0), DVec3::splat(10000.0)).unwrap();
+    let hole = Solid::cylinder(DVec3::new(0.0, 0.0, -11000.0), DVec3::Z, 2.5, 22000.0).unwrap();
+    let r = part.boolean(&hole, BooleanOp::Difference).unwrap();
+    // the chord the app asks for follows the size of the whole part (1e-3 of it: about 35 mm)
+    let b = r.to_brep(34.6).unwrap();
+    let hole_loops: Vec<usize> = b.faces.iter().filter(|f| f.loops.len() >= 2).map(|f| f.loops[1].len()).collect();
+    assert!(!hole_loops.is_empty(), "the cap faces have an inner loop");
+    assert!(hole_loops.iter().all(|n| *n >= 24), "a 5 mm hole must not become a square: {hole_loops:?}");
+}
