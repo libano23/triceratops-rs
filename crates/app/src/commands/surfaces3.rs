@@ -915,6 +915,29 @@ impl WireCutCmd {
     }
 }
 
+/// The outline of a WireCut cutter made from the wire itself: the curve projected on the plane
+/// perpendicular to `dir` (a projection is affine, so a NURBS stays the same NURBS), closed far
+/// away on the curve's side when it is open. `None` when the pieces cannot be joined exactly; the
+/// caller then falls back to the sampled polyline.
+fn exact_wire_outline(c: &NurbsCurve, proj: &dyn Fn(DVec3) -> DVec3, big: f64, x_axis: DVec3, y_axis: DVec3, dir: DVec3) -> Option<NurbsCurve> {
+    let mut flat = c.clone();
+    flat.control_points.iter_mut().for_each(|p| *p = proj(*p));
+    if c.is_closed() {
+        return flat.is_closed().then_some(flat);
+    }
+    let (t0, t1) = flat.domain();
+    let (s, e) = (flat.start_point(), flat.end_point());
+    let d0 = (flat.derivative_at(t0)).normalize_or(x_axis);
+    let d1 = (flat.derivative_at(t1)).normalize_or(x_axis);
+    let (start_far, end_far) = (s - d0 * big, e + d1 * big);
+    let chord = (end_far - start_far).normalize_or(x_axis);
+    let side = dir.cross(chord).normalize_or(y_axis);
+    let head = NurbsCurve::line(start_far, s).ok()?;
+    let tail = NurbsCurve::polyline(vec![e, end_far, end_far + side * big, start_far + side * big, start_far]).ok()?;
+    let outline = head.join_any(&flat).ok()?.join_any(&tail).ok()?;
+    outline.is_closed().then_some(outline)
+}
+
 /// WireCut of one object: the pieces on both sides of the cutting curve extruded along `dir`
 /// (fewer than two pieces when the curve does not cut it). `depth` holds 0, 1 or 2 points
 /// limiting the cut along the direction.
@@ -955,6 +978,9 @@ pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec
         NurbsCurve::polyline(poly).ok()
     };
     let Some(closed) = closed else { return Vec::new() };
+    // The cutter of a solid is the wire itself extruded, not its 8-samples-per-span polyline:
+    // the wall left by the cut is then one smooth face, as the curve is.
+    let exact_outline = exact_wire_outline(c, &proj, big, plane.x_axis, plane.y_axis, dir);
     // depth range along the direction (infinite when no points were picked)
     let range: Option<(f64, f64)> = match depth.len() {
         2 => {
@@ -975,8 +1001,9 @@ pub fn wire_cut_geometry(g: &Geometry, c: &NurbsCurve, dir: DVec3, depth: &[DVec
             let (lo, hi) = range.unwrap_or((-big, big));
             let mid = centre + dir * ((lo + hi) * 0.5);
             let tool_plane = Plane { origin: mid, ..plane };
-            let tool_curve = closed.transformed(&DAffine3::from_translation(mid - centre));
-            let Some(tool) = super::misc4::prism_tool(&tool_curve, &tool_plane, (hi - lo) * 0.5) else { return results };
+            let shift = DAffine3::from_translation(mid - centre);
+            let exact_tool = exact_outline.as_ref().and_then(|o| super::misc4::prism_brep(&o.transformed(&shift), &tool_plane, (hi - lo) * 0.5)).map(Geometry::Brep);
+            let Some(tool) = exact_tool.or_else(|| super::misc4::prism_tool(&closed.transformed(&shift), &tool_plane, (hi - lo) * 0.5)) else { return results };
             let (inside, outside) = (super::misc4::boolean_geometry(g, &tool, BooleanOp::Intersection), super::misc4::boolean_geometry(g, &tool, BooleanOp::Difference));
             if let Some(i) = inside.filter(super::misc4::geometry_nonempty) {
                 results.push(i);

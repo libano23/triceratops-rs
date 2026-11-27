@@ -2383,3 +2383,67 @@ mod exact_primitives {
         assert!((total - 4.0 / 3.0 * PI * 8000.0).abs() < 1e-3, "V(S-P)+V(S^P) = {total}");
     }
 }
+
+/// Faces of a result that are not flat: the walls a curved wire (or a round solid) leaves.
+fn curved_faces(g: &Geometry) -> usize {
+    let Geometry::Brep(b) = g else { return 0 };
+    b.faces.iter().filter(|f| f.surface.degree_u > 1 || f.surface.degree_v > 1).count()
+}
+
+#[test]
+fn wirecut_with_a_curved_wire_leaves_one_smooth_wall_not_facets() {
+    // a box cut by a free-form curve: each piece has the box's flat faces and ONE curved wall
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 10.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.start("InterpCrv");
+    for p in [(-2.0, 2.0, 0.0), (5.0, 7.0, 0.0), (12.0, 3.0, 0.0), (22.0, 8.0, 0.0)] {
+        h.point(p.0, p.1, p.2);
+    }
+    h.enter();
+    let lid = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("WireCut");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(5.0, 7.0, 0.0)), c));
+    h.objects(vec![bid]);
+    h.enter();
+    let parts: Vec<_> = h.doc.objects().filter(|o| o.id != lid).collect();
+    assert_eq!(parts.len(), 2, "two pieces");
+    let mut total = 0.0;
+    for o in &parts {
+        let Geometry::Brep(b) = &o.geometry else { panic!("{}", o.geometry.type_name()) };
+        assert!(b.closed);
+        assert_eq!(curved_faces(&o.geometry), 1, "the cut wall is one smooth face, not {} faces ({} in all)", b.faces.len(), b.faces.len());
+        assert!(b.faces.len() <= 8, "{} faces", b.faces.len());
+        total += Document::volume_of(&o.geometry).unwrap().0;
+    }
+    assert!((total - 1000.0).abs() < 2.0, "the two pieces make the box: {total}");
+}
+
+#[test]
+fn wirecut_with_a_closed_free_form_wire_keeps_it_smooth() {
+    // a closed spline drawn inside the box, cut straight through: a hole whose wall is one face
+    let mut h = Harness::new();
+    h.start("Box");
+    h.point(0.0, 0.0, 0.0);
+    h.point(20.0, 20.0, 0.0);
+    h.number(5.0);
+    let bid = h.doc.objects().next().unwrap().id;
+    h.start("Circle");
+    h.point(10.0, 10.0, 0.0);
+    h.number(4.0);
+    let lid = h.doc.objects().last().unwrap().id;
+    h.doc.clear_selection();
+    h.start("WireCut");
+    h.ctx(|r, c| r.feed(Input::Pick(lid, DVec3::new(14.0, 10.0, 0.0)), c));
+    h.objects(vec![bid]);
+    h.enter();
+    let parts: Vec<_> = h.doc.objects().filter(|o| o.id != lid).collect();
+    assert_eq!(parts.len(), 2, "the disc and the plate with a hole");
+    for o in &parts {
+        assert_eq!(curved_faces(&o.geometry), 1, "a smooth round wall: {} faces", match &o.geometry { Geometry::Brep(b) => b.faces.len(), _ => 0 });
+    }
+}
