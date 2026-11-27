@@ -466,7 +466,7 @@ How the ghosts are made:
   almost watertight (a few open edges where the faces were meshed apart).
 * **Units:** STEP and VDA-FS in millimetres, IGES/3MF/AMF/COLLADA declare the document unit, glTF
   in metres. Not yet: STL, OBJ, PLY and the other unitless formats write the document's numbers;
-  the 3MF, AMF and COLLADA importers still ignore the unit the file declares.
+  3MF, AMF, COLLADA and glTF are read back in the document unit.
 * **Known limits:** 3DM and IGES write trim loops as polylines; STEP import of a file written by
   the kernel (periodic faces) is still weak, use another CAD kernel or the 3DM format to read it back.
 

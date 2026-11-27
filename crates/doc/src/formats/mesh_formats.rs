@@ -956,7 +956,6 @@ pub fn import_amf(doc: &mut Document, path: &Path) -> Result<usize> {
         for t in obj.descendants().filter(|n| n.has_tag_name("triangle")) {
             faces.push(vec![num(t, "v1") as usize, num(t, "v2") as usize, num(t, "v3") as usize]);
         }
-        let mut vertices = vertices;
         into_document_unit(&mut vertices, file_mm, doc);
         count += add_mesh(doc, &name, mesh_from_polygons(vertices, &faces), None) as usize;
     }
