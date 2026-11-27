@@ -5,6 +5,8 @@ becomes its release notes and is what the program shows when it offers an update
 before tagging a release, rename "Unreleased" to the version and date (see
 [docs/RELEASING.md](docs/RELEASING.md)).
 
+## Unreleased
+
 ## 0.5.0 - 2026-11-27
 
 ### New
